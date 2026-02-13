@@ -5,26 +5,26 @@
 
 /* ===== Design Tokens ===== */
 :root {
-  /* Brand Colors */
-  --color-brand: #0f172a;
-  --color-accent: #3b82f6;
-  --color-accent-soft: #dbeafe;
-  --color-success: #059669;
-  --color-success-soft: #d1fae5;
+  /* Brand Colors - Cyan / Aqua accent */
+  --color-brand: #0e7490;
+  --color-accent: #06b6d4;
+  --color-accent-soft: #e0f7fa;
+  --color-success: #0d9488;
+  --color-success-soft: #ccfbf1;
   --color-warning: #d97706;
   --color-warning-soft: #fef3c7;
-  --color-danger: #dc2626;
-  --color-danger-soft: #fee2e2;
+  --color-danger: #e11d48;
+  --color-danger-soft: #ffe4e6;
 
-  /* Neutrals */
-  --color-bg: #f8fafc;
+  /* Neutrals - Warm light palette */
+  --color-bg: #f0f9ff;
   --color-surface: #ffffff;
-  --color-surface-hover: #f1f5f9;
-  --color-border: #e2e8f0;
-  --color-border-subtle: #f1f5f9;
-  --color-text: #0f172a;
+  --color-surface-hover: #ecfeff;
+  --color-border: #bae6fd;
+  --color-border-subtle: #e0f2fe;
+  --color-text: #164e63;
   --color-text-secondary: #475569;
-  --color-text-muted: #94a3b8;
+  --color-text-muted: #7c9aaf;
 
   /* Typography */
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif;
@@ -45,13 +45,13 @@
   --radius-lg: 16px;
   --radius-xl: 20px;
 
-  /* Shadows */
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.06), 0 2px 4px -2px rgba(0, 0, 0, 0.04);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.06), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
-  --shadow-card: 0 0 0 1px var(--color-border), 0 1px 3px rgba(0, 0, 0, 0.04);
-  --shadow-card-hover: 0 0 0 1px var(--color-accent), 0 4px 12px rgba(59, 130, 246, 0.08);
+  /* Shadows - softer with cyan tint */
+  --shadow-xs: 0 1px 2px rgba(6, 182, 212, 0.04);
+  --shadow-sm: 0 1px 3px rgba(6, 182, 212, 0.06), 0 1px 2px rgba(0, 0, 0, 0.03);
+  --shadow-md: 0 4px 6px -1px rgba(6, 182, 212, 0.06), 0 2px 4px -2px rgba(0, 0, 0, 0.03);
+  --shadow-lg: 0 10px 15px -3px rgba(6, 182, 212, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.03);
+  --shadow-card: 0 0 0 1px var(--color-border), 0 1px 3px rgba(6, 182, 212, 0.05);
+  --shadow-card-hover: 0 0 0 1px var(--color-accent), 0 4px 16px rgba(6, 182, 212, 0.12);
 
   /* Transitions */
   --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -129,7 +129,7 @@ header {
   justify-content: center;
   width: 48px;
   height: 48px;
-  background: var(--color-brand);
+  background: linear-gradient(135deg, #06b6d4, #0891b2);
   border-radius: var(--radius-md);
   flex-shrink: 0;
 }
@@ -230,8 +230,8 @@ header .update-time {
 }
 
 .card-icon--fire {
-  background: var(--color-accent-soft);
-  color: var(--color-accent);
+  background: #e0f7fa;
+  color: #06b6d4;
 }
 
 .card-icon--savings {
@@ -271,10 +271,10 @@ header .update-time {
 }
 
 /* Card accent variant by type */
-.card--assets .value { color: var(--color-success); }
-.card--fire .value { color: var(--color-accent); }
-.card--savings .value { color: var(--color-warning); }
-.card--expense .value { color: var(--color-danger); }
+.card--assets .value { color: #0d9488; }
+.card--fire .value { color: #0891b2; }
+.card--savings .value { color: #d97706; }
+.card--expense .value { color: #e11d48; }
 
 /* ===== Dashboard Grid ===== */
 .dashboard-grid {
@@ -327,8 +327,8 @@ header .update-time {
   gap: var(--space-xs);
   font-size: 0.6875rem;
   font-weight: 600;
-  color: var(--color-text-muted);
-  background: var(--color-border-subtle);
+  color: #0891b2;
+  background: #e0f7fa;
   padding: 3px var(--space-sm);
   border-radius: 9999px;
   text-transform: uppercase;
@@ -520,32 +520,4 @@ footer {
   }
 }
 
-/* ===== Dark Mode ===== */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-brand: #f1f5f9;
-    --color-accent: #60a5fa;
-    --color-accent-soft: rgba(96, 165, 250, 0.15);
-    --color-success: #34d399;
-    --color-success-soft: rgba(52, 211, 153, 0.15);
-    --color-warning: #fbbf24;
-    --color-warning-soft: rgba(251, 191, 36, 0.15);
-    --color-danger: #f87171;
-    --color-danger-soft: rgba(248, 113, 113, 0.15);
-    --color-bg: #0c0f17;
-    --color-surface: #151922;
-    --color-surface-hover: #1e2433;
-    --color-border: #1e293b;
-    --color-border-subtle: #1a2032;
-    --color-text: #f1f5f9;
-    --color-text-secondary: #94a3b8;
-    --color-text-muted: #64748b;
-    --shadow-card: 0 0 0 1px var(--color-border), 0 1px 3px rgba(0, 0, 0, 0.2);
-    --shadow-card-hover: 0 0 0 1px var(--color-accent), 0 4px 12px rgba(96, 165, 250, 0.1);
-    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -4px rgba(0, 0, 0, 0.2);
-  }
-
-  .header-logo {
-    background: var(--color-accent);
-  }
-}
+/* Dark mode disabled - always use light theme */
