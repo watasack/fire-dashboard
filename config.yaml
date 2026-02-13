@@ -1,0 +1,67 @@
+# FIRE Dashboard Configuration
+
+# プロジェクト情報
+project:
+  name: "FIRE Dashboard"
+  description: "Financial Independence, Retire Early"
+
+# データソース設定
+data:
+  encoding: 'cp932'
+  asset_file: 'data/資産推移月次.csv'
+  transaction_pattern: 'data/収入・支出詳細_*.csv'
+  date_format: '%Y/%m/%d'
+
+# シミュレーション設定
+simulation:
+  years: 50                    # シミュレーション期間（年）
+  start_age: 35                # 現在の年齢（オプション）
+  life_expectancy: 90          # 想定寿命
+
+  # 標準シナリオ（バランス型）
+  standard:
+    annual_return_rate: 0.05   # 年率リターン 5%
+    inflation_rate: 0.02       # インフレ率 2%
+    income_growth_rate: 0.02   # 収入成長率 2%
+    expense_growth_rate: 0.02  # 支出成長率 2%（インフレ連動）
+
+  # 楽観シナリオ（積極運用）
+  optimistic:
+    annual_return_rate: 0.07   # 年率リターン 7%
+    inflation_rate: 0.01       # インフレ率 1%
+    income_growth_rate: 0.03   # 収入成長率 3%
+    expense_growth_rate: 0.01  # 支出成長率 1%
+
+  # 悲観シナリオ（保守運用）
+  pessimistic:
+    annual_return_rate: 0.03   # 年率リターン 3%
+    inflation_rate: 0.03       # インフレ率 3%
+    income_growth_rate: 0.00   # 収入成長率 0%
+    expense_growth_rate: 0.04  # 支出成長率 4%
+
+# FIRE設定
+fire:
+  withdrawal_rate: 0.04        # 4%ルール
+  safety_buffer: 1.2           # 安全バッファ 20%
+  target_calculation_method: 'simulation'  # または 'simple'（支出×25）
+  tolerance: 100000            # 二分探索の許容誤差（円）
+
+# 可視化設定
+visualization:
+  theme: 'plotly_white'
+  color_scheme:
+    assets: '#6366f1'          # 総資産（インディゴ）
+    net_assets: '#10b981'      # 純資産（エメラルド）
+    debt: '#ef4444'            # 債務（赤）
+    income: '#10b981'          # 収入（エメラルド）
+    expense: '#f59e0b'         # 支出（アンバー）
+
+  chart_height: 550
+  responsive: true
+  font_family: "'Segoe UI', -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Meiryo', sans-serif"
+
+# 出力設定
+output:
+  html_file: 'docs/index.html'
+  include_raw_data: false      # セキュリティ考慮（falseで集計値のみ）
+  update_timestamp: true
