@@ -50,11 +50,11 @@ fire:
 visualization:
   theme: 'plotly_white'
   color_scheme:
-    assets: '#6366f1'          # 総資産（インディゴ）
-    net_assets: '#10b981'      # 純資産（エメラルド）
-    debt: '#ef4444'            # 債務（赤）
-    income: '#10b981'          # 収入（エメラルド）
-    expense: '#f59e0b'         # 支出（アンバー）
+    assets: '#06b6d4'          # 総資産（シアン）
+    net_assets: '#0d9488'      # 純資産（ティール）
+    debt: '#e11d48'            # 債務（ローズ）
+    income: '#0d9488'          # 収入（ティール）
+    expense: '#d97706'         # 支出（アンバー）
 
   chart_height: 550
   responsive: true

@@ -29,15 +29,15 @@ def get_common_layout(config: Dict[str, Any], title: str = "") -> dict:
         'font': {
             'family': font_family,
             'size': 12,
-            'color': '#475569'
+            'color': '#334155'
         },
         'plot_bgcolor': 'rgba(0, 0, 0, 0)',
         'paper_bgcolor': 'rgba(0, 0, 0, 0)',
         'hovermode': 'x unified',
         'hoverlabel': {
-            'bgcolor': '#0f172a',
-            'font': {'size': 12, 'family': font_family, 'color': '#f1f5f9'},
-            'bordercolor': '#1e293b'
+            'bgcolor': '#164e63',
+            'font': {'size': 12, 'family': font_family, 'color': '#ecfeff'},
+            'bordercolor': '#0e7490'
         },
         'margin': {'l': 56, 'r': 24, 't': 24, 'b': 48},
         'legend': {
@@ -71,10 +71,10 @@ def create_asset_timeline_chart(asset_df: pd.DataFrame, config: Dict[str, Any]) 
         x=asset_df['date'],
         y=asset_df['net_assets'],
         name='純資産',
-        line=dict(color='#059669', width=2.5, shape='spline'),
+        line=dict(color='#0d9488', width=2.5, shape='spline'),
         mode='lines',
         fill='tozeroy',
-        fillcolor='rgba(5, 150, 105, 0.06)'
+        fillcolor='rgba(13, 148, 136, 0.06)'
     ))
 
     # 総資産
@@ -82,7 +82,7 @@ def create_asset_timeline_chart(asset_df: pd.DataFrame, config: Dict[str, Any]) 
         x=asset_df['date'],
         y=asset_df['total_assets'],
         name='総資産',
-        line=dict(color='#3b82f6', width=2, shape='spline'),
+        line=dict(color='#06b6d4', width=2, shape='spline'),
         mode='lines'
     ))
 
@@ -91,7 +91,7 @@ def create_asset_timeline_chart(asset_df: pd.DataFrame, config: Dict[str, Any]) 
         x=asset_df['date'],
         y=asset_df['debt'],
         name='債務',
-        line=dict(color='#dc2626', width=1.5, dash='dot', shape='spline'),
+        line=dict(color='#e11d48', width=1.5, dash='dot', shape='spline'),
         mode='lines'
     ))
 
@@ -110,9 +110,9 @@ def create_asset_timeline_chart(asset_df: pd.DataFrame, config: Dict[str, Any]) 
                     {'count': 1, 'label': "1Y", 'step': "year", 'stepmode': "backward"},
                     {'step': "all", 'label': "All"}
                 ],
-                'bgcolor': '#f1f5f9',
-                'activecolor': '#3b82f6',
-                'font': {'size': 11, 'color': '#475569'},
+                'bgcolor': '#e0f2fe',
+                'activecolor': '#06b6d4',
+                'font': {'size': 11, 'color': '#334155'},
                 'borderwidth': 0,
                 'y': 1.08
             },
@@ -121,7 +121,7 @@ def create_asset_timeline_chart(asset_df: pd.DataFrame, config: Dict[str, Any]) 
         'yaxis': {
             'title': '',
             'showgrid': True,
-            'gridcolor': '#f1f5f9',
+            'gridcolor': '#e0f2fe',
             'gridwidth': 1,
             'tickformat': ',.0f',
             'zeroline': False,
@@ -166,20 +166,20 @@ def create_fire_progress_chart(
         mode="gauge+number",
         value=progress_rate * 100,
         title={'text': "達成率", 'font': {'size': 14, 'weight': 'bold', 'color': '#475569'}},
-        number={'suffix': "%", 'font': {'size': 36, 'weight': 'bold', 'color': '#0f172a'}},
+        number={'suffix': "%", 'font': {'size': 36, 'weight': 'bold', 'color': '#164e63'}},
         gauge={
-            'axis': {'range': [None, 100], 'tickwidth': 1, 'tickcolor': '#e2e8f0', 'dtick': 25},
-            'bar': {'color': '#3b82f6', 'thickness': 0.75},
-            'bgcolor': "#f1f5f9",
+            'axis': {'range': [None, 100], 'tickwidth': 1, 'tickcolor': '#bae6fd', 'dtick': 25},
+            'bar': {'color': '#06b6d4', 'thickness': 0.75},
+            'bgcolor': "#e0f2fe",
             'borderwidth': 0,
             'steps': [
-                {'range': [0, 25], 'color': '#fee2e2'},
+                {'range': [0, 25], 'color': '#ffe4e6'},
                 {'range': [25, 50], 'color': '#fef3c7'},
-                {'range': [50, 75], 'color': '#dbeafe'},
-                {'range': [75, 100], 'color': '#d1fae5'}
+                {'range': [50, 75], 'color': '#cffafe'},
+                {'range': [75, 100], 'color': '#ccfbf1'}
             ],
             'threshold': {
-                'line': {'color': "#059669", 'width': 3},
+                'line': {'color': "#0d9488", 'width': 3},
                 'thickness': 0.85,
                 'value': 100
             }
@@ -195,13 +195,13 @@ def create_fire_progress_chart(
         x=['現在の資産', '不足額'],
         y=[current_assets, shortfall],
         marker={
-            'color': ['#3b82f6', '#e2e8f0'],
+            'color': ['#06b6d4', '#e0f2fe'],
             'line': {'width': 0},
             'cornerradius': 6
         },
         text=[f'{current_assets/10000:,.0f}万円', f'{shortfall/10000:,.0f}万円'],
         textposition='outside',
-        textfont={'size': 12, 'weight': 'bold', 'color': '#475569'},
+        textfont={'size': 12, 'weight': 'bold', 'color': '#334155'},
         hovertemplate='<b>%{x}</b><br>%{y:,.0f}円<extra></extra>'
     ), row=1, col=2)
 
@@ -211,7 +211,7 @@ def create_fire_progress_chart(
         title='',
         height=440,
         showlegend=False,
-        font={'family': font_family, 'size': 12, 'color': '#475569'},
+        font={'family': font_family, 'size': 12, 'color': '#334155'},
         plot_bgcolor='rgba(0, 0, 0, 0)',
         paper_bgcolor='rgba(0, 0, 0, 0)',
         margin={'l': 32, 'r': 32, 't': 48, 'b': 48}
@@ -221,7 +221,7 @@ def create_fire_progress_chart(
     fig.update_xaxes(showgrid=False, row=1, col=2)
     fig.update_yaxes(
         showgrid=True,
-        gridcolor='#f1f5f9',
+        gridcolor='#e0f2fe',
         tickformat=',.0f',
         title='',
         zeroline=False,
@@ -234,9 +234,9 @@ def create_fire_progress_chart(
         xref="paper", yref="paper",
         x=0.75, y=1.08,
         showarrow=False,
-        font={'size': 12, 'color': '#3b82f6', 'weight': 'bold'},
-        bgcolor='rgba(59, 130, 246, 0.08)',
-        bordercolor='rgba(59, 130, 246, 0.2)',
+        font={'size': 12, 'color': '#0891b2', 'weight': 'bold'},
+        bgcolor='rgba(6, 182, 212, 0.08)',
+        bordercolor='rgba(6, 182, 212, 0.2)',
         borderwidth=1,
         borderpad=6
     )
@@ -264,8 +264,8 @@ def create_expense_breakdown_chart(
     categories = [cat['category'] for cat in top_categories]
     amounts = [cat['amount'] for cat in top_categories]
 
-    # Refined color palette
-    colors_palette = ['#3b82f6', '#059669', '#d97706', '#dc2626', '#7c3aed', '#db2777', '#0d9488', '#ea580c']
+    # Refined color palette - cyan-centric
+    colors_palette = ['#06b6d4', '#0d9488', '#d97706', '#e11d48', '#8b5cf6', '#0891b2', '#14b8a6', '#f59e0b']
 
     # ドーナツチャート
     fig = go.Figure(data=[go.Pie(
@@ -278,7 +278,7 @@ def create_expense_breakdown_chart(
         },
         textinfo='label+percent',
         textposition='outside',
-        textfont={'size': 11, 'weight': 'bold', 'color': '#475569'},
+        textfont={'size': 11, 'weight': 'bold', 'color': '#334155'},
         hovertemplate='<b>%{label}</b><br>金額: %{value:,.0f}円<br>割合: %{percent}<extra></extra>',
         pull=[0.03 if i == 0 else 0 for i in range(len(categories))]
     )])
@@ -286,9 +286,9 @@ def create_expense_breakdown_chart(
     # 中央にテキスト追加
     total_expense = expense_breakdown['total_expense']
     fig.add_annotation(
-        text=f"<b>{total_expense/10000:,.1f}万円</b><br><span style='font-size:11px;color:#94a3b8'>総支出</span>",
+        text=f"<b>{total_expense/10000:,.1f}万円</b><br><span style='font-size:11px;color:#7c9aaf'>総支出</span>",
         x=0.5, y=0.5,
-        font={'size': 15, 'color': '#0f172a', 'weight': 'bold'},
+        font={'size': 15, 'color': '#164e63', 'weight': 'bold'},
         showarrow=False,
         align='center'
     )
@@ -306,7 +306,7 @@ def create_expense_breakdown_chart(
             'x': 1.02,
             'bgcolor': 'rgba(0, 0, 0, 0)',
             'borderwidth': 0,
-            'font': {'size': 12, 'color': '#475569'}
+            'font': {'size': 12, 'color': '#334155'}
         }
     })
 
@@ -337,18 +337,18 @@ def create_future_simulation_chart(
     scenario_config = {
         'optimistic': {
             'name': '楽観 (7%)',
-            'color': '#059669',
-            'fill': 'rgba(5, 150, 105, 0.06)'
+            'color': '#0d9488',
+            'fill': 'rgba(13, 148, 136, 0.06)'
         },
         'standard': {
             'name': '標準 (5%)',
-            'color': '#3b82f6',
-            'fill': 'rgba(59, 130, 246, 0.08)'
+            'color': '#06b6d4',
+            'fill': 'rgba(6, 182, 212, 0.08)'
         },
         'pessimistic': {
             'name': '悲観 (3%)',
-            'color': '#dc2626',
-            'fill': 'rgba(220, 38, 38, 0.04)'
+            'color': '#e11d48',
+            'fill': 'rgba(225, 29, 72, 0.04)'
         }
     }
 
@@ -378,7 +378,7 @@ def create_future_simulation_chart(
             y=[target, target],
             name='FIRE目標',
             mode='lines',
-            line={'color': '#d97706', 'width': 2, 'dash': 'dash'},
+            line={'color': '#f59e0b', 'width': 2, 'dash': 'dash'},
             hovertemplate=f'<b>FIRE目標</b><br>{target:,.0f}円<extra></extra>'
         ))
 
@@ -393,7 +393,7 @@ def create_future_simulation_chart(
         'yaxis': {
             'title': '',
             'showgrid': True,
-            'gridcolor': '#f1f5f9',
+            'gridcolor': '#e0f2fe',
             'tickformat': ',.0f',
             'zeroline': False,
             'side': 'right'
@@ -427,7 +427,7 @@ def create_monthly_cashflow_chart(
         x=cashflow_df['month'],
         y=cashflow_df['income'],
         name='収入',
-        marker={'color': '#059669', 'line': {'width': 0}, 'cornerradius': 4}
+        marker={'color': '#0d9488', 'line': {'width': 0}, 'cornerradius': 4}
     ))
 
     # 支出（負の値として表示）
@@ -435,7 +435,7 @@ def create_monthly_cashflow_chart(
         x=cashflow_df['month'],
         y=-cashflow_df['expense'],
         name='支出',
-        marker={'color': '#dc2626', 'line': {'width': 0}, 'cornerradius': 4}
+        marker={'color': '#e11d48', 'line': {'width': 0}, 'cornerradius': 4}
     ))
 
     # 純収支（折れ線）
@@ -444,7 +444,7 @@ def create_monthly_cashflow_chart(
         y=cashflow_df['net_cashflow'],
         name='純収支',
         mode='lines+markers',
-        line={'color': '#3b82f6', 'width': 2.5, 'shape': 'spline'},
+        line={'color': '#06b6d4', 'width': 2.5, 'shape': 'spline'},
         marker={'size': 6},
         yaxis='y2'
     ))
@@ -453,7 +453,7 @@ def create_monthly_cashflow_chart(
     layout = get_common_layout(config, '')
     layout.update({
         'xaxis': {'title': '', 'showgrid': False},
-        'yaxis': {'title': '', 'showgrid': True, 'gridcolor': '#f1f5f9', 'zeroline': False},
+        'yaxis': {'title': '', 'showgrid': True, 'gridcolor': '#e0f2fe', 'zeroline': False},
         'yaxis2': {
             'title': '',
             'overlaying': 'y',
