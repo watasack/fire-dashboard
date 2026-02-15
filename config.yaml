@@ -12,15 +12,31 @@ data:
   transaction_pattern: 'data/収入・支出詳細_*.csv'
   date_format: '%Y/%m/%d'
 
+  # 収入予測設定（将来シミュレーションで使用する収入の条件）
+  income_forecast:
+    # 予測に含める収入のキーワード（部分一致）
+    include_keywords:
+      - '給与'
+      - '給料'
+      - 'マイナビ'  # 給与振込の識別子
+    # 予測から除外する収入のキーワード（部分一致）
+    exclude_keywords:
+      - '財形'
+      - '配当'
+      - 'アマゾン'  # 一時所得
+      - 'ポイント'
+      - '還付'
+
 # シミュレーション設定
 simulation:
   years: 50                    # シミュレーション期間（年）
   start_age: 35                # 現在の年齢（オプション）
   life_expectancy: 90          # 想定寿命
+  initial_labor_income: 700000 # 初期労働収入（月額・円）
 
   # 標準シナリオ（バランス型）
   standard:
-    annual_return_rate: 0.05   # 年率リターン 5%
+    annual_return_rate: 0.04   # 年率リターン 4%
     inflation_rate: 0.02       # インフレ率 2%
     income_growth_rate: 0.02   # 収入成長率 2%
     expense_growth_rate: 0.02  # 支出成長率 2%（インフレ連動）
@@ -42,9 +58,118 @@ simulation:
 # FIRE設定
 fire:
   withdrawal_rate: 0.04        # 4%ルール
-  safety_buffer: 1.2           # 安全バッファ 20%
+  safety_buffer: 1.0           # 安全バッファ 0%（余剰なし）
   target_calculation_method: 'simulation'  # または 'simple'（支出×25）
   tolerance: 100000            # 二分探索の許容誤差（円）
+
+  # ライフステージ別の基本生活費（教育費を除く）
+  # 子供の年齢に応じて自動的に切り替わります
+  base_expense_by_stage:
+    young_child: 3200000    # 子供が0-5歳（未就学）: 320万円/年
+    elementary: 3400000     # 子供が6-11歳（小学生）: 340万円/年
+    junior_high: 3600000    # 子供が12-14歳（中学生）: 360万円/年
+    high_school: 3800000    # 子供が15-17歳（高校生）: 380万円/年
+    university: 4000000     # 子供が18-21歳（大学生）: 400万円/年
+    empty_nest: 2800000     # 子供独立後（22歳以降）: 280万円/年
+
+  # 固定支出（一律、データが不足している場合のフォールバック）
+  manual_annual_expense: null  # nullの場合はライフステージ別を使用
+
+# 教育費設定
+education:
+  enabled: true                # 教育費シミュレーションを有効化
+
+  # 子供の情報
+  children:
+    - name: '颯'               # 名前
+      birthdate: '2022/02/26'  # 生年月日（YYYY/MM/DD形式）
+      kindergarten: 'private'  # private or public
+      elementary: 'public'     # private or public
+      junior_high: 'public'    # private or public
+      high: 'public'           # private or public
+      university: 'national'   # national, private_arts, private_science
+    # 複数の子供がいる場合は追加
+    # - birthdate: '2024/04/15'
+    #   kindergarten: 'public'
+    #   elementary: 'public'
+    #   junior_high: 'public'
+    #   high: 'public'
+    #   university: 'national'
+
+  # 教育段階別の年間費用（円）- 文部科学省の調査を基にした標準値
+  costs:
+    kindergarten:              # 幼稚園（3-5歳）
+      public: 200000           # 公立: 約20万円/年
+      private: 500000          # 私立: 約50万円/年
+
+    elementary:                # 小学校（6-11歳）
+      public: 320000           # 公立: 約32万円/年
+      private: 1600000         # 私立: 約160万円/年
+
+    junior_high:               # 中学校（12-14歳）
+      public: 490000           # 公立: 約49万円/年
+      private: 1400000         # 私立: 約140万円/年
+
+    high:                      # 高校（15-17歳）
+      public: 460000           # 公立: 約46万円/年
+      private: 1000000         # 私立: 約100万円/年
+
+    university:                # 大学（18-21歳）
+      national: 540000         # 国立: 約54万円/年
+      private_arts: 900000     # 私立文系: 約90万円/年
+      private_science: 1200000 # 私立理系: 約120万円/年
+
+# 児童手当設定
+child_allowance:
+  enabled: true                # 児童手当を有効化
+  # 年齢別の月額（円）
+  under_3: 15000               # 3歳未満: 1.5万円/月
+  age_3_to_15: 10000           # 3歳以上15歳以下: 1万円/月
+
+# 住宅ローン設定
+mortgage:
+  enabled: true                # 住宅ローンを有効化
+  # 月々の返済額（円）
+  monthly_payment: 156300      # 合計: 156,300円/月
+  # 内訳
+  breakdown:
+    land_loan_husband: 22000   # 土地ローン（夫）
+    land_loan_wife: 22000      # 土地ローン（妻）
+    building_loan_husband: 68200  # 建物ローン（夫）
+    building_loan_wife: 44100  # 建物ローン（妻）
+  # 返済終了日
+  end_date: '2059/12/31'       # 35年ローン、2059年12月終了
+
+# 住宅メンテナンス費用設定
+house_maintenance:
+  enabled: true                # 住宅メンテナンス費用を有効化
+  # 建設年（メンテナンス周期の基準）
+  construction_year: 2025
+  # 定期メンテナンス項目のリスト
+  items:
+    - name: '白アリ対策'
+      cost: 150000           # 費用（円）
+      frequency_years: 10    # 周期（年）
+      first_year: 2035       # 初回実施年
+    - name: '外壁補修'
+      cost: 4000000          # 費用（円）
+      frequency_years: 30    # 周期（年）
+      first_year: 2055       # 初回実施年
+
+# 年金設定
+pension:
+  enabled: true                # 年金収入シミュレーションを有効化
+  start_age: 65                # 年金受給開始年齢
+
+  # 受給者情報
+  people:
+    - name: '修平'
+      birthdate: '1990/05/13'  # 生年月日（YYYY/MM/DD形式）
+      annual_amount: 1440000   # 年間年金額（円）国民年金78万+厚生年金66万
+    - name: '桜'
+      birthdate: '1991/04/20'  # 生年月日（YYYY/MM/DD形式）
+      annual_amount: 780000    # 年間年金額（円）国民年金のみ
+  # 合計: 222万円/年
 
 # 可視化設定
 visualization:

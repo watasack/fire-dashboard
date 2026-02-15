@@ -5,7 +5,7 @@
 
 import pandas as pd
 import numpy as np
-from typing import Dict, Any
+from typing import Dict, Any, List
 from scipy import stats
 
 
@@ -39,7 +39,8 @@ def analyze_current_status(asset_df: pd.DataFrame) -> Dict[str, Any]:
         'total_assets': latest['total_assets'],
         'net_assets': latest['net_assets'],
         'debt': latest['debt'],
-        'cash_investments': latest['cash_investments'],
+        'cash_deposits': latest['cash_deposits'],
+        'investment_trusts': latest['investment_trusts'],
         'growth_rate_1m': growth_1m,
         'growth_rate_3m': growth_3m,
         'growth_rate_12m': growth_12m,
@@ -53,12 +54,18 @@ def analyze_current_status(asset_df: pd.DataFrame) -> Dict[str, Any]:
     return result
 
 
-def analyze_income_expense_trends(cashflow_df: pd.DataFrame) -> Dict[str, Any]:
+def analyze_income_expense_trends(
+    cashflow_df: pd.DataFrame,
+    transaction_df: pd.DataFrame = None,
+    config: Dict[str, Any] = None
+) -> Dict[str, Any]:
     """
     収支のトレンドを分析
 
     Args:
         cashflow_df: 月次収支データフレーム
+        transaction_df: 取引明細データフレーム（予測用収入計算に使用、オプション）
+        config: 設定辞書（予測用収入フィルタに使用、オプション）
 
     Returns:
         収支トレンド分析結果の辞書
@@ -68,6 +75,7 @@ def analyze_income_expense_trends(cashflow_df: pd.DataFrame) -> Dict[str, Any]:
     if len(cashflow_df) == 0:
         return {
             'monthly_avg_income': 0,
+            'monthly_avg_income_forecast': 0,
             'monthly_avg_expense': 0,
             'monthly_avg_savings': 0,
             'savings_rate': 0,
@@ -75,17 +83,62 @@ def analyze_income_expense_trends(cashflow_df: pd.DataFrame) -> Dict[str, Any]:
             'annual_expense': 0,
         }
 
-    # 月次平均
+    # 月次平均（実際の全収入）
     monthly_avg_income = cashflow_df['income'].mean()
     monthly_avg_expense = cashflow_df['expense'].mean()
     monthly_avg_savings = cashflow_df['net_cashflow'].mean()
 
-    # 貯蓄率
+    # 将来予測用の収入を計算（定期収入のみ）
+    monthly_avg_income_forecast = monthly_avg_income  # デフォルトは全収入
+
+    if transaction_df is not None and config is not None:
+        forecast_config = config.get('data', {}).get('income_forecast', {})
+        if forecast_config:
+            # 収入のみ抽出
+            income_df = transaction_df[transaction_df['amount'] > 0].copy()
+
+            # フィルタ適用
+            include_keywords = forecast_config.get('include_keywords', [])
+            exclude_keywords = forecast_config.get('exclude_keywords', [])
+
+            # 除外キーワードでフィルタ
+            for keyword in exclude_keywords:
+                income_df = income_df[~income_df['description'].str.contains(keyword, na=False)]
+
+            # 含めるキーワードでフィルタ（指定がある場合のみ）
+            if include_keywords:
+                mask = pd.Series(False, index=income_df.index)
+                for keyword in include_keywords:
+                    mask |= income_df['description'].str.contains(keyword, na=False)
+                income_df = income_df[mask]
+
+            # 予測用収入の月次平均を計算
+            if len(income_df) > 0:
+                income_df['year_month'] = income_df['date'].dt.to_period('M')
+                monthly_forecast = income_df.groupby('year_month')['amount'].sum()
+                monthly_avg_income_forecast = monthly_forecast.mean()
+                print(f"  Forecast income (filtered): JPY{monthly_avg_income_forecast:,.0f}/month")
+                print(f"  Excluded income: JPY{monthly_avg_income - monthly_avg_income_forecast:,.0f}/month")
+            else:
+                print("  Warning: No income matched forecast criteria, using all income")
+
+    # 貯蓄率（実際の全収入ベース）
     savings_rate = monthly_avg_savings / monthly_avg_income if monthly_avg_income > 0 else 0
 
     # 年間換算
     annual_income = monthly_avg_income * 12
     annual_expense = monthly_avg_expense * 12
+
+    # 手動設定の年間支出があれば優先（データが不足している場合）
+    if config is not None:
+        manual_expense = config.get('fire', {}).get('manual_annual_expense')
+        if manual_expense is not None and manual_expense > 0:
+            annual_expense = manual_expense
+            monthly_avg_expense = annual_expense / 12
+            print(f"  Using manual annual expense: JPY{annual_expense:,.0f} (JPY{monthly_avg_expense:,.0f}/month)")
+            # 貯蓄額を再計算
+            monthly_avg_savings = monthly_avg_income_forecast - monthly_avg_expense
+            savings_rate = monthly_avg_savings / monthly_avg_income if monthly_avg_income > 0 else 0
 
     # トレンド分析（線形回帰）
     if len(cashflow_df) >= 3:
@@ -105,6 +158,7 @@ def analyze_income_expense_trends(cashflow_df: pd.DataFrame) -> Dict[str, Any]:
 
     result = {
         'monthly_avg_income': monthly_avg_income,
+        'monthly_avg_income_forecast': monthly_avg_income_forecast,  # 予測用収入
         'monthly_avg_expense': monthly_avg_expense,
         'monthly_avg_savings': monthly_avg_savings,
         'savings_rate': savings_rate,
@@ -114,7 +168,8 @@ def analyze_income_expense_trends(cashflow_df: pd.DataFrame) -> Dict[str, Any]:
         'expense_trend': expense_trend,
     }
 
-    print(f"  Monthly avg income: JPY{result['monthly_avg_income']:,.0f}")
+    print(f"  Monthly avg income (actual): JPY{result['monthly_avg_income']:,.0f}")
+    print(f"  Monthly avg income (forecast): JPY{result['monthly_avg_income_forecast']:,.0f}")
     print(f"  Monthly avg expense: JPY{result['monthly_avg_expense']:,.0f}")
     print(f"  Savings rate: {result['savings_rate']:.1%}")
     print(f"  Income trend: {result['income_trend']}")
@@ -194,3 +249,112 @@ def calculate_savings_rate_history(cashflow_df: pd.DataFrame) -> pd.DataFrame:
     df['savings_rate_ma3'] = df['savings_rate'].rolling(window=3, min_periods=1).mean()
 
     return df
+
+
+def generate_action_items(
+    fire_target: Dict[str, Any],
+    fire_achievement: Dict[str, Any],
+    trends: Dict[str, Any],
+    expense_breakdown: Dict[str, Any],
+    config: Dict[str, Any]
+) -> List[Dict[str, Any]]:
+    """
+    FIREのためのアクションアイテムを生成
+
+    Args:
+        fire_target: FIRE目標額情報
+        fire_achievement: FIRE達成予想情報
+        trends: 収支トレンド
+        expense_breakdown: カテゴリー別支出
+        config: 設定辞書
+
+    Returns:
+        アクションアイテムのリスト
+    """
+    print("Generating action items...")
+
+    action_items = []
+    monthly_avg_expense = trends['monthly_avg_expense']
+    monthly_avg_savings = trends['monthly_avg_savings']
+    annual_return_rate = config['simulation']['standard']['annual_return_rate']
+
+    # 達成済みの場合
+    if fire_achievement and fire_achievement.get('achieved'):
+        action_items.append({
+            'icon': '✓',
+            'text': 'FIRE目標を達成済みです！資産の維持に注力しましょう',
+            'type': 'success'
+        })
+        return action_items
+
+    # 達成不可能な場合（貯蓄率がマイナス）
+    if monthly_avg_savings <= 0:
+        action_items.append({
+            'icon': '⚠',
+            'text': f'支出が収入を超過しています。月{abs(monthly_avg_savings)/10000:.1f}万円の赤字を改善する必要があります',
+            'type': 'critical'
+        })
+        return action_items
+
+    # 1. 支出削減のインパクト分析
+    if len(expense_breakdown['top_categories']) > 0:
+        top_category = expense_breakdown['top_categories'][0]
+        reduction_amount = 30000  # 3万円削減を仮定
+
+        # 月3万円削減した場合の達成時期の短縮を計算
+        from .fire_calculator import calculate_fire_achievement_date
+
+        current_achievement = fire_achievement
+        new_savings = monthly_avg_savings + reduction_amount
+
+        new_achievement = calculate_fire_achievement_date(
+            current_assets=fire_target['current_net_assets'],
+            target_assets=fire_target['recommended_target'],
+            monthly_savings=new_savings,
+            annual_return_rate=annual_return_rate
+        )
+
+        if current_achievement and new_achievement:
+            months_saved = current_achievement['months_to_fire'] - new_achievement['months_to_fire']
+            years_saved = months_saved // 12
+            remaining_months_saved = months_saved % 12
+
+            if years_saved > 0 or remaining_months_saved > 0:
+                time_text = f"{years_saved}年{remaining_months_saved}ヶ月" if years_saved > 0 else f"{remaining_months_saved}ヶ月"
+                action_items.append({
+                    'icon': '💡',
+                    'text': f'{top_category["category"]}を月3万円削減すると、達成が{time_text}早まります',
+                    'type': 'suggestion'
+                })
+
+    # 2. 貯蓄率の改善余地
+    savings_rate = trends['savings_rate']
+    if savings_rate < 0.3:  # 30%未満
+        target_rate = 0.3
+        additional_savings_needed = trends['monthly_avg_income'] * target_rate - monthly_avg_savings
+        action_items.append({
+            'icon': '📊',
+            'text': f'貯蓄率を30%に引き上げるには、月{additional_savings_needed/10000:.1f}万円の追加貯蓄が必要です',
+            'type': 'info'
+        })
+
+    # 3. 投資リターンの重要性
+    if fire_achievement:
+        months_to_fire = fire_achievement['months_to_fire']
+        years_to_fire = months_to_fire // 12
+
+        if years_to_fire >= 10:
+            action_items.append({
+                'icon': '📈',
+                'text': f'年率{annual_return_rate:.1%}のリターンを維持することで、{years_to_fire}年後にFIRE達成予定です',
+                'type': 'info'
+            })
+        else:
+            action_items.append({
+                'icon': '🎯',
+                'text': f'あと{years_to_fire}年でFIRE達成です！現在の貯蓄ペースを維持しましょう',
+                'type': 'success'
+            })
+
+    # 最大3つまでに制限
+    return action_items[:3]

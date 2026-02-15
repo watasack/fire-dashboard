@@ -25,13 +25,21 @@ def clean_asset_data(df: pd.DataFrame) -> pd.DataFrame:
     # 欠損値処理（前方埋め）
     df = df.ffill()
 
-    # 純資産の計算（合計 - 債務）
-    df['net_assets'] = df['total_assets'] - df['debt']
+    # 純資産の計算
+    # total_assets = 現金・預金 + 投資信託（負債データなし）
+    df['net_assets'] = df['total_assets']
+
+    # 負債カラムを追加（データにないため0とする）
+    df['debt'] = 0
 
     # 移動平均の計算
     df['net_assets_ma3'] = df['net_assets'].rolling(window=3, min_periods=1).mean()
     df['net_assets_ma12'] = df['net_assets'].rolling(window=12, min_periods=1).mean()
     df['total_assets_ma3'] = df['total_assets'].rolling(window=3, min_periods=1).mean()
+
+    # 資産内訳の移動平均
+    df['cash_deposits_ma3'] = df['cash_deposits'].rolling(window=3, min_periods=1).mean()
+    df['investment_trusts_ma3'] = df['investment_trusts'].rolling(window=3, min_periods=1).mean()
 
     # 月次集約（月末値を使用）
     df['year_month'] = df['date'].dt.to_period('M')
@@ -75,13 +83,15 @@ def clean_transaction_data(df: pd.DataFrame) -> pd.DataFrame:
 
     df = df.copy()
 
-    # 振替取引を除外
-    df = df[df['is_transfer'] == 0].copy()
-    print(f"  Excluded transfer transactions. Remaining: {len(df)}")
+    # 計算対象外（振替）を除外
+    # is_expense = 1 のみが計算対象
+    df = df[df['is_expense'] == 1].copy()
+    print(f"  Using only target transactions (is_expense=1). Remaining: {len(df)}")
 
-    # 収入・支出の分離
-    df['income'] = np.where(df['is_expense'] == 0, df['amount'].abs(), 0)
-    df['expense'] = np.where(df['is_expense'] == 1, df['amount'].abs(), 0)
+    # 収入・支出の分離（金額の符号で判断）
+    # 正の値 = 収入、負の値 = 支出
+    df['income'] = np.where(df['amount'] > 0, df['amount'], 0)
+    df['expense'] = np.where(df['amount'] < 0, -df['amount'], 0)  # 負の値を正に変換
 
     # カテゴリーの正規化（NaNを'その他'に）
     df['category_major'] = df['category_major'].fillna('その他')

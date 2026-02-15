@@ -73,11 +73,12 @@ def load_asset_data(config: Dict[str, Any]) -> pd.DataFrame:
             print(f"  Shape: {df.shape}")
 
             # カラム名を標準化（最初の行がヘッダー）
+            # MoneyForward CSV形式: 日付, 総計(円), 現金・預金・債券等(円), 投資信託(円)
             if len(df.columns) >= 4:
-                df.columns = ['date', 'total_assets', 'cash_investments', 'debt']
+                df.columns = ['date', 'total_assets', 'cash_deposits', 'investment_trusts']
 
                 # データ型変換
-                for col in ['total_assets', 'cash_investments', 'debt']:
+                for col in ['total_assets', 'cash_deposits', 'investment_trusts']:
                     df[col] = pd.to_numeric(df[col], errors='coerce')
 
                 # 日付でソート

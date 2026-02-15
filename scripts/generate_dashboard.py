@@ -28,15 +28,13 @@ from src.data_processor import (
 from src.analyzer import (
     analyze_current_status,
     analyze_income_expense_trends,
-    analyze_expense_by_category
+    analyze_expense_by_category,
+    generate_action_items
 )
 from src.simulator import simulate_future_assets
-from src.fire_calculator import calculate_fire_target
+from src.fire_calculator import calculate_fire_target, calculate_fire_achievement_date
 from src.visualizer import (
-    create_asset_timeline_chart,
-    create_fire_progress_chart,
-    create_expense_breakdown_chart,
-    create_future_simulation_chart
+    create_fire_timeline_chart
 )
 from src.html_generator import generate_dashboard_html
 
@@ -68,61 +66,122 @@ def main():
         print("[OK] Data processed\n")
 
         # 4. 現状分析
-        print("[4/8] Analyzing current status...")
+        print("[4/9] Analyzing current status...")
         current_status = analyze_current_status(asset_df)
-        trends = analyze_income_expense_trends(cashflow_df)
+        trends = analyze_income_expense_trends(cashflow_df, transaction_df, config)
         expense_breakdown = analyze_expense_by_category(transaction_df)
         print("[OK] Analysis complete\n")
 
-        # 5. FIRE目標額計算
-        print("[5/8] Calculating FIRE target...")
-        fire_target = calculate_fire_target(
-            annual_expense=trends['annual_expense'],
-            current_net_assets=current_status['net_assets'],
-            config=config
-        )
-        print("[OK] FIRE target calculated\n")
+        # 5. 将来シミュレーション（FIRE達成判定を含む）
+        print("[5/9] Running future simulations with FIRE detection...")
+        
+        # 初期労働収入の設定確認
+        monthly_income = trends['monthly_avg_income_forecast']
+        initial_labor_income = config['simulation'].get('initial_labor_income')
+        if initial_labor_income is not None:
+            print(f"  Using fixed initial labor income: JPY{initial_labor_income:,.0f}/month")
+            monthly_income = initial_labor_income
 
-        # 6. 将来シミュレーション
-        print("[6/8] Running future simulations...")
         simulations = {}
-        for scenario in ['optimistic', 'standard', 'pessimistic']:
+        for scenario in ['standard']:  # 標準シナリオのみ
             print(f"  Simulating {scenario} scenario...")
             simulations[scenario] = simulate_future_assets(
                 current_assets=current_status['net_assets'],
-                monthly_income=trends['monthly_avg_income'],
+                monthly_income=monthly_income,  # 設定値または予測値を使用
                 monthly_expense=trends['monthly_avg_expense'],
                 config=config,
                 scenario=scenario
             )
         print("[OK] Simulations complete\n")
 
-        # 7. グラフ生成
-        print("[7/8] Creating visualizations...")
+        # 6. FIRE達成情報を標準シナリオから抽出
+        print("[6/9] Extracting FIRE achievement info...")
+        fire_achievement = None
+        fire_target = None
+
+        if 'standard' in simulations:
+            df = simulations['standard']
+            # FIRE達成月を探す（資産が増加から減少に転じる点）
+            # もしくは、シミュレーション中に記録された達成フラグを使用
+
+            # 簡易実装: 収入がゼロになった最初の月を探す
+            fire_months = df[df['income'] <= df['expense'] / 10]  # 年金のみの収入
+
+            if len(fire_months) > 0:
+                fire_month = fire_months.iloc[0]
+                fire_date = fire_month['date']
+                month_num = fire_month['month']
+                years = int(month_num / 12)
+                months = int(month_num % 12)
+
+                fire_achievement = {
+                    'achieved': False,
+                    'achievement_date': fire_date,
+                    'months_to_fire': month_num,
+                    'years_to_fire': years,
+                    'remaining_months': months,
+                    'fire_assets': fire_month['assets']
+                }
+
+                # 後方互換性のためfire_target辞書を作成
+                fire_target = {
+                    'recommended_target': fire_month['assets'],
+                    'current_net_assets': current_status['net_assets'],
+                    'progress_rate': current_status['net_assets'] / fire_month['assets'],
+                    'shortfall': max(0, fire_month['assets'] - current_status['net_assets']),
+                    'annual_expense': trends['annual_expense']
+                }
+
+                print(f"  FIRE Achievement: {fire_date.strftime('%Y-%m')}")
+                print(f"  Time to FIRE: {years} years {months} months")
+                print(f"  Assets at FIRE: JPY{fire_month['assets']:,.0f}")
+            else:
+                print("  FIRE not achievable within simulation period")
+                # デフォルト値を設定
+                fire_target = {
+                    'recommended_target': 0,
+                    'current_net_assets': current_status['net_assets'],
+                    'progress_rate': 0,
+                    'shortfall': 0,
+                    'annual_expense': trends['annual_expense']
+                }
+
+        print("[OK] FIRE info extracted\n")
+
+        # 7. アクションアイテム生成
+        print("[7/9] Generating action items...")
+        action_items = generate_action_items(
+            fire_target=fire_target,
+            fire_achievement=fire_achievement,
+            trends=trends,
+            expense_breakdown=expense_breakdown,
+            config=config
+        )
+        print(f"  Generated {len(action_items)} action items")
+        print("[OK] Action items generated\n")
+
+        # 8. グラフ生成
+        print("[8/9] Creating visualizations...")
         charts = {
-            'asset_timeline': create_asset_timeline_chart(asset_df, config),
-            'fire_progress': create_fire_progress_chart(
-                current_status, fire_target, config
-            ),
-            'expense_breakdown': create_expense_breakdown_chart(
-                expense_breakdown, config
-            ),
-            'future_simulation': create_future_simulation_chart(
-                simulations, fire_target, config
+            'fire_timeline': create_fire_timeline_chart(
+                current_status, fire_target, fire_achievement, simulations, config
             )
         }
         print("[OK] Visualizations created\n")
 
-        # 8. HTML生成
-        print("[8/8] Generating HTML dashboard...")
+        # 9. HTML生成
+        print("[9/9] Generating HTML dashboard...")
         generate_dashboard_html(
             charts=charts,
             summary_data={
                 'current_status': current_status,
                 'fire_target': fire_target,
+                'fire_achievement': fire_achievement,
                 'trends': trends,
+                'expense_breakdown': expense_breakdown,
                 'update_time': datetime.now()
             },
+            action_items=action_items,
             config=config
         )
         print("[OK] HTML dashboard generated\n")
@@ -137,6 +196,9 @@ def main():
         print(f"  FIRE Target: JPY{fire_target['recommended_target']:,.0f}")
         print(f"  Progress: {fire_target['progress_rate']:.1%}")
         print(f"  Shortfall: JPY{fire_target['shortfall']:,.0f}")
+        if fire_achievement and not fire_achievement.get('achieved'):
+            print(f"  Achievement Date: {fire_achievement['achievement_date'].strftime('%Y-%m')}")
+            print(f"  Time to FIRE: {fire_achievement['years_to_fire']} years {fire_achievement['remaining_months']} months")
         print(f"  Annual Expense: JPY{trends['annual_expense']:,.0f}")
         print(f"  Savings Rate: {trends['savings_rate']:.1%}")
         print("\nNext steps:")

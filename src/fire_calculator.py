@@ -3,7 +3,9 @@ FIRE計算モジュール
 FIRE目標額の逆算ロジック（二分探索）
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
 from .simulator import simulate_with_withdrawal
 
 
@@ -18,6 +20,8 @@ def calculate_fire_target(
     二分探索で「シミュレーション期間終了後も資産がゼロにならない最低額」を逆算し、
     3つのシナリオで検証して最も悲観的なシナリオでも破綻しない額を推奨する
 
+    即時退職を前提に計算 - これが真の「Financial Independence」の意味
+
     Args:
         annual_expense: 年間支出
         current_net_assets: 現在の純資産
@@ -31,9 +35,14 @@ def calculate_fire_target(
     # 設定取得
     life_expectancy_years = config['simulation'].get('life_expectancy', 90)
     start_age = config['simulation'].get('start_age', 35)
-    retirement_years = life_expectancy_years - start_age
     safety_buffer = config['fire'].get('safety_buffer', 1.2)
     tolerance = config['fire'].get('tolerance', 100000)
+
+    # 即時退職を前提とした退職期間（寿命まで）
+    retirement_years = life_expectancy_years - start_age
+
+    print(f"  Immediate retirement assumption")
+    print(f"  Retirement period: {retirement_years} years (age {start_age} to {life_expectancy_years})")
 
     # 各シナリオで最低必要額を計算
     scenarios = ['standard', 'optimistic', 'pessimistic']
@@ -56,13 +65,14 @@ def calculate_fire_target(
         while max_assets - min_assets > tolerance and iterations < max_iterations:
             mid_assets = (min_assets + max_assets) / 2
 
-            # シミュレーション実行
+            # シミュレーション実行（教育費を含む）
             final_assets = simulate_with_withdrawal(
                 initial_assets=mid_assets,
                 annual_expense=annual_expense,
                 years=retirement_years,
                 return_rate=return_rate,
-                inflation_rate=inflation_rate
+                inflation_rate=inflation_rate,
+                config=config
             )
 
             if final_assets > 0:
@@ -175,3 +185,62 @@ def calculate_years_to_depletion(
             return years_elapsed
 
     return -1  # 枯渇しない（200年以上持つ）
+
+
+def calculate_fire_achievement_date(
+    current_assets: float,
+    target_assets: float,
+    monthly_savings: float,
+    annual_return_rate: float = 0.05
+) -> Optional[Dict[str, Any]]:
+    """
+    FIRE達成予想日を計算
+
+    Args:
+        current_assets: 現在の資産
+        target_assets: FIRE目標額
+        monthly_savings: 月次貯蓄額
+        annual_return_rate: 年率リターン
+
+    Returns:
+        達成予想日と関連情報の辞書（達成不可能な場合はNone）
+    """
+    if current_assets >= target_assets:
+        return {
+            'achieved': True,
+            'achievement_date': datetime.now(),
+            'months_to_fire': 0,
+            'years_to_fire': 0
+        }
+
+    if monthly_savings <= 0:
+        return None  # 貯蓄がマイナスの場合は達成不可能
+
+    # 月次リターン率
+    monthly_return = (1 + annual_return_rate) ** (1/12) - 1
+
+    # シミュレーション
+    assets = current_assets
+    max_months = 600  # 50年
+
+    for month in range(1, max_months + 1):
+        # 投資リターンを加算
+        assets = assets * (1 + monthly_return)
+        # 貯蓄を追加
+        assets += monthly_savings
+
+        if assets >= target_assets:
+            achievement_date = datetime.now() + relativedelta(months=month)
+            years = month // 12
+            remaining_months = month % 12
+
+            return {
+                'achieved': False,
+                'achievement_date': achievement_date,
+                'months_to_fire': month,
+                'years_to_fire': years,
+                'remaining_months': remaining_months,
+                'final_assets': assets
+            }
+
+    return None  # 50年以内に達成できない
