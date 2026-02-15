@@ -220,7 +220,7 @@ def create_fire_timeline_chart(
             df_pre = df[df['date'] <= achievement_date].copy()
             if len(df_pre) > 0:
                 # クリックデータ用にカスタムデータを準備
-                customdata_pre = df_pre[['labor_income', 'pension_income', 'base_expense', 'education_expense', 'mortgage_payment', 'maintenance_cost', 'workation_cost', 'investment_return']].values
+                customdata_pre = df_pre[['labor_income', 'pension_income', 'base_expense', 'education_expense', 'mortgage_payment', 'maintenance_cost', 'workation_cost', 'pension_premium', 'health_insurance_premium', 'investment_return']].values
                 fig.add_trace(go.Scatter(
                     x=df_pre['date'],
                     y=df_pre['assets'] / 10000,
@@ -238,7 +238,7 @@ def create_fire_timeline_chart(
             df_post = df[df['date'] >= achievement_date].copy()  # 90歳まで全期間
             if len(df_post) > 0:
                 # クリックデータ用にカスタムデータを準備
-                customdata_post = df_post[['labor_income', 'pension_income', 'base_expense', 'education_expense', 'mortgage_payment', 'maintenance_cost', 'workation_cost', 'investment_return']].values
+                customdata_post = df_post[['labor_income', 'pension_income', 'base_expense', 'education_expense', 'mortgage_payment', 'maintenance_cost', 'workation_cost', 'pension_premium', 'health_insurance_premium', 'investment_return']].values
                 fig.add_trace(go.Scatter(
                     x=df_post['date'],
                     y=df_post['assets'] / 10000,
@@ -254,7 +254,7 @@ def create_fire_timeline_chart(
         else:
             # すでに達成済みの場合は全てグリーン
             df_all = df.head(480).copy()
-            customdata_all = df_all[['labor_income', 'pension_income', 'base_expense', 'education_expense', 'mortgage_payment', 'maintenance_cost', 'workation_cost', 'investment_return']].values
+            customdata_all = df_all[['labor_income', 'pension_income', 'base_expense', 'education_expense', 'mortgage_payment', 'maintenance_cost', 'workation_cost', 'pension_premium', 'health_insurance_premium', 'investment_return']].values
             fig.add_trace(go.Scatter(
                 x=df_all['date'],
                 y=df_all['assets'] / 10000,

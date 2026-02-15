@@ -176,15 +176,41 @@ pension:
   enabled: true                # 年金収入シミュレーションを有効化
   start_age: 65                # 年金受給開始年齢
 
-  # 受給者情報
+  # 受給者情報（動的計算対応）
+  # pension_type: 'employee' または 'national'
+  #   - employee: 厚生年金 + 国民年金（会社員）
+  #   - national: 国民年金のみ（自営業・専業主婦など）
   people:
     - name: '修平'
-      birthdate: '1990/05/13'  # 生年月日（YYYY/MM/DD形式）
-      annual_amount: 1440000   # 年間年金額（円）国民年金78万+厚生年金66万
+      birthdate: '1990/05/13'     # 生年月日（YYYY/MM/DD形式）
+      pension_type: 'employee'    # 厚生年金 + 国民年金
+      work_start_age: 23          # 就労開始年齢（大卒想定）
+      avg_monthly_salary: 700000  # 平均月収（円）- 厚生年金計算用
+      # 動的計算により、FIRE達成タイミングに応じて年金額が自動計算されます
+      # 35歳FIRE想定: 約136.8万円/年（厚生年金55.2万 + 国民年金81.6万）
+      # 65歳就労想定: 約275.0万円/年（厚生年金193.4万 + 国民年金81.6万）
     - name: '桜'
-      birthdate: '1991/04/20'  # 生年月日（YYYY/MM/DD形式）
-      annual_amount: 780000    # 年間年金額（円）国民年金のみ
-  # 合計: 222万円/年
+      birthdate: '1991/04/20'     # 生年月日（YYYY/MM/DD形式）
+      pension_type: 'national'    # 国民年金のみ
+      # 動的計算により、国民年金満額: 約81.6万円/年
+  # 注: annual_amountを指定すると、動的計算をスキップして固定値を使用（後方互換性）
+
+# 社会保険料設定（FIRE後の支出）
+social_insurance:
+  enabled: true                # 社会保険料シミュレーションを有効化
+
+  # 国民年金保険料（月額・円）
+  # FIRE後、20歳から60歳まで支払い義務あり
+  # 2024年度: 16,980円/月
+  national_pension_monthly_premium: 16980
+
+  # 国民健康保険料（年額・円）
+  # FIRE後の想定保険料（世帯全体）
+  # 前年所得に応じて変動するが、簡易的に固定額として設定
+  # 目安: 年収0円でも最低限の均等割あり（約5-10万円/人）
+  #       + 資産所得（配当・売却益）がある場合は所得割が加算
+  # 保守的に年50万円程度を想定（2人分）
+  national_health_insurance_annual_premium: 500000
 
 # ワーケーション費用設定
 workation:

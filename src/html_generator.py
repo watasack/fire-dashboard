@@ -222,8 +222,8 @@ def generate_dashboard_html(
           document.getElementById('detail-assets').textContent =
             '¥' + assets.toFixed(1) + '万';
 
-          if (customdata && customdata.length >= 8) {{
-            // customdata: [labor_income, pension_income, base_expense, education_expense, mortgage_payment, maintenance_cost, workation_cost, investment_return]
+          if (customdata && customdata.length >= 10) {{
+            // customdata: [labor_income, pension_income, base_expense, education_expense, mortgage_payment, maintenance_cost, workation_cost, pension_premium, health_insurance_premium, investment_return]
             const laborIncome = customdata[0];
             const pensionIncome = customdata[1];
             const baseExpense = customdata[2];
@@ -231,10 +231,12 @@ def generate_dashboard_html(
             const mortgagePayment = customdata[4];
             const maintenanceCost = customdata[5];
             const workationCost = customdata[6];
-            const investmentReturn = customdata[7];
+            const pensionPremium = customdata[7];
+            const healthInsurancePremium = customdata[8];
+            const investmentReturn = customdata[9];
 
             const totalIncome = laborIncome + pensionIncome;
-            const totalExpense = baseExpense + educationExpense + mortgagePayment + maintenanceCost + workationCost;
+            const totalExpense = baseExpense + educationExpense + mortgagePayment + maintenanceCost + workationCost + pensionPremium + healthInsurancePremium;
 
             // 詳細テーブルを生成
             const tableBody = document.getElementById('detail-table-body');
@@ -343,6 +345,12 @@ def generate_dashboard_html(
             if (workationCost > 0) {{
               addRow('ワーケーション費用', '-¥' + (workationCost / 10000).toFixed(1) + '万', 'expense');
             }}
+            if (pensionPremium > 0) {{
+              addRow('国民年金保険料', '-¥' + (pensionPremium / 10000).toFixed(1) + '万', 'expense');
+            }}
+            if (healthInsurancePremium > 0) {{
+              addRow('国民健康保険料', '-¥' + (healthInsurancePremium / 10000).toFixed(1) + '万', 'expense');
+            }}
             addRow('支出合計', '-¥' + (totalExpense / 10000).toFixed(1) + '万', 'subtotal bold');
 
             // その他セクション
@@ -428,6 +436,20 @@ def generate_dashboard_html(
               items.push({{
                 label: 'ワーケーション',
                 value: -workationCost / 10000,
+                measure: 'relative'
+              }});
+            }}
+            if (pensionPremium !== 0) {{
+              items.push({{
+                label: '年金保険料',
+                value: -pensionPremium / 10000,
+                measure: 'relative'
+              }});
+            }}
+            if (healthInsurancePremium !== 0) {{
+              items.push({{
+                label: '健康保険料',
+                value: -healthInsurancePremium / 10000,
                 measure: 'relative'
               }});
             }}
