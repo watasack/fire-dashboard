@@ -50,25 +50,6 @@ def clean_asset_data(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def get_monthly_asset_data(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    日次データから月次データを取得（月末値）
-
-    Args:
-        df: 資産推移データフレーム
-
-    Returns:
-        月次集約データフレーム
-    """
-    # 月末値を取得
-    monthly_df = df.groupby('year_month').last().reset_index()
-    monthly_df['month'] = monthly_df['year_month'].dt.to_timestamp()
-
-    print(f"  Monthly data: {len(monthly_df)} months")
-
-    return monthly_df
-
-
 def clean_transaction_data(df: pd.DataFrame) -> pd.DataFrame:
     """
     収支データのクリーニングと処理
@@ -141,61 +122,3 @@ def calculate_monthly_cashflow(df: pd.DataFrame) -> pd.DataFrame:
     return monthly_cf
 
 
-def calculate_category_breakdown(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    カテゴリー別支出の集計
-
-    Args:
-        df: 収支詳細データフレーム
-
-    Returns:
-        カテゴリー別集計データフレーム
-    """
-    print("Calculating category breakdown...")
-
-    # 支出のみ抽出
-    expense_df = df[df['is_expense'] == 1].copy()
-
-    # 大区分別集計
-    category_summary = expense_df.groupby('category_major').agg({
-        'expense': 'sum'
-    }).reset_index()
-
-    category_summary = category_summary.sort_values('expense', ascending=False)
-    category_summary['percentage'] = category_summary['expense'] / category_summary['expense'].sum() * 100
-
-    print(f"  Top 5 expense categories:")
-    for _, row in category_summary.head().iterrows():
-        print(f"    {row['category_major']}: JPY{row['expense']:,.0f} ({row['percentage']:.1f}%)")
-
-    return category_summary
-
-
-def calculate_category_monthly_breakdown(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    カテゴリー別の月次支出推移
-
-    Args:
-        df: 収支詳細データフレーム
-
-    Returns:
-        カテゴリー別月次集計データフレーム
-    """
-    # 支出のみ抽出
-    expense_df = df[df['is_expense'] == 1].copy()
-    expense_df['year_month'] = expense_df['date'].dt.to_period('M')
-
-    # 月次×カテゴリーでピボット
-    monthly_category = expense_df.pivot_table(
-        index='year_month',
-        columns='category_major',
-        values='expense',
-        aggfunc='sum',
-        fill_value=0
-    ).reset_index()
-
-    monthly_category['month'] = monthly_category['year_month'].dt.to_timestamp()
-
-    print(f"  Category monthly breakdown: {len(monthly_category)} months")
-
-    return monthly_category

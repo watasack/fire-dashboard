@@ -33,10 +33,11 @@ simulation:
   start_age: 35                # 現在の年齢（オプション）
   life_expectancy: 90          # 想定寿命
   initial_labor_income: 700000 # 初期労働収入（月額・円）
+  post_fire_income: 20000      # FIRE後の副収入（月額・円）開発業務など
 
   # 標準シナリオ（バランス型）
   standard:
-    annual_return_rate: 0.04   # 年率リターン 4%
+    annual_return_rate: 0.05   # 年率リターン 4%
     inflation_rate: 0.02       # インフレ率 2%
     income_growth_rate: 0.02   # 収入成長率 2%
     expense_growth_rate: 0.02  # 支出成長率 2%（インフレ連動）
@@ -74,6 +75,11 @@ fire:
     university: 3400000     # 子供が18-21歳（大学生）: 340万円/年
     empty_nest: 2500000     # 子供独立後（22歳以降）: 250万円/年
 
+  # 追加子供1人あたりの生活費増加（年額・円）
+  # 第二子以降、出生済みの子供1人あたりこの金額が追加されます
+  # 食費・日用品・光熱費などの増加分を想定
+  additional_child_expense: 700000  # 70万円/年（約5.8万円/月）
+
   # 固定支出（一律、データが不足している場合のフォールバック）
   manual_annual_expense: null  # nullの場合はライフステージ別を使用
 
@@ -85,6 +91,13 @@ education:
   children:
     - name: '颯'               # 名前
       birthdate: '2022/02/26'  # 生年月日（YYYY/MM/DD形式）
+      kindergarten: 'private'  # private or public
+      elementary: 'public'     # private or public
+      junior_high: 'public'    # private or public
+      high: 'public'           # private or public
+      university: 'national'   # national, private_arts, private_science
+    - name: '楓'               # 第二子
+      birthdate: '2027/04/15'  # 生年月日（YYYY/MM/DD形式）
       kindergarten: 'private'  # private or public
       elementary: 'public'     # private or public
       junior_high: 'public'    # private or public
@@ -173,6 +186,14 @@ pension:
       annual_amount: 780000    # 年間年金額（円）国民年金のみ
   # 合計: 222万円/年
 
+# ワーケーション費用設定
+workation:
+  enabled: true                # ワーケーション費用を有効化
+  # 開始条件: 楓（第二子）が高校卒業後（18歳以降）
+  start_child_index: 1         # 第二子（楓）を基準
+  start_child_age: 18          # 高校卒業（18歳）
+  annual_cost: 700000          # 年間70万円（夏1ヶ月+冬1ヶ月）
+
 # 可視化設定
 visualization:
   theme: 'plotly_white'
@@ -189,6 +210,6 @@ visualization:
 
 # 出力設定
 output:
-  html_file: 'docs/index.html'
+  html_file: 'dashboard/index.html'
   include_raw_data: false      # セキュリティ考慮（falseで集計値のみ）
   update_timestamp: true
