@@ -18,8 +18,6 @@ def clean_asset_data(df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         クリーニング済みデータフレーム
     """
-    print("Cleaning asset data...")
-
     df = df.copy()
 
     # 欠損値処理（前方埋め）
@@ -44,9 +42,6 @@ def clean_asset_data(df: pd.DataFrame) -> pd.DataFrame:
     # 月次集約（月末値を使用）
     df['year_month'] = df['date'].dt.to_period('M')
 
-    print(f"  Processed {len(df)} daily records")
-    print(f"  Date range: {df['date'].min()} to {df['date'].max()}")
-
     return df
 
 
@@ -60,14 +55,11 @@ def clean_transaction_data(df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         クリーニング済みデータフレーム
     """
-    print("Cleaning transaction data...")
-
     df = df.copy()
 
     # 計算対象外（振替）を除外
     # is_expense = 1 のみが計算対象
     df = df[df['is_expense'] == 1].copy()
-    print(f"  Using only target transactions (is_expense=1). Remaining: {len(df)}")
 
     # 収入・支出の分離（金額の符号で判断）
     # 正の値 = 収入、負の値 = 支出
@@ -77,10 +69,6 @@ def clean_transaction_data(df: pd.DataFrame) -> pd.DataFrame:
     # カテゴリーの正規化（NaNを'その他'に）
     df['category_major'] = df['category_major'].fillna('その他')
     df['category_minor'] = df['category_minor'].fillna('その他')
-
-    print(f"  Date range: {df['date'].min()} to {df['date'].max()}")
-    print(f"  Total income: JPY{df['income'].sum():,.0f}")
-    print(f"  Total expense: JPY{df['expense'].sum():,.0f}")
 
     return df
 
@@ -95,8 +83,6 @@ def calculate_monthly_cashflow(df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         月次収支データフレーム
     """
-    print("Calculating monthly cashflow...")
-
     # 月次で集計
     df['year_month'] = df['date'].dt.to_period('M')
 
@@ -113,11 +99,6 @@ def calculate_monthly_cashflow(df: pd.DataFrame) -> pd.DataFrame:
     monthly_cf['expense_ma3'] = monthly_cf['expense'].rolling(window=3, min_periods=1).mean()
     monthly_cf['income_ma6'] = monthly_cf['income'].rolling(window=6, min_periods=1).mean()
     monthly_cf['expense_ma6'] = monthly_cf['expense'].rolling(window=6, min_periods=1).mean()
-
-    print(f"  Monthly cashflow calculated for {len(monthly_cf)} months")
-    print(f"  Average monthly income: JPY{monthly_cf['income'].mean():,.0f}")
-    print(f"  Average monthly expense: JPY{monthly_cf['expense'].mean():,.0f}")
-    print(f"  Average savings: JPY{monthly_cf['net_cashflow'].mean():,.0f}")
 
     return monthly_cf
 
