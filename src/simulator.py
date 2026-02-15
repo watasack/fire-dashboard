@@ -79,13 +79,65 @@ def calculate_education_expense(year_offset: float, config: Dict[str, Any]) -> f
     return total_education_expense
 
 
-def calculate_pension_income(year_offset: float, config: Dict[str, Any]) -> float:
+def _calculate_national_pension_amount(contribution_years: float) -> float:
     """
-    指定年における年金収入を計算（複数人対応）
+    国民年金の年間受給額を計算
+
+    Args:
+        contribution_years: 加入年数（最大40年）
+
+    Returns:
+        年間年金額（円）
+    """
+    # 2024年度の満額（40年加入）
+    full_amount = 816000
+
+    # 加入年数に応じた按分（40年満額）
+    # 20歳から60歳まで（40年）が最大
+    contribution_years = min(contribution_years, 40)
+    annual_pension = full_amount * (contribution_years / 40)
+
+    return annual_pension
+
+
+def _calculate_employees_pension_amount(avg_monthly_salary: float, contribution_months: int) -> float:
+    """
+    厚生年金の年間受給額を計算（簡易版）
+
+    Args:
+        avg_monthly_salary: 平均月収（円）- 厚生年金加入期間中の平均
+        contribution_months: 加入月数
+
+    Returns:
+        年間年金額（円）
+    """
+    # 2003年4月以降の給付乗率（報酬比例部分）
+    # 実際は平成15年3月以前と以降で乗率が異なるが、簡略化のため統一
+    multiplier = 0.005481
+
+    # 厚生年金（報酬比例部分）= 平均月収 × 加入月数 × 給付乗率
+    annual_pension = avg_monthly_salary * contribution_months * multiplier
+
+    return annual_pension
+
+
+def calculate_pension_income(
+    year_offset: float,
+    config: Dict[str, Any],
+    fire_achieved: bool = False,
+    fire_year_offset: float = None
+) -> float:
+    """
+    指定年における年金収入を計算（FIRE対応・動的計算）
+
+    FIRE達成時点で厚生年金の加入を停止し、その時点までの加入期間で年金額を計算する。
+    国民年金は20歳から60歳まで（最大40年）加入すると仮定。
 
     Args:
         year_offset: シミュレーション開始からの経過年数
         config: 設定辞書
+        fire_achieved: FIRE達成フラグ
+        fire_year_offset: FIRE達成時点の経過年数（年）
 
     Returns:
         年間年金収入（円）
@@ -115,12 +167,147 @@ def calculate_pension_income(year_offset: float, config: Dict[str, Any]) -> floa
         # シミュレーション中の年齢 = 現在年齢 + 経過年数
         person_age = current_age + year_offset
 
-        # 年金受給開始年齢に達していれば年金収入を加算
-        if person_age >= start_age:
-            annual_amount = person.get('annual_amount', 0)
-            total_pension_income += annual_amount
+        # 年金受給開始年齢に達していなければスキップ
+        if person_age < start_age:
+            continue
+
+        # 年金計算方法の選択
+        pension_type = person.get('pension_type', 'employee')  # 'employee' or 'national'
+
+        if pension_type == 'employee':
+            # 厚生年金 + 国民年金の計算
+
+            # 厚生年金の計算
+            avg_monthly_salary = person.get('avg_monthly_salary', 0)
+            work_start_age = person.get('work_start_age', 23)
+
+            # FIRE達成していれば、FIRE時点までの加入期間
+            # 達成していなければ、現在年齢までの加入期間（最大65歳まで）
+            if fire_achieved and fire_year_offset is not None:
+                # FIRE達成時の年齢
+                fire_age = current_age + fire_year_offset
+                work_end_age = fire_age
+            else:
+                # まだFIRE未達成の場合は、シミュレーション年の年齢まで働く（最大65歳）
+                work_end_age = min(person_age, 65)
+
+            # 厚生年金加入期間（月数）
+            work_years = max(0, work_end_age - work_start_age)
+            work_months = int(work_years * 12)
+
+            # 厚生年金額を計算
+            employees_pension = _calculate_employees_pension_amount(avg_monthly_salary, work_months)
+
+            # 国民年金の計算（20歳から60歳まで、最大40年）
+            national_pension_years = min(40, 60 - 20)  # 満額想定
+            national_pension = _calculate_national_pension_amount(national_pension_years)
+
+            # 合計
+            annual_pension = employees_pension + national_pension
+
+        elif pension_type == 'national':
+            # 国民年金のみ
+            national_pension_years = min(40, 60 - 20)  # 満額想定
+            annual_pension = _calculate_national_pension_amount(national_pension_years)
+
+        else:
+            # 従来の固定値フォールバック（後方互換性）
+            annual_pension = person.get('annual_amount', 0)
+
+        total_pension_income += annual_pension
 
     return total_pension_income
+
+
+def calculate_national_pension_premium(
+    year_offset: float,
+    config: Dict[str, Any],
+    fire_achieved: bool = False
+) -> float:
+    """
+    指定年における国民年金保険料の支払額を計算
+
+    20歳から60歳までの間、国民年金保険料を支払う必要がある。
+    FIRE前は会社員として厚生年金に加入しているため保険料は給与天引き。
+    FIRE後は国民年金に切り替わり、自分で保険料を支払う必要がある。
+
+    Args:
+        year_offset: シミュレーション開始からの経過年数
+        config: 設定辞書
+        fire_achieved: FIRE達成フラグ（FIRE後のみ保険料を計上）
+
+    Returns:
+        年間保険料支払額（円）
+    """
+    # FIRE前は厚生年金加入中なので国民年金保険料は不要
+    if not fire_achieved:
+        return 0
+
+    # 社会保険料設定が無効の場合は0を返す
+    if not config.get('social_insurance', {}).get('enabled', False):
+        return 0
+
+    insurance_config = config['social_insurance']
+    monthly_premium = insurance_config.get('national_pension_monthly_premium', 16980)
+
+    total_annual_premium = 0
+
+    from datetime import datetime
+    current_date = datetime.now()
+
+    # 年金設定から対象者を取得
+    people = config.get('pension', {}).get('people', [])
+
+    for person in people:
+        birthdate_str = person.get('birthdate')
+        if not birthdate_str:
+            continue
+
+        birthdate = datetime.strptime(birthdate_str, '%Y/%m/%d')
+        current_age = (current_date - birthdate).days / 365.25
+        person_age = current_age + year_offset
+
+        # 20歳から60歳までの間のみ保険料を支払う
+        if 20 <= person_age < 60:
+            total_annual_premium += monthly_premium * 12
+
+    return total_annual_premium
+
+
+def calculate_national_health_insurance_premium(
+    year_offset: float,
+    config: Dict[str, Any],
+    fire_achieved: bool = False
+) -> float:
+    """
+    指定年における国民健康保険料の支払額を計算
+
+    FIRE前は会社の健康保険に加入（会社が半分負担）。
+    FIRE後は国民健康保険に切り替わり、全額自己負担となる。
+
+    国民健康保険料は前年所得に応じて変動するが、
+    簡易的に固定額として計算する。
+
+    Args:
+        year_offset: シミュレーション開始からの経過年数
+        config: 設定辞書
+        fire_achieved: FIRE達成フラグ（FIRE後のみ保険料を計上）
+
+    Returns:
+        年間保険料支払額（円）
+    """
+    # FIRE前は会社の健康保険加入中なので国民健康保険料は不要
+    if not fire_achieved:
+        return 0
+
+    # 社会保険料設定が無効の場合は0を返す
+    if not config.get('social_insurance', {}).get('enabled', False):
+        return 0
+
+    insurance_config = config['social_insurance']
+    annual_premium = insurance_config.get('national_health_insurance_annual_premium', 500000)
+
+    return annual_premium
 
 
 def calculate_child_allowance(year_offset: float, config: Dict[str, Any]) -> float:
@@ -523,7 +710,14 @@ def simulate_future_assets(
         monthly_education_expense = annual_education_expense / 12
 
         # 年金収入を追加（年間収入を月額に換算）
-        annual_pension_income = calculate_pension_income(years, config)
+        # FIRE達成している場合は、FIRE時点までの加入期間で年金額を計算
+        fire_year_offset = (fire_month / 12) if fire_month is not None else None
+        annual_pension_income = calculate_pension_income(
+            years,
+            config,
+            fire_achieved=fire_achieved,
+            fire_year_offset=fire_year_offset
+        )
         monthly_pension_income = annual_pension_income / 12
 
         # 児童手当を追加（年間手当を月額に換算）
@@ -541,11 +735,18 @@ def simulate_future_assets(
         annual_workation_cost = calculate_workation_cost(years, config)
         monthly_workation_cost = annual_workation_cost / 12
 
-        # 総支出 = 基本支出 + 教育費 + 住宅ローン + メンテナンス費用 + ワーケーション費用
-        expense = base_expense + monthly_education_expense + monthly_mortgage_payment + monthly_maintenance_cost + monthly_workation_cost
+        # 社会保険料を追加（FIRE後のみ）
+        annual_pension_premium = calculate_national_pension_premium(years, config, fire_achieved)
+        monthly_pension_premium = annual_pension_premium / 12
+
+        annual_health_insurance_premium = calculate_national_health_insurance_premium(years, config, fire_achieved)
+        monthly_health_insurance_premium = annual_health_insurance_premium / 12
+
+        # 総支出 = 基本支出 + 教育費 + 住宅ローン + メンテナンス費用 + ワーケーション費用 + 社会保険料
+        expense = base_expense + monthly_education_expense + monthly_mortgage_payment + monthly_maintenance_cost + monthly_workation_cost + monthly_pension_premium + monthly_health_insurance_premium
 
         # 現在の年間支出を計算（FIREチェック用）
-        current_annual_expense = (base_expense + monthly_education_expense + monthly_mortgage_payment) * 12 + annual_maintenance_cost + annual_workation_cost
+        current_annual_expense = (base_expense + monthly_education_expense + monthly_mortgage_payment) * 12 + annual_maintenance_cost + annual_workation_cost + annual_pension_premium + annual_health_insurance_premium
 
         # FIRE達成チェック: 今退職しても寿命まで資産が持つか?
         if not fire_achieved and month > 0:  # 最初の月はスキップ
@@ -591,6 +792,8 @@ def simulate_future_assets(
             'mortgage_payment': monthly_mortgage_payment,
             'maintenance_cost': monthly_maintenance_cost,
             'workation_cost': monthly_workation_cost,
+            'pension_premium': monthly_pension_premium,
+            'health_insurance_premium': monthly_health_insurance_premium,
             'net_cashflow': total_income - expense,
             'investment_return': investment_return,
             'fire_achieved': fire_achieved,
@@ -653,9 +856,15 @@ def simulate_with_withdrawal(
             monthly_education_expense = annual_education_expense / 12
 
         # 年金収入を追加（configが提供されている場合）
+        # この関数はFIRE後のシミュレーションなので、FIRE達成済みとして計算
         monthly_pension_income = 0
         if config is not None:
-            annual_pension_income = calculate_pension_income(years_elapsed, config)
+            annual_pension_income = calculate_pension_income(
+                years_elapsed,
+                config,
+                fire_achieved=True,
+                fire_year_offset=start_year_offset  # FIRE達成時点の年数
+            )
             monthly_pension_income = annual_pension_income / 12
 
         # 児童手当を追加（configが提供されている場合）
@@ -681,13 +890,23 @@ def simulate_with_withdrawal(
             annual_workation_cost = calculate_workation_cost(years_elapsed, config)
             monthly_workation_cost = annual_workation_cost / 12
 
+        # 社会保険料を追加（FIRE後のシミュレーションなので常に計上）
+        monthly_pension_premium = 0
+        monthly_health_insurance_premium = 0
+        if config is not None:
+            annual_pension_premium = calculate_national_pension_premium(years_elapsed, config, fire_achieved=True)
+            monthly_pension_premium = annual_pension_premium / 12
+
+            annual_health_insurance_premium = calculate_national_health_insurance_premium(years_elapsed, config, fire_achieved=True)
+            monthly_health_insurance_premium = annual_health_insurance_premium / 12
+
         # FIRE後の副収入を追加（configが提供されている場合）
         monthly_post_fire_income = 0
         if config is not None:
             monthly_post_fire_income = config['simulation'].get('post_fire_income', 0)
 
-        # 総支出 = 基本支出 + 教育費 + 住宅ローン + メンテナンス費用 + ワーケーション費用
-        total_expense = adjusted_base_expense + monthly_education_expense + monthly_mortgage_payment + monthly_maintenance_cost + monthly_workation_cost
+        # 総支出 = 基本支出 + 教育費 + 住宅ローン + メンテナンス費用 + ワーケーション費用 + 社会保険料
+        total_expense = adjusted_base_expense + monthly_education_expense + monthly_mortgage_payment + monthly_maintenance_cost + monthly_workation_cost + monthly_pension_premium + monthly_health_insurance_premium
 
         # 運用リターン
         investment_return = assets * monthly_return_rate
