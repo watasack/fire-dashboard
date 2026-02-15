@@ -19,8 +19,6 @@ def analyze_current_status(asset_df: pd.DataFrame) -> Dict[str, Any]:
     Returns:
         現状分析結果の辞書
     """
-    print("Analyzing current status...")
-
     # 最新データを取得
     latest = asset_df.iloc[-1]
 
@@ -46,11 +44,6 @@ def analyze_current_status(asset_df: pd.DataFrame) -> Dict[str, Any]:
         'growth_rate_12m': growth_12m,
     }
 
-    print(f"  Current net assets: JPY{result['net_assets']:,.0f}")
-    print(f"  Growth (1M): {result['growth_rate_1m']:.2f}%")
-    print(f"  Growth (3M): {result['growth_rate_3m']:.2f}%")
-    print(f"  Growth (12M): {result['growth_rate_12m']:.2f}%")
-
     return result
 
 
@@ -70,8 +63,6 @@ def analyze_income_expense_trends(
     Returns:
         収支トレンド分析結果の辞書
     """
-    print("Analyzing income/expense trends...")
-
     if len(cashflow_df) == 0:
         return {
             'monthly_avg_income': 0,
@@ -117,10 +108,6 @@ def analyze_income_expense_trends(
                 income_df['year_month'] = income_df['date'].dt.to_period('M')
                 monthly_forecast = income_df.groupby('year_month')['amount'].sum()
                 monthly_avg_income_forecast = monthly_forecast.mean()
-                print(f"  Forecast income (filtered): JPY{monthly_avg_income_forecast:,.0f}/month")
-                print(f"  Excluded income: JPY{monthly_avg_income - monthly_avg_income_forecast:,.0f}/month")
-            else:
-                print("  Warning: No income matched forecast criteria, using all income")
 
     # 貯蓄率（実際の全収入ベース）
     savings_rate = monthly_avg_savings / monthly_avg_income if monthly_avg_income > 0 else 0
@@ -135,7 +122,6 @@ def analyze_income_expense_trends(
         if manual_expense is not None and manual_expense > 0:
             annual_expense = manual_expense
             monthly_avg_expense = annual_expense / 12
-            print(f"  Using manual annual expense: JPY{annual_expense:,.0f} (JPY{monthly_avg_expense:,.0f}/month)")
             # 貯蓄額を再計算
             monthly_avg_savings = monthly_avg_income_forecast - monthly_avg_expense
             savings_rate = monthly_avg_savings / monthly_avg_income if monthly_avg_income > 0 else 0
@@ -168,13 +154,6 @@ def analyze_income_expense_trends(
         'expense_trend': expense_trend,
     }
 
-    print(f"  Monthly avg income (actual): JPY{result['monthly_avg_income']:,.0f}")
-    print(f"  Monthly avg income (forecast): JPY{result['monthly_avg_income_forecast']:,.0f}")
-    print(f"  Monthly avg expense: JPY{result['monthly_avg_expense']:,.0f}")
-    print(f"  Savings rate: {result['savings_rate']:.1%}")
-    print(f"  Income trend: {result['income_trend']}")
-    print(f"  Expense trend: {result['expense_trend']}")
-
     return result
 
 
@@ -188,8 +167,6 @@ def analyze_expense_by_category(transaction_df: pd.DataFrame) -> Dict[str, Any]:
     Returns:
         カテゴリー別分析結果の辞書
     """
-    print("Analyzing expense by category...")
-
     # 支出のみ抽出
     expense_df = transaction_df[transaction_df['is_expense'] == 1].copy()
 
@@ -220,9 +197,6 @@ def analyze_expense_by_category(transaction_df: pd.DataFrame) -> Dict[str, Any]:
         'top_categories': top_categories,
     }
 
-    print(f"  Total expense: JPY{result['total_expense']:,.0f}")
-    print(f"  Top category: {top_categories[0]['category']} (JPY{top_categories[0]['amount']:,.0f}, {top_categories[0]['percentage']:.1f}%)")
-
     return result
 
 
@@ -246,8 +220,6 @@ def generate_action_items(
     Returns:
         アクションアイテムのリスト
     """
-    print("Generating action items...")
-
     action_items = []
     monthly_avg_expense = trends['monthly_avg_expense']
     monthly_avg_savings = trends['monthly_avg_savings']

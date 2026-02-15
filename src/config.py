@@ -27,15 +27,12 @@ def load_config(config_path: str = 'config.yaml') -> Dict[str, Any]:
     if not config_file.exists():
         raise FileNotFoundError(f"Configuration file not found: {config_path}")
 
-    print(f"Loading configuration from: {config_path}")
-
     with open(config_file, 'r', encoding='utf-8') as f:
         config = yaml.safe_load(f)
 
     # 設定の検証
     _validate_config(config)
 
-    print("Configuration loaded successfully")
     return config
 
 
@@ -80,8 +77,6 @@ def _validate_config(config: Dict[str, Any]) -> None:
     fire_config = config['fire']
     if 'safety_buffer' not in fire_config:
         raise ValueError("Missing required parameter: fire.safety_buffer")
-
-    print("  All required parameters validated")
 
 
 def get_scenario_config(config: Dict[str, Any], scenario: str = 'standard') -> Dict[str, Any]:

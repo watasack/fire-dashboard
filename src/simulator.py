@@ -485,8 +485,6 @@ def simulate_future_assets(
     simulation_years = life_expectancy - start_age  # 寿命まで計算
     simulation_months = simulation_years * 12
 
-    print(f"  Simulation period: {simulation_years} years (age {start_age} to {life_expectancy})")
-
     # 月次リターン率（複利計算）
     monthly_return_rate = (1 + annual_return_rate) ** (1/12) - 1
 
@@ -601,13 +599,9 @@ def simulate_future_assets(
 
         # 資産が破綻ライン（500万円）以下になったら終了
         if assets <= 5_000_000:
-            print(f"  Assets depleted at month {month} ({years:.1f} years)")
             break
 
     df = pd.DataFrame(results)
-
-    print(f"  Simulated {len(df)} months ({len(df)/12:.1f} years)")
-    print(f"  Final assets: JPY{df.iloc[-1]['assets']:,.0f}")
 
     return df
 
