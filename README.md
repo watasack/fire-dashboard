@@ -67,18 +67,18 @@ python scripts/generate_dashboard.py
 7. グラフ生成（Plotly）
 8. HTML出力
 
-生成されたダッシュボードは `docs/index.html` に保存されます。
+生成されたダッシュボードは `dashboard/index.html` に保存されます。
 
 ### ローカルでの確認
 
-ブラウザで `docs/index.html` を開きます。
+ブラウザで `dashboard/index.html` を開きます。
 
 ```bash
 # Windowsの場合
-start docs/index.html
+start dashboard/index.html
 
 # macOS/Linuxの場合
-open docs/index.html
+open dashboard/index.html
 ```
 
 ## 設定のカスタマイズ
@@ -105,42 +105,18 @@ fire:
 
 設定変更後は、再度 `python scripts/generate_dashboard.py` を実行してください。
 
-## GitHub Pagesでの公開
+## ダッシュボードの更新
 
-### 初回セットアップ
-
-1. GitHubにプッシュ
+データファイルを更新した後、ダッシュボードを再生成します：
 
 ```bash
-git add .
-git commit -m "Initial FIRE dashboard"
-git push origin main
-```
-
-2. GitHub Pagesを有効化
-
-- GitHubリポジトリページにアクセス
-- `Settings` → `Pages`
-- Source: `main` ブランチ、`/docs` フォルダを選択
-- `Save` をクリック
-
-数分後、ダッシュボードがGitHub Pagesで公開されます。
-
-### 更新フロー
-
-データファイルを更新した後：
-
-```bash
-# 1. ダッシュボード再生成
+# ダッシュボード再生成
 python scripts/generate_dashboard.py
 
-# 2. Git commit & push
-git add docs/
-git commit -m "Update dashboard $(date +%Y-%m-%d)"
-git push origin main
+# ブラウザで確認
+start dashboard/index.html  # Windows
+open dashboard/index.html   # macOS/Linux
 ```
-
-プッシュ後、数分でGitHub Pages上のダッシュボードが自動更新されます。
 
 ## プロジェクト構造
 
@@ -158,14 +134,12 @@ git push origin main
 │   ├── data_processor.py   # データ処理
 │   ├── analyzer.py         # 現状分析
 │   ├── simulator.py        # 将来シミュレーション
-│   ├── fire_calculator.py  # FIRE目標額計算
 │   ├── visualizer.py       # グラフ生成
 │   └── html_generator.py   # HTML生成
-├── docs/                   # GitHub Pages用（生成物）
+├── dashboard/              # 生成されたダッシュボード（.gitignoreで除外）
 │   ├── index.html          # ダッシュボード
-│   ├── assets/
-│   │   └── styles.css      # スタイル
-│   └── .nojekyll
+│   └── assets/
+│       └── styles.css      # スタイル
 └── scripts/
     └── generate_dashboard.py  # メインスクリプト
 ```
@@ -175,14 +149,8 @@ git push origin main
 ### データ保護
 
 - `data/` ディレクトリは `.gitignore` で除外されており、GitHubにアップロードされません
+- `dashboard/` ディレクトリも `.gitignore` で除外されており、生成されたダッシュボードはローカルのみに保存されます
 - 生成されるHTMLには**集計値のみ**が含まれ、元のトランザクションデータは含まれません
-- プライベートリポジトリの使用を推奨します
-
-### GitHub Pagesの公開範囲
-
-- パブリックリポジトリの場合、GitHub Pagesは誰でもアクセス可能です
-- プライベートリポジトリ + GitHub Pro/Teamプランの場合、Pages公開範囲を制限できます
-- 家族のみに共有する場合は、プライベートリポジトリを使用してください
 
 ## トラブルシューティング
 

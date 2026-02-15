@@ -2,6 +2,9 @@
 data/*.csv
 data/*.xlsx
 
+# 生成されたダッシュボード
+dashboard/
+
 # Python
 __pycache__/
 *.py[cod]
