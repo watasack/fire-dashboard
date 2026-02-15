@@ -22,8 +22,7 @@ from src.data_loader import load_asset_data, load_transaction_data
 from src.data_processor import (
     clean_asset_data,
     clean_transaction_data,
-    calculate_monthly_cashflow,
-    calculate_category_breakdown
+    calculate_monthly_cashflow
 )
 from src.analyzer import (
     analyze_current_status,
@@ -32,7 +31,6 @@ from src.analyzer import (
     generate_action_items
 )
 from src.simulator import simulate_future_assets
-from src.fire_calculator import calculate_fire_target, calculate_fire_achievement_date
 from src.visualizer import (
     create_fire_timeline_chart
 )
@@ -101,16 +99,14 @@ def main():
 
         if 'standard' in simulations:
             df = simulations['standard']
-            # FIRE達成月を探す（資産が増加から減少に転じる点）
-            # もしくは、シミュレーション中に記録された達成フラグを使用
+            # FIRE達成月を探す（シミュレーションで記録されたfire_achievedフラグを使用）
+            fire_rows = df[df['fire_achieved'] == True]
 
-            # 簡易実装: 収入がゼロになった最初の月を探す
-            fire_months = df[df['income'] <= df['expense'] / 10]  # 年金のみの収入
-
-            if len(fire_months) > 0:
-                fire_month = fire_months.iloc[0]
-                fire_date = fire_month['date']
-                month_num = fire_month['month']
+            if len(fire_rows) > 0:
+                # FIRE達成した最初の月を取得
+                fire_row = fire_rows.iloc[0]
+                fire_date = fire_row['date']
+                month_num = fire_row['fire_month']
                 years = int(month_num / 12)
                 months = int(month_num % 12)
 
@@ -120,21 +116,22 @@ def main():
                     'months_to_fire': month_num,
                     'years_to_fire': years,
                     'remaining_months': months,
-                    'fire_assets': fire_month['assets']
+                    'fire_assets': fire_row['assets']
                 }
 
                 # 後方互換性のためfire_target辞書を作成
                 fire_target = {
-                    'recommended_target': fire_month['assets'],
+                    'recommended_target': fire_row['assets'],
                     'current_net_assets': current_status['net_assets'],
-                    'progress_rate': current_status['net_assets'] / fire_month['assets'],
-                    'shortfall': max(0, fire_month['assets'] - current_status['net_assets']),
+                    'progress_rate': current_status['net_assets'] / fire_row['assets'],
+                    'shortfall': max(0, fire_row['assets'] - current_status['net_assets']),
                     'annual_expense': trends['annual_expense']
                 }
 
                 print(f"  FIRE Achievement: {fire_date.strftime('%Y-%m')}")
                 print(f"  Time to FIRE: {years} years {months} months")
-                print(f"  Assets at FIRE: JPY{fire_month['assets']:,.0f}")
+                print(f"  Assets at FIRE: JPY{fire_row['assets']:,.0f}")
+                print(f"  FIRE Target: JPY{fire_target['recommended_target']:,.0f}")
             else:
                 print("  FIRE not achievable within simulation period")
                 # デフォルト値を設定

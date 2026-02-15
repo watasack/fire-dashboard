@@ -226,31 +226,6 @@ def analyze_expense_by_category(transaction_df: pd.DataFrame) -> Dict[str, Any]:
     return result
 
 
-def calculate_savings_rate_history(cashflow_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    貯蓄率の推移を計算
-
-    Args:
-        cashflow_df: 月次収支データフレーム
-
-    Returns:
-        貯蓄率推移データフレーム
-    """
-    df = cashflow_df.copy()
-
-    # 貯蓄率
-    df['savings_rate'] = np.where(
-        df['income'] > 0,
-        df['net_cashflow'] / df['income'],
-        0
-    )
-
-    # 3ヶ月移動平均
-    df['savings_rate_ma3'] = df['savings_rate'].rolling(window=3, min_periods=1).mean()
-
-    return df
-
-
 def generate_action_items(
     fire_target: Dict[str, Any],
     fire_achievement: Dict[str, Any],
@@ -296,36 +271,15 @@ def generate_action_items(
         })
         return action_items
 
-    # 1. 支出削減のインパクト分析
+    # 1. 支出削減の提案
     if len(expense_breakdown['top_categories']) > 0:
         top_category = expense_breakdown['top_categories'][0]
-        reduction_amount = 30000  # 3万円削減を仮定
-
-        # 月3万円削減した場合の達成時期の短縮を計算
-        from .fire_calculator import calculate_fire_achievement_date
-
-        current_achievement = fire_achievement
-        new_savings = monthly_avg_savings + reduction_amount
-
-        new_achievement = calculate_fire_achievement_date(
-            current_assets=fire_target['current_net_assets'],
-            target_assets=fire_target['recommended_target'],
-            monthly_savings=new_savings,
-            annual_return_rate=annual_return_rate
-        )
-
-        if current_achievement and new_achievement:
-            months_saved = current_achievement['months_to_fire'] - new_achievement['months_to_fire']
-            years_saved = months_saved // 12
-            remaining_months_saved = months_saved % 12
-
-            if years_saved > 0 or remaining_months_saved > 0:
-                time_text = f"{years_saved}年{remaining_months_saved}ヶ月" if years_saved > 0 else f"{remaining_months_saved}ヶ月"
-                action_items.append({
-                    'icon': '💡',
-                    'text': f'{top_category["category"]}を月3万円削減すると、達成が{time_text}早まります',
-                    'type': 'suggestion'
-                })
+        top_category_amount = top_category['amount'] / 12  # 月額に換算
+        action_items.append({
+            'icon': '💡',
+            'text': f'{top_category["category"]}（月{top_category_amount/10000:.1f}万円）の見直しで貯蓄を増やせる可能性があります',
+            'type': 'suggestion'
+        })
 
     # 2. 貯蓄率の改善余地
     savings_rate = trends['savings_rate']

@@ -237,8 +237,8 @@ def calculate_house_maintenance(year_offset: float, config: Dict[str, Any]) -> f
     current_date = datetime.now()
     current_year = current_date.year
 
-    # シミュレーション中の年を計算
-    simulation_year = current_year + year_offset
+    # シミュレーション中の年を計算（整数に丸める）
+    simulation_year = int(current_year + year_offset)
 
     total_maintenance_cost = 0
 
@@ -260,6 +260,53 @@ def calculate_house_maintenance(year_offset: float, config: Dict[str, Any]) -> f
             total_maintenance_cost += cost
 
     return total_maintenance_cost
+
+
+def calculate_workation_cost(year_offset: float, config: Dict[str, Any]) -> float:
+    """
+    指定年におけるワーケーション費用を計算
+
+    Args:
+        year_offset: シミュレーション開始からの経過年数
+        config: 設定辞書
+
+    Returns:
+        年間ワーケーション費用（円）
+    """
+    # ワーケーションが無効の場合は0を返す
+    if not config.get('workation', {}).get('enabled', False):
+        return 0
+
+    workation_config = config['workation']
+    start_child_index = workation_config.get('start_child_index', 1)
+    start_child_age = workation_config.get('start_child_age', 18)
+    annual_cost = workation_config.get('annual_cost', 0)
+
+    # 子供情報を取得
+    children = config.get('education', {}).get('children', [])
+    if start_child_index >= len(children):
+        return 0  # 指定された子供が存在しない
+
+    from datetime import datetime
+    current_date = datetime.now()
+
+    # 基準となる子供の情報
+    child = children[start_child_index]
+    birthdate_str = child.get('birthdate')
+    if not birthdate_str:
+        return 0
+
+    birthdate = datetime.strptime(birthdate_str, '%Y/%m/%d')
+
+    # シミュレーション時点での子供の年齢を計算
+    current_age = (current_date - birthdate).days / 365.25
+    child_age = current_age + year_offset
+
+    # 開始年齢以降ならワーケーション費用を返す
+    if child_age >= start_child_age:
+        return annual_cost
+    else:
+        return 0
 
 
 def can_retire_now(
@@ -318,7 +365,7 @@ def can_retire_now(
 
 def calculate_base_expense(year_offset: float, config: Dict[str, Any], fallback_expense: float) -> float:
     """
-    指定年における基本生活費を計算（ライフステージ別）
+    指定年における基本生活費を計算（ライフステージ別 + 家族人数調整）
 
     Args:
         year_offset: シミュレーション開始からの経過年数
@@ -346,7 +393,7 @@ def calculate_base_expense(year_offset: float, config: Dict[str, Any], fallback_
         # 子供がいない場合はempty_nestの支出を使用
         return base_expense_by_stage.get('empty_nest', fallback_expense)
 
-    # 最初の子供の年齢を計算
+    # 最初の子供の年齢を計算してライフステージを決定
     from datetime import datetime
     current_date = datetime.now()
 
@@ -373,8 +420,31 @@ def calculate_base_expense(year_offset: float, config: Dict[str, Any], fallback_
     else:
         stage = 'empty_nest'
 
-    # 対応する支出を返す
-    return base_expense_by_stage.get(stage, fallback_expense)
+    # 基本支出（第一子の年齢に基づく）
+    base_expense = base_expense_by_stage.get(stage, fallback_expense)
+
+    # 追加の子供による生活費増加を計算
+    additional_child_expense = config.get('fire', {}).get('additional_child_expense', 0)
+
+    if additional_child_expense > 0 and len(children) > 1:
+        # シミュレーション時点で出生済みの追加子供数をカウント
+        simulation_date = current_date + pd.Timedelta(days=year_offset * 365.25)
+        born_children_count = 0
+
+        for child in children:
+            child_birthdate_str = child.get('birthdate')
+            if child_birthdate_str:
+                child_birthdate = datetime.strptime(child_birthdate_str, '%Y/%m/%d')
+                if child_birthdate <= simulation_date:
+                    born_children_count += 1
+
+        # 第一子を除く追加子供の人数
+        additional_children = max(0, born_children_count - 1)
+
+        # 追加子供分の生活費を加算
+        base_expense += additional_child_expense * additional_children
+
+    return base_expense
 
 
 def simulate_future_assets(
@@ -428,6 +498,7 @@ def simulate_future_assets(
     income = monthly_income
     expense = monthly_expense
     fire_achieved = False  # FIRE達成フラグ
+    fire_month = None  # FIRE達成月を記録
 
     # 開始日
     from datetime import datetime
@@ -468,11 +539,15 @@ def simulate_future_assets(
         annual_maintenance_cost = calculate_house_maintenance(years, config)
         monthly_maintenance_cost = annual_maintenance_cost / 12
 
-        # 総支出 = 基本支出 + 教育費 + 住宅ローン + メンテナンス費用
-        expense = base_expense + monthly_education_expense + monthly_mortgage_payment + monthly_maintenance_cost
+        # ワーケーション費用を追加（年間費用を月額に換算）
+        annual_workation_cost = calculate_workation_cost(years, config)
+        monthly_workation_cost = annual_workation_cost / 12
+
+        # 総支出 = 基本支出 + 教育費 + 住宅ローン + メンテナンス費用 + ワーケーション費用
+        expense = base_expense + monthly_education_expense + monthly_mortgage_payment + monthly_maintenance_cost + monthly_workation_cost
 
         # 現在の年間支出を計算（FIREチェック用）
-        current_annual_expense = (base_expense + monthly_education_expense + monthly_mortgage_payment) * 12 + annual_maintenance_cost
+        current_annual_expense = (base_expense + monthly_education_expense + monthly_mortgage_payment) * 12 + annual_maintenance_cost + annual_workation_cost
 
         # FIRE達成チェック: 今退職しても寿命まで資産が持つか?
         if not fire_achieved and month > 0:  # 最初の月はスキップ
@@ -484,38 +559,44 @@ def simulate_future_assets(
                 scenario=scenario
             ):
                 fire_achieved = True
+                fire_month = month
                 print(f"  FIRE可能! at month {month} ({years:.1f} years), assets=JPY{assets:,.0f}")
 
         # FIRE達成後は労働収入を0にする（仕事を辞める想定）
-        # ただし、年金収入と児童手当は継続
+        # ただし、年金収入、児童手当、副収入は継続
+        post_fire_income = config['simulation'].get('post_fire_income', 0)
+
         if fire_achieved:
-            income = monthly_pension_income + monthly_child_allowance
+            total_income = monthly_pension_income + monthly_child_allowance + post_fire_income
+            labor_income = post_fire_income  # FIRE後は副収入のみ
         else:
-            income = income + monthly_pension_income + monthly_child_allowance
+            total_income = income + monthly_pension_income + monthly_child_allowance
+            labor_income = income  # FIRE前は労働収入
 
         # 運用リターン
         investment_return = assets * monthly_return_rate
 
         # 資産更新（収入 - 支出 + 運用リターン）
-        assets = assets + income - expense + investment_return
+        assets = assets + total_income - expense + investment_return
 
         # 記録
         results.append({
             'date': date,
             'month': month,
             'assets': max(0, assets),  # 負債は0で下限
-            'income': income,
+            'income': total_income,
             'pension_income': monthly_pension_income,
-            'labor_income': income - monthly_pension_income,
+            'labor_income': labor_income,
             'expense': expense,
             'base_expense': base_expense,
             'education_expense': monthly_education_expense,
             'mortgage_payment': monthly_mortgage_payment,
             'maintenance_cost': monthly_maintenance_cost,
-            'net_cashflow': income - expense,
+            'workation_cost': monthly_workation_cost,
+            'net_cashflow': total_income - expense,
             'investment_return': investment_return,
-            'cumulative_income': income * (month + 1),
-            'cumulative_expense': expense * (month + 1),
+            'fire_achieved': fire_achieved,
+            'fire_month': fire_month,
         })
 
         # 資産が破綻ライン（500万円）以下になったら終了
@@ -600,14 +681,25 @@ def simulate_with_withdrawal(
             annual_maintenance_cost = calculate_house_maintenance(years_elapsed, config)
             monthly_maintenance_cost = annual_maintenance_cost / 12
 
-        # 総支出 = 基本支出 + 教育費 + 住宅ローン + メンテナンス費用
-        total_expense = adjusted_base_expense + monthly_education_expense + monthly_mortgage_payment + monthly_maintenance_cost
+        # ワーケーション費用を追加（configが提供されている場合）
+        monthly_workation_cost = 0
+        if config is not None:
+            annual_workation_cost = calculate_workation_cost(years_elapsed, config)
+            monthly_workation_cost = annual_workation_cost / 12
+
+        # FIRE後の副収入を追加（configが提供されている場合）
+        monthly_post_fire_income = 0
+        if config is not None:
+            monthly_post_fire_income = config['simulation'].get('post_fire_income', 0)
+
+        # 総支出 = 基本支出 + 教育費 + 住宅ローン + メンテナンス費用 + ワーケーション費用
+        total_expense = adjusted_base_expense + monthly_education_expense + monthly_mortgage_payment + monthly_maintenance_cost + monthly_workation_cost
 
         # 運用リターン
         investment_return = assets * monthly_return_rate
 
-        # 資産更新（年金収入と児童手当も考慮）
-        assets = assets - total_expense + investment_return + monthly_pension_income + monthly_child_allowance
+        # 資産更新（年金収入、児童手当、FIRE後副収入も考慮）
+        assets = assets - total_expense + investment_return + monthly_pension_income + monthly_child_allowance + monthly_post_fire_income
 
         # 資産が破綻ライン（500万円）以下になったら終了
         if assets <= 5_000_000:
@@ -620,43 +712,3 @@ def simulate_with_withdrawal(
     return assets
 
 
-def calculate_years_to_target(
-    current_assets: float,
-    target_assets: float,
-    monthly_income: float,
-    monthly_expense: float,
-    annual_return_rate: float,
-    max_years: int = 100
-) -> float:
-    """
-    目標資産額到達までの年数を計算
-
-    Args:
-        current_assets: 現在の資産
-        target_assets: 目標資産額
-        monthly_income: 月次収入
-        monthly_expense: 月次支出
-        annual_return_rate: 年率リターン
-        max_years: 最大計算年数
-
-    Returns:
-        到達年数（到達不可能な場合は-1）
-    """
-    if current_assets >= target_assets:
-        return 0
-
-    assets = current_assets
-    monthly_return_rate = (1 + annual_return_rate) ** (1/12) - 1
-    monthly_savings = monthly_income - monthly_expense
-
-    if monthly_savings <= 0 and monthly_return_rate <= 0:
-        return -1  # 到達不可能
-
-    for month in range(max_years * 12):
-        investment_return = assets * monthly_return_rate
-        assets = assets + monthly_savings + investment_return
-
-        if assets >= target_assets:
-            return month / 12
-
-    return -1  # max_years以内に到達不可能

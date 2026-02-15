@@ -121,7 +121,7 @@ def generate_dashboard_html(
           {fire_timeline_html}
         </div>
         <!-- クリック詳細情報 -->
-        <div id="click-details" style="display: none; margin-top: 20px; padding: 20px; background: #f0f9ff; border-radius: 8px; border-left: 4px solid #06b6d4; max-height: 600px; overflow-y: auto;">
+        <div id="click-details" style="display: none; margin-top: 20px; padding: 20px; background: #f0f9ff; border-radius: 8px; border-left: 4px solid #06b6d4; max-height: 400px; overflow-y: auto;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
             <h3 style="margin: 0; font-size: 15px; color: #0c4a6e; font-weight: 600;">
               <span id="detail-date"></span>の詳細
@@ -133,7 +133,7 @@ def generate_dashboard_html(
           </div>
 
           <!-- 2カラムレイアウト -->
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; min-height: 0;">
+          <div style="display: grid; grid-template-columns: 1.6fr 1fr; gap: 20px; min-height: 0;">
 
             <!-- 左側: ウォーターフォールグラフ -->
             <div>
@@ -222,18 +222,19 @@ def generate_dashboard_html(
           document.getElementById('detail-assets').textContent =
             '¥' + assets.toFixed(1) + '万';
 
-          if (customdata && customdata.length >= 7) {{
-            // customdata: [labor_income, pension_income, base_expense, education_expense, mortgage_payment, maintenance_cost, investment_return]
+          if (customdata && customdata.length >= 8) {{
+            // customdata: [labor_income, pension_income, base_expense, education_expense, mortgage_payment, maintenance_cost, workation_cost, investment_return]
             const laborIncome = customdata[0];
             const pensionIncome = customdata[1];
             const baseExpense = customdata[2];
             const educationExpense = customdata[3];
             const mortgagePayment = customdata[4];
             const maintenanceCost = customdata[5];
-            const investmentReturn = customdata[6];
+            const workationCost = customdata[6];
+            const investmentReturn = customdata[7];
 
             const totalIncome = laborIncome + pensionIncome;
-            const totalExpense = baseExpense + educationExpense + mortgagePayment + maintenanceCost;
+            const totalExpense = baseExpense + educationExpense + mortgagePayment + maintenanceCost + workationCost;
 
             // 詳細テーブルを生成
             const tableBody = document.getElementById('detail-table-body');
@@ -339,6 +340,9 @@ def generate_dashboard_html(
             if (maintenanceCost > 0) {{
               addRow('メンテナンス費用', '-¥' + (maintenanceCost / 10000).toFixed(1) + '万', 'expense');
             }}
+            if (workationCost > 0) {{
+              addRow('ワーケーション費用', '-¥' + (workationCost / 10000).toFixed(1) + '万', 'expense');
+            }}
             addRow('支出合計', '-¥' + (totalExpense / 10000).toFixed(1) + '万', 'subtotal bold');
 
             // その他セクション
@@ -417,6 +421,13 @@ def generate_dashboard_html(
               items.push({{
                 label: 'メンテナンス',
                 value: -maintenanceCost / 10000,
+                measure: 'relative'
+              }});
+            }}
+            if (workationCost !== 0) {{
+              items.push({{
+                label: 'ワーケーション',
+                value: -workationCost / 10000,
                 measure: 'relative'
               }});
             }}
