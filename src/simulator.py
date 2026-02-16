@@ -7,6 +7,7 @@ import pandas as pd
 import numpy as np
 from typing import Dict, Any, List
 from dateutil.relativedelta import relativedelta
+from src.data_schema import get_column_names
 
 
 def calculate_education_expense(year_offset: float, config: Dict[str, Any]) -> float:
@@ -173,6 +174,91 @@ def calculate_child_allowance(year_offset: float, config: Dict[str, Any]) -> flo
     return total_annual_allowance
 
 
+def calculate_national_pension_premium(
+    year_offset: float,
+    config: Dict[str, Any],
+    fire_achieved: bool = False
+) -> float:
+    """
+    国民年金保険料を計算（FIRE後のみ計上）
+
+    Args:
+        year_offset: シミュレーション開始からの経過年数
+        config: 設定辞書
+        fire_achieved: FIRE達成済みか（True: FIRE後、False: FIRE前）
+
+    Returns:
+        年間国民年金保険料（円）
+    """
+    # 社会保険設定が無効の場合は0を返す
+    if not config.get('social_insurance', {}).get('enabled', False):
+        return 0
+
+    # FIRE前は会社の厚生年金なので計上不要
+    if not fire_achieved:
+        return 0
+
+    social_insurance_config = config['social_insurance']
+    monthly_premium = social_insurance_config.get('national_pension_monthly_premium', 16980)
+
+    # 年金受給者情報を取得
+    pension_people = config.get('pension', {}).get('people', [])
+    if not pension_people:
+        return 0
+
+    from datetime import datetime
+    current_date = datetime.now()
+
+    total_annual_premium = 0
+
+    for person in pension_people:
+        birthdate_str = person.get('birthdate')
+        if not birthdate_str:
+            continue
+
+        birthdate = datetime.strptime(birthdate_str, '%Y/%m/%d')
+
+        # シミュレーション中の年齢を計算
+        current_age = (current_date - birthdate).days / 365.25
+        person_age = current_age + year_offset
+
+        # 20歳～60歳の間のみ国民年金保険料を支払う
+        if 20 <= person_age < 60:
+            total_annual_premium += monthly_premium * 12
+
+    return total_annual_premium
+
+
+def calculate_national_health_insurance_premium(
+    year_offset: float,
+    config: Dict[str, Any],
+    fire_achieved: bool = False
+) -> float:
+    """
+    国民健康保険料を計算（FIRE後のみ計上）
+
+    Args:
+        year_offset: シミュレーション開始からの経過年数
+        config: 設定辞書
+        fire_achieved: FIRE達成済みか（True: FIRE後、False: FIRE前）
+
+    Returns:
+        年間国民健康保険料（円）
+    """
+    # 社会保険設定が無効の場合は0を返す
+    if not config.get('social_insurance', {}).get('enabled', False):
+        return 0
+
+    # FIRE前は会社の健康保険なので計上不要
+    if not fire_achieved:
+        return 0
+
+    social_insurance_config = config['social_insurance']
+    annual_premium = social_insurance_config.get('national_health_insurance_annual_premium', 500000)
+
+    return annual_premium
+
+
 def calculate_mortgage_payment(year_offset: float, config: Dict[str, Any]) -> float:
     """
     指定年における住宅ローンの月次支払額を計算
@@ -309,24 +395,240 @@ def calculate_workation_cost(year_offset: float, config: Dict[str, Any]) -> floa
         return 0
 
 
+def simulate_post_fire_assets(
+    current_cash: float,
+    current_stocks: float,
+    years_offset: float,
+    config: Dict[str, Any],
+    scenario: str = 'standard',
+    nisa_balance: float = 0,
+    nisa_cost_basis: float = 0,
+    stocks_cost_basis: float = None
+) -> float:
+    """
+    FIRE後の資産推移をシミュレーション（実際のロジックと同じ）
+
+    Args:
+        current_cash: 現在の現金残高
+        current_stocks: 現在の株式残高
+        years_offset: シミュレーション開始からの経過年数
+        config: 設定辞書
+        scenario: シナリオ名
+        nisa_balance: NISA残高
+        nisa_cost_basis: NISA簿価
+        stocks_cost_basis: 株式全体の簿価（Noneの場合は時価と仮定）
+
+    Returns:
+        90歳時点での資産額
+    """
+    from datetime import datetime
+
+    # シナリオ設定取得
+    scenario_config = config['simulation'][scenario]
+    annual_return_rate = scenario_config['annual_return_rate']
+
+    # シミュレーション期間
+    life_expectancy = config['simulation'].get('life_expectancy', 90)
+    start_age = config['simulation'].get('start_age', 35)
+    current_age = start_age + years_offset
+    remaining_years = life_expectancy - current_age
+    remaining_months = int(remaining_years * 12)
+
+    # 月次リターン率
+    monthly_return_rate = (1 + annual_return_rate) ** (1/12) - 1
+
+    # 資産配分設定
+    allocation_enabled = config.get('asset_allocation', {}).get('enabled', False)
+    if allocation_enabled:
+        capital_gains_tax_rate = config['asset_allocation'].get('capital_gains_tax_rate', 0.20315)
+    else:
+        capital_gains_tax_rate = 0.20315
+
+    # 初期値
+    cash = current_cash
+    stocks = current_stocks
+    if stocks_cost_basis is None:
+        stocks_cost_basis = current_stocks  # 簿価は時価と仮定
+    nisa_balance = nisa_balance
+    nisa_cost_basis = nisa_cost_basis
+
+    # FIRE後の副収入
+    post_fire_income = config['simulation'].get('post_fire_income', 0)
+
+    # 月次シミュレーション（FIRE後）
+    for month in range(remaining_months):
+        years = years_offset + month / 12
+
+        # 基本生活費
+        annual_base_expense = calculate_base_expense(years, config, 0)
+        base_expense = annual_base_expense / 12
+
+        # 教育費
+        annual_education_expense = calculate_education_expense(years, config)
+        monthly_education_expense = annual_education_expense / 12
+
+        # 年金収入
+        annual_pension_income = calculate_pension_income(years, config)
+        monthly_pension_income = annual_pension_income / 12
+
+        # 児童手当
+        annual_child_allowance = calculate_child_allowance(years, config)
+        monthly_child_allowance = annual_child_allowance / 12
+
+        # 住宅ローン
+        monthly_mortgage_payment = calculate_mortgage_payment(years, config)
+
+        # 住宅メンテナンス
+        annual_maintenance_cost = calculate_house_maintenance(years, config)
+        monthly_maintenance_cost = annual_maintenance_cost / 12
+
+        # ワーケーション
+        annual_workation_cost = calculate_workation_cost(years, config)
+        monthly_workation_cost = annual_workation_cost / 12
+
+        # 社会保険料（FIRE後）
+        annual_pension_premium = calculate_national_pension_premium(years, config, fire_achieved=True)
+        monthly_pension_premium = annual_pension_premium / 12
+
+        annual_health_insurance_premium = calculate_national_health_insurance_premium(years, config, fire_achieved=True)
+        monthly_health_insurance_premium = annual_health_insurance_premium / 12
+
+        # 総支出
+        expense = (base_expense + monthly_education_expense + monthly_mortgage_payment +
+                  monthly_maintenance_cost + monthly_workation_cost +
+                  monthly_pension_premium + monthly_health_insurance_premium)
+
+        # 収入（FIRE後は副収入 + 年金 + 児童手当のみ）
+        total_income = post_fire_income + monthly_pension_income + monthly_child_allowance
+
+        # 収入を現金に加算
+        cash += total_income
+
+        # 支出を現金から引き出し
+        if cash >= expense:
+            cash -= expense
+        else:
+            # 現金が足りない場合は株から取り崩し
+            shortage = expense - cash
+            cash = 0
+
+            if allocation_enabled:
+                # 税金を考慮した取り崩し額を計算
+
+                # NISA枠内の株を優先的に取り崩し（非課税）
+                if nisa_balance > 0:
+                    nisa_withdrawal = min(shortage, nisa_balance)
+                    nisa_withdrawal_shares = nisa_withdrawal / stocks * stocks_cost_basis if stocks > 0 else 0
+                    nisa_balance -= nisa_withdrawal
+                    nisa_cost_basis -= min(nisa_withdrawal_shares, nisa_cost_basis)
+                    stocks -= nisa_withdrawal
+                    stocks_cost_basis -= min(nisa_withdrawal_shares, stocks_cost_basis)
+                    shortage -= nisa_withdrawal
+
+                # まだ不足している場合は課税口座から取り崩し
+                if shortage > 0 and stocks > 0:
+                    # 税引き後でshortageを得るために必要な売却額
+                    taxable_stocks = stocks - nisa_balance  # NISA以外の株
+                    if taxable_stocks > 0:
+                        avg_cost_basis = (stocks_cost_basis - nisa_cost_basis) / taxable_stocks if taxable_stocks > 0 else 1
+                        # 売却額 x (1 - (時価 - 簿価) / 時価 x 税率) = shortage
+                        # 簡易計算: 売却額が小さい場合は shortage / (1 - tax_rate * gain_ratio) で近似
+                        gain_ratio = max(0, (1 - avg_cost_basis / 1.0))  # 時価1に対する簿価の割合
+                        effective_tax_rate = capital_gains_tax_rate * gain_ratio
+                        required_sale = shortage / (1 - effective_tax_rate) if effective_tax_rate < 1 else shortage
+
+                        actual_sale = min(required_sale, taxable_stocks)
+                        sale_cost_basis = actual_sale * avg_cost_basis
+                        capital_gain = max(0, actual_sale - sale_cost_basis)
+                        capital_gains_tax = capital_gain * capital_gains_tax_rate
+
+                        cash += actual_sale - capital_gains_tax
+                        stocks -= actual_sale
+                        stocks_cost_basis -= sale_cost_basis
+            else:
+                # 資産配分が無効の場合はシンプルに株を売却
+                if stocks > 0:
+                    withdrawal_from_stocks = min(shortage, stocks)
+                    stocks -= withdrawal_from_stocks
+                    stocks_cost_basis -= min(withdrawal_from_stocks, stocks_cost_basis)
+                    cash += withdrawal_from_stocks
+
+        # 運用リターン（株のみ）
+        investment_return = stocks * monthly_return_rate
+        stocks += investment_return
+
+        # 最低現金残高を確保（資産配分が有効な場合）
+        if allocation_enabled:
+            min_cash_balance = config['asset_allocation'].get('min_cash_balance', 5000000)
+            if cash < min_cash_balance and stocks > 0:
+                # 現金が最低残高を下回る場合、株式を売却して補充
+                shortage = min_cash_balance - cash
+
+                # NISA枠内の株を優先的に売却（非課税）
+                if nisa_balance > 0:
+                    nisa_sale = min(shortage, nisa_balance)
+                    nisa_sale_cost = nisa_sale / stocks * stocks_cost_basis if stocks > 0 else 0
+                    nisa_balance -= nisa_sale
+                    nisa_cost_basis -= min(nisa_sale_cost, nisa_cost_basis)
+                    stocks -= nisa_sale
+                    stocks_cost_basis -= min(nisa_sale_cost, stocks_cost_basis)
+                    cash += nisa_sale
+                    shortage -= nisa_sale
+
+                # まだ不足している場合は課税口座から売却
+                if shortage > 0 and stocks > 0:
+                    taxable_stocks = stocks - nisa_balance
+                    if taxable_stocks > 0:
+                        avg_cost_basis = (stocks_cost_basis - nisa_cost_basis) / taxable_stocks if taxable_stocks > 0 else 1
+                        # 税引き後でshortageを得るために必要な売却額
+                        gain_ratio = max(0, (1 - avg_cost_basis / 1.0))
+                        effective_tax_rate = capital_gains_tax_rate * gain_ratio
+                        required_sale = shortage / (1 - effective_tax_rate) if effective_tax_rate < 1 else shortage
+
+                        actual_sale = min(required_sale, taxable_stocks)
+                        sale_cost_basis = actual_sale * avg_cost_basis
+                        capital_gain = max(0, actual_sale - sale_cost_basis)
+                        capital_gains_tax = capital_gain * capital_gains_tax_rate
+
+                        cash += actual_sale - capital_gains_tax
+                        stocks -= actual_sale
+                        stocks_cost_basis -= sale_cost_basis
+
+        # 資産が破綻ライン以下になったら終了
+        if cash + stocks <= 5_000_000:
+            return 0
+
+    return cash + stocks
+
+
 def can_retire_now(
     current_assets: float,
     years_offset: float,
     current_annual_expense: float,
     config: Dict[str, Any],
-    scenario: str
+    scenario: str,
+    current_cash: float = None,
+    current_stocks: float = None,
+    nisa_balance: float = 0,
+    nisa_cost_basis: float = 0,
+    stocks_cost_basis: float = None
 ) -> bool:
     """
     現在のタイミングで退職して、寿命まで資産が持つかチェック
 
-    標準シナリオの前提で退職可能性を判定
+    実際のシミュレーションと同じロジックを使用
 
     Args:
-        current_assets: 現在の資産
+        current_assets: 現在の資産（cash+stocksが未指定時のみ使用）
         years_offset: シミュレーション開始からの経過年数
         current_annual_expense: 現在の年間支出
         config: 設定辞書
-        scenario: シナリオ名（未使用 - 常に標準シナリオで判定）
+        scenario: シナリオ名
+        current_cash: 現在の現金残高（オプション）
+        current_stocks: 現在の株式残高（オプション）
+        nisa_balance: NISA残高（オプション）
+        nisa_cost_basis: NISA簿価（オプション）
+        stocks_cost_basis: 株式全体の簿価（オプション）
 
     Returns:
         True if 退職可能、False otherwise
@@ -343,20 +645,30 @@ def can_retire_now(
     if remaining_years <= 0:
         return True  # すでに寿命到達
 
-    # 標準シナリオの前提で退職可能性を判定
-    scenario_config = config['simulation']['standard']
-    return_rate = scenario_config['annual_return_rate']
-    inflation_rate = scenario_config['inflation_rate']
+    # 現金と株の分離（指定されていない場合は全額株と仮定）
+    if current_cash is None or current_stocks is None:
+        # 資産配分が有効な場合は、適切に分離
+        allocation_enabled = config.get('asset_allocation', {}).get('enabled', False)
+        if allocation_enabled:
+            cash_buffer_months = config['asset_allocation'].get('cash_buffer_months', 6)
+            monthly_expense = current_annual_expense / 12
+            estimated_cash = monthly_expense * cash_buffer_months
+            current_cash = min(estimated_cash, current_assets * 0.1)  # 最大10%を現金
+            current_stocks = current_assets - current_cash
+        else:
+            current_cash = 0
+            current_stocks = current_assets
 
-    # 退職後のシミュレーション実行
-    final_assets = simulate_with_withdrawal(
-        initial_assets=current_assets,
-        annual_expense=current_annual_expense,
-        years=remaining_years,
-        return_rate=return_rate,
-        inflation_rate=inflation_rate,
+    # 退職後のシミュレーション実行（実際のロジックと同じ）
+    final_assets = simulate_post_fire_assets(
+        current_cash=current_cash,
+        current_stocks=current_stocks,
+        years_offset=years_offset,
         config=config,
-        start_year_offset=years_offset  # 現在の経過年数を渡す
+        scenario=scenario,
+        nisa_balance=nisa_balance,
+        nisa_cost_basis=nisa_cost_basis,
+        stocks_cost_basis=stocks_cost_basis
     )
 
     # 破綻ライン: 500万円を下回らないことを確認
@@ -448,20 +760,24 @@ def calculate_base_expense(year_offset: float, config: Dict[str, Any], fallback_
 
 
 def simulate_future_assets(
-    current_assets: float,
-    monthly_income: float,
-    monthly_expense: float,
-    config: Dict[str, Any],
+    current_cash: float = None,
+    current_stocks: float = None,
+    current_assets: float = None,  # 後方互換性のため
+    monthly_income: float = 0,
+    monthly_expense: float = 0,
+    config: Dict[str, Any] = None,
     scenario: str = 'standard'
 ) -> pd.DataFrame:
     """
-    将来の資産推移をシミュレーション
+    将来の資産推移をシミュレーション（現金と株を分離管理）
 
     毎月「今退職しても寿命まで資産が持つか?」をチェックし、
     初めて持つと判定された月がFIRE達成日となる
 
     Args:
-        current_assets: 現在の純資産
+        current_cash: 現在の現金残高（優先）
+        current_stocks: 現在の株式残高（優先）
+        current_assets: 現在の純資産（後方互換性のため、cash/stocksが未指定時のみ使用）
         monthly_income: 月次収入
         monthly_expense: 月次支出
         config: 設定辞書
@@ -471,6 +787,14 @@ def simulate_future_assets(
         シミュレーション結果のデータフレーム
     """
     print(f"Simulating future assets ({scenario} scenario)...")
+
+    # 後方互換性: current_assetsが指定されている場合は全額株として扱う
+    if current_cash is None and current_stocks is None:
+        if current_assets is not None:
+            current_cash = 0
+            current_stocks = current_assets
+        else:
+            raise ValueError("Either (current_cash, current_stocks) or current_assets must be provided")
 
     # シナリオ設定取得
     scenario_config = config['simulation'][scenario]
@@ -488,11 +812,33 @@ def simulate_future_assets(
     # 月次リターン率（複利計算）
     monthly_return_rate = (1 + annual_return_rate) ** (1/12) - 1
 
+    # 資産配分設定
+    allocation_enabled = config.get('asset_allocation', {}).get('enabled', False)
+    if allocation_enabled:
+        cash_buffer_months = config['asset_allocation'].get('cash_buffer_months', 6)
+        auto_invest_threshold = config['asset_allocation'].get('auto_invest_threshold', 1.5)
+        nisa_enabled = config['asset_allocation'].get('nisa_enabled', True)
+        nisa_annual_limit = config['asset_allocation'].get('nisa_annual_limit', 3600000)
+        min_cash_balance = config['asset_allocation'].get('min_cash_balance', 1000000)
+        capital_gains_tax_rate = config['asset_allocation'].get('capital_gains_tax_rate', 0.20315)
+    else:
+        # 資産配分が無効の場合はデフォルト値
+        cash_buffer_months = 0
+        auto_invest_threshold = 999  # 自動投資しない
+        nisa_enabled = False
+        nisa_annual_limit = 0
+        min_cash_balance = 0
+        capital_gains_tax_rate = 0.20315
+
     # シミュレーション結果を格納
     results = []
 
     # 初期値
-    assets = current_assets
+    cash = current_cash
+    stocks = current_stocks
+    stocks_cost_basis = current_stocks  # 初期の株は簿価=時価と仮定
+    nisa_balance = 0  # NISA枠内の投資額
+    nisa_cost_basis = 0  # NISA枠内の簿価
     income = monthly_income
     expense = monthly_expense
     fire_achieved = False  # FIRE達成フラグ
@@ -501,6 +847,8 @@ def simulate_future_assets(
     # 開始日
     from datetime import datetime
     current_date = datetime.now()
+    current_year = current_date.year
+    nisa_used_this_year = 0  # 今年のNISA投資額
 
     # 月次シミュレーション
     for month in range(simulation_months + 1):
@@ -509,6 +857,11 @@ def simulate_future_assets(
 
         # 年数（成長率計算用）
         years = month / 12
+
+        # 年が変わったらNISA枠をリセット
+        if date.year > current_year:
+            current_year = date.year
+            nisa_used_this_year = 0
 
         # 収入の成長（複利）
         income = monthly_income * (1 + income_growth_rate) ** years
@@ -541,24 +894,15 @@ def simulate_future_assets(
         annual_workation_cost = calculate_workation_cost(years, config)
         monthly_workation_cost = annual_workation_cost / 12
 
-        # 総支出 = 基本支出 + 教育費 + 住宅ローン + メンテナンス費用 + ワーケーション費用
-        expense = base_expense + monthly_education_expense + monthly_mortgage_payment + monthly_maintenance_cost + monthly_workation_cost
+        # 社会保険料を追加（FIRE後のみ）
+        annual_pension_premium = calculate_national_pension_premium(years, config, fire_achieved)
+        monthly_pension_premium = annual_pension_premium / 12
 
-        # 現在の年間支出を計算（FIREチェック用）
-        current_annual_expense = (base_expense + monthly_education_expense + monthly_mortgage_payment) * 12 + annual_maintenance_cost + annual_workation_cost
+        annual_health_insurance_premium = calculate_national_health_insurance_premium(years, config, fire_achieved)
+        monthly_health_insurance_premium = annual_health_insurance_premium / 12
 
-        # FIRE達成チェック: 今退職しても寿命まで資産が持つか?
-        if not fire_achieved and month > 0:  # 最初の月はスキップ
-            if can_retire_now(
-                current_assets=assets,
-                years_offset=years,
-                current_annual_expense=current_annual_expense,
-                config=config,
-                scenario=scenario
-            ):
-                fire_achieved = True
-                fire_month = month
-                print(f"  FIRE可能! at month {month} ({years:.1f} years), assets=JPY{assets:,.0f}")
+        # 総支出 = 基本支出 + 教育費 + 住宅ローン + メンテナンス費用 + ワーケーション費用 + 社会保険料
+        expense = base_expense + monthly_education_expense + monthly_mortgage_payment + monthly_maintenance_cost + monthly_workation_cost + monthly_pension_premium + monthly_health_insurance_premium
 
         # FIRE達成後は労働収入を0にする（仕事を辞める想定）
         # ただし、年金収入、児童手当、副収入は継続
@@ -571,34 +915,220 @@ def simulate_future_assets(
             total_income = income + monthly_pension_income + monthly_child_allowance
             labor_income = income  # FIRE前は労働収入
 
-        # 運用リターン
-        investment_return = assets * monthly_return_rate
+        # 1. 収入を現金に加算
+        cash += total_income
 
-        # 資産更新（収入 - 支出 + 運用リターン）
-        assets = assets + total_income - expense + investment_return
+        # 2. 支出を現金から引き出し
+        if cash >= expense:
+            cash -= expense
+            withdrawal_from_stocks = 0
+            capital_gains_tax = 0
+        else:
+            # 現金が足りない場合は株から取り崩し
+            shortage = expense - cash
+            cash = 0
+
+            if allocation_enabled:
+                # 税金を考慮した取り崩し額を計算
+                # 必要額 = shortage / (1 - tax_rate) （税引き後でshortageを確保）
+
+                # NISA枠内の株を優先的に取り崩し（非課税）
+                if nisa_balance > 0:
+                    nisa_withdrawal = min(shortage, nisa_balance)
+                    nisa_withdrawal_shares = nisa_withdrawal / stocks * stocks_cost_basis if stocks > 0 else 0
+                    nisa_balance -= nisa_withdrawal
+                    nisa_cost_basis -= min(nisa_withdrawal_shares, nisa_cost_basis)
+                    stocks -= nisa_withdrawal
+                    stocks_cost_basis -= min(nisa_withdrawal_shares, stocks_cost_basis)
+                    shortage -= nisa_withdrawal
+
+                # まだ不足している場合は課税口座から取り崩し
+                if shortage > 0 and stocks > 0:
+                    # 税引き後でshortageを得るために必要な売却額
+                    taxable_stocks = stocks - nisa_balance  # NISA以外の株
+                    if taxable_stocks > 0:
+                        avg_cost_basis = (stocks_cost_basis - nisa_cost_basis) / taxable_stocks if taxable_stocks > 0 else 1
+                        # 売却額 x (1 - (時価 - 簿価) / 時価 x 税率) = shortage
+                        # 簡易計算: 売却額が小さい場合は shortage / (1 - tax_rate * gain_ratio) で近似
+                        gain_ratio = max(0, (1 - avg_cost_basis / 1.0))  # 時価1に対する簿価の割合
+                        effective_tax_rate = capital_gains_tax_rate * gain_ratio
+                        required_sale = shortage / (1 - effective_tax_rate) if effective_tax_rate < 1 else shortage
+
+                        actual_sale = min(required_sale, taxable_stocks)
+                        sale_cost_basis = actual_sale * avg_cost_basis
+                        capital_gain = max(0, actual_sale - sale_cost_basis)
+                        capital_gains_tax = capital_gain * capital_gains_tax_rate
+
+                        cash += actual_sale - capital_gains_tax
+                        stocks -= actual_sale
+                        stocks_cost_basis -= sale_cost_basis
+                        withdrawal_from_stocks = actual_sale
+                    else:
+                        withdrawal_from_stocks = 0
+                        capital_gains_tax = 0
+                else:
+                    withdrawal_from_stocks = 0
+                    capital_gains_tax = 0
+            else:
+                # 資産配分が無効の場合はシンプルに株を売却
+                withdrawal_from_stocks = min(shortage, stocks)
+                stocks -= withdrawal_from_stocks
+                stocks_cost_basis -= min(withdrawal_from_stocks, stocks_cost_basis)
+                cash += withdrawal_from_stocks
+                capital_gains_tax = 0
+
+        # 3. 運用リターン（株のみ）
+        investment_return = stocks * monthly_return_rate
+        stocks += investment_return
+        # 簿価は増えない（リターンは含み益）
+
+        # 3.5. FIRE後は最低現金残高を維持（資産配分が有効な場合）
+        if allocation_enabled and fire_achieved:
+            if cash < min_cash_balance and stocks > 0:
+                # 現金が最低残高を下回る場合、株式を売却して補充
+                shortage = min_cash_balance - cash
+
+                # NISA枠内の株を優先的に売却（非課税）
+                if nisa_balance > 0:
+                    nisa_sale = min(shortage, nisa_balance)
+                    nisa_sale_cost = nisa_sale / stocks * stocks_cost_basis if stocks > 0 else 0
+                    nisa_balance -= nisa_sale
+                    nisa_cost_basis -= min(nisa_sale_cost, nisa_cost_basis)
+                    stocks -= nisa_sale
+                    stocks_cost_basis -= min(nisa_sale_cost, stocks_cost_basis)
+                    cash += nisa_sale
+                    shortage -= nisa_sale
+
+                # まだ不足している場合は課税口座から売却
+                if shortage > 0 and stocks > 0:
+                    taxable_stocks = stocks - nisa_balance
+                    if taxable_stocks > 0:
+                        avg_cost_basis = (stocks_cost_basis - nisa_cost_basis) / taxable_stocks if taxable_stocks > 0 else 1
+                        # 税引き後でshortageを得るために必要な売却額
+                        gain_ratio = max(0, (1 - avg_cost_basis / 1.0))
+                        effective_tax_rate = capital_gains_tax_rate * gain_ratio
+                        required_sale = shortage / (1 - effective_tax_rate) if effective_tax_rate < 1 else shortage
+
+                        actual_sale = min(required_sale, taxable_stocks)
+                        sale_cost_basis = actual_sale * avg_cost_basis
+                        capital_gain = max(0, actual_sale - sale_cost_basis)
+                        rebalance_tax = capital_gain * capital_gains_tax_rate
+
+                        cash += actual_sale - rebalance_tax
+                        stocks -= actual_sale
+                        stocks_cost_basis -= sale_cost_basis
+
+        # 4. 余剰現金がある場合は自動投資（FIRE前のみ、資産配分が有効な場合）
+        auto_invested = 0
+        if allocation_enabled and not fire_achieved:
+            # 現金バッファを計算（最低残高と支出ベースのバッファの大きい方を採用）
+            expense_based_buffer = expense * cash_buffer_months
+            required_cash_balance = max(expense_based_buffer, min_cash_balance)
+            cash_threshold = required_cash_balance * auto_invest_threshold
+
+            if cash > cash_threshold:
+                # 最低残高を確保した上での余剰を計算
+                surplus = cash - required_cash_balance
+
+                # NISA枠を優先的に使用
+                nisa_remaining = nisa_annual_limit - nisa_used_this_year if nisa_enabled else 0
+
+                if nisa_remaining > 0 and surplus > 0:
+                    # NISA枠がある場合はNISAで投資
+                    nisa_invest = min(surplus, nisa_remaining)
+                    cash -= nisa_invest
+                    stocks += nisa_invest
+                    stocks_cost_basis += nisa_invest
+                    nisa_balance += nisa_invest
+                    nisa_cost_basis += nisa_invest
+                    nisa_used_this_year += nisa_invest
+                    auto_invested += nisa_invest
+                    surplus -= nisa_invest
+
+                # NISA枠を使い切った後も余剰がある場合は課税口座で投資（設定で制御）
+                invest_beyond_nisa = config.get('asset_allocation', {}).get('invest_beyond_nisa', True)
+                if surplus > 0 and invest_beyond_nisa:
+                    taxable_invest = surplus
+                    cash -= taxable_invest
+                    stocks += taxable_invest
+                    stocks_cost_basis += taxable_invest
+                    auto_invested += taxable_invest
+
+                # 安全チェック: 投資後も最低残高を下回っていないか確認
+                if cash < min_cash_balance:
+                    # 投資しすぎた場合は調整（通常は発生しないはずだが念のため）
+                    adjustment = min_cash_balance - cash
+                    cash += adjustment
+                    stocks -= adjustment
+                    stocks_cost_basis -= adjustment
+                    auto_invested -= adjustment
+
+        # FIRE達成チェック: 今退職しても寿命まで資産が持つか?
+        # 収入・支出・運用益を全て処理した後の資産で判定
+        total_assets = cash + stocks
+        if not fire_achieved and month > 0:  # 最初の月はスキップ
+            # 現在の年間支出を計算（FIREチェック用）
+            # FIRE後の社会保険料を含める必要があるため、fire_achieved=Trueで再計算
+            annual_pension_premium_for_fire = calculate_national_pension_premium(years, config, fire_achieved=True)
+            annual_health_insurance_premium_for_fire = calculate_national_health_insurance_premium(years, config, fire_achieved=True)
+            current_annual_expense = (base_expense + monthly_education_expense + monthly_mortgage_payment) * 12 + annual_pension_premium_for_fire + annual_health_insurance_premium_for_fire + annual_maintenance_cost + annual_workation_cost
+
+            # 余剰現金を計算（FIRE時は最低残高を確保）
+            if allocation_enabled:
+                fire_cash_buffer = max(expense * cash_buffer_months, min_cash_balance)
+            else:
+                fire_cash_buffer = cash
+            potential_investment = max(0, cash - fire_cash_buffer)
+
+            fire_check_result = can_retire_now(
+                current_assets=total_assets,
+                years_offset=years,
+                current_annual_expense=current_annual_expense,
+                config=config,
+                scenario=scenario,
+                current_cash=cash,
+                current_stocks=stocks,
+                nisa_balance=nisa_balance,
+                nisa_cost_basis=nisa_cost_basis,
+                stocks_cost_basis=stocks_cost_basis
+            )
+
+            if fire_check_result:
+                fire_achieved = True
+                fire_month = month
+                print(f"  FIRE可能! at month {month} ({years:.1f} years), assets=JPY{total_assets:,.0f} (cash={cash:,.0f}, stocks={stocks:,.0f}, potential_investment={potential_investment:,.0f})")
 
         # 記録
         results.append({
             'date': date,
             'month': month,
-            'assets': max(0, assets),  # 負債は0で下限
+            'assets': max(0, cash + stocks),  # 総資産
+            'cash': max(0, cash),
+            'stocks': max(0, stocks),
+            'stocks_cost_basis': max(0, stocks_cost_basis),
+            'nisa_balance': max(0, nisa_balance),
             'income': total_income,
             'pension_income': monthly_pension_income,
             'labor_income': labor_income,
+            'child_allowance': monthly_child_allowance,
             'expense': expense,
             'base_expense': base_expense,
             'education_expense': monthly_education_expense,
             'mortgage_payment': monthly_mortgage_payment,
             'maintenance_cost': monthly_maintenance_cost,
             'workation_cost': monthly_workation_cost,
+            'pension_premium': monthly_pension_premium,
+            'health_insurance_premium': monthly_health_insurance_premium,
             'net_cashflow': total_income - expense,
             'investment_return': investment_return,
+            'auto_invested': auto_invested,
+            'capital_gains_tax': capital_gains_tax,
             'fire_achieved': fire_achieved,
             'fire_month': fire_month,
         })
 
         # 資産が破綻ライン（500万円）以下になったら終了
-        if assets <= 5_000_000:
+        if cash + stocks <= 5_000_000:
             break
 
     df = pd.DataFrame(results)
@@ -686,8 +1216,17 @@ def simulate_with_withdrawal(
         if config is not None:
             monthly_post_fire_income = config['simulation'].get('post_fire_income', 0)
 
-        # 総支出 = 基本支出 + 教育費 + 住宅ローン + メンテナンス費用 + ワーケーション費用
-        total_expense = adjusted_base_expense + monthly_education_expense + monthly_mortgage_payment + monthly_maintenance_cost + monthly_workation_cost
+        # 社会保険料を追加（FIRE後のみ、configが提供されている場合）
+        monthly_pension_premium = 0
+        monthly_health_insurance_premium = 0
+        if config is not None:
+            annual_pension_premium = calculate_national_pension_premium(years_elapsed, config, fire_achieved=True)
+            monthly_pension_premium = annual_pension_premium / 12
+            annual_health_insurance_premium = calculate_national_health_insurance_premium(years_elapsed, config, fire_achieved=True)
+            monthly_health_insurance_premium = annual_health_insurance_premium / 12
+
+        # 総支出 = 基本支出 + 教育費 + 住宅ローン + メンテナンス費用 + ワーケーション費用 + 社会保険料
+        total_expense = adjusted_base_expense + monthly_education_expense + monthly_mortgage_payment + monthly_maintenance_cost + monthly_workation_cost + monthly_pension_premium + monthly_health_insurance_premium
 
         # 運用リターン
         investment_return = assets * monthly_return_rate

@@ -84,7 +84,8 @@ def main():
         for scenario in ['standard']:  # 標準シナリオのみ
             print(f"  Simulating {scenario} scenario...")
             simulations[scenario] = simulate_future_assets(
-                current_assets=current_status['net_assets'],
+                current_cash=current_status.get('cash_deposits', 0),
+                current_stocks=current_status.get('investment_trusts', 0),
                 monthly_income=monthly_income,  # 設定値または予測値を使用
                 monthly_expense=trends['monthly_avg_expense'],
                 config=config,

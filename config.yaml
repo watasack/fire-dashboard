@@ -186,6 +186,12 @@ pension:
       annual_amount: 780000    # 年間年金額（円）国民年金のみ
   # 合計: 222万円/年
 
+# 社会保険料設定（FIRE後）
+social_insurance:
+  enabled: true                          # 社会保険料シミュレーションを有効化
+  national_pension_monthly_premium: 16980  # 国民年金保険料（月額・円）令和6年度
+  national_health_insurance_annual_premium: 500000  # 国民健康保険料（年額・円）世帯全体
+
 # ワーケーション費用設定
 workation:
   enabled: true                # ワーケーション費用を有効化
@@ -193,6 +199,27 @@ workation:
   start_child_index: 1         # 第二子（楓）を基準
   start_child_age: 18          # 高校卒業（18歳）
   annual_cost: 700000          # 年間70万円（夏1ヶ月+冬1ヶ月）
+
+# 資産配分設定（現金・株の分離管理）
+asset_allocation:
+  enabled: true                # 資産配分機能を有効化
+
+  # 現金管理
+  cash_buffer_months: 6        # 生活費の何ヶ月分を現金で保持
+  auto_invest_threshold: 1.5   # 現金バッファの何倍で自動投資開始
+
+  # NISA設定
+  nisa_enabled: true           # NISA投資を有効化
+  nisa_annual_limit: 3600000   # 新NISA年間投資上限360万円（2024年〜）
+  invest_beyond_nisa: true     # NISA枠超過後も課税口座で投資を継続（falseにするとNISA枠のみ）
+
+  # 取り崩し戦略
+  withdrawal_strategy: 'cash_first'  # cash_first, balanced
+  min_cash_balance: 5000000    # 最低限保持する現金残高（500万円、破綻ライン）
+
+  # 税金設定
+  capital_gains_tax_rate: 0.20315  # 譲渡益課税20.315%（所得税15.315% + 住民税5%）
+  nisa_tax_exempt: true        # NISA枠内の利益は非課税
 
 # 可視化設定
 visualization:

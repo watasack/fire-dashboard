@@ -6,6 +6,8 @@ Plotlyグラフを統合してダッシュボードHTMLを生成
 import plotly.graph_objects as go
 from typing import Dict, Any, List
 from datetime import datetime
+import json
+from src.data_schema import CUSTOMDATA_COLUMNS, DISPLAY_NAMES, INCOME_COLUMNS, EXPENSE_COLUMNS
 
 
 def generate_dashboard_html(
@@ -48,8 +50,18 @@ def generate_dashboard_html(
         achievement_text = '計算中'
         achievement_detail = ''
 
+    # カスタムデータスキーマをJSON化（JavaScriptで使用）
+    customdata_schema = {col: idx for idx, col in enumerate(CUSTOMDATA_COLUMNS)}
+    customdata_schema_json = json.dumps(customdata_schema)
+
+    # カラム表示名をJSON化
+    display_names_json = json.dumps(DISPLAY_NAMES, ensure_ascii=False)
+
+    # 収入・支出カラムリストをJSON化
+    income_columns_json = json.dumps(INCOME_COLUMNS)
+    expense_columns_json = json.dumps(EXPENSE_COLUMNS)
+
     # カテゴリー別支出比率をJSON化
-    import json
     category_percentages = expense_breakdown.get('category_percentages', {})
     # TOP5のみを取得
     top_categories = sorted(category_percentages.items(), key=lambda x: x[1], reverse=True)[:5]
@@ -164,11 +176,27 @@ def generate_dashboard_html(
 
   <!-- グラフクリックイベント処理 -->
   <script>
+    // データスキーマ（カラム名 → インデックスのマッピング）
+    const CUSTOMDATA_SCHEMA = {customdata_schema_json};
+
+    // 表示名マッピング
+    const DISPLAY_NAMES = {display_names_json};
+
+    // 収入・支出カラムリスト
+    const INCOME_COLUMNS = {income_columns_json};
+    const EXPENSE_COLUMNS = {expense_columns_json};
+
     // カテゴリー別支出比率（TOP5）
     const categoryPercentages = {category_data_json};
 
     // 家族情報
     const familyInfo = {family_info_json};
+
+    // customdataからカラム値を取得するヘルパー関数
+    function getCustomDataValue(customdata, columnName) {{
+      const index = CUSTOMDATA_SCHEMA[columnName];
+      return index !== undefined ? customdata[index] : 0;
+    }}
 
     // 年齢計算関数
     function calculateAge(birthdate, targetDate) {{
@@ -222,19 +250,26 @@ def generate_dashboard_html(
           document.getElementById('detail-assets').textContent =
             '¥' + assets.toFixed(1) + '万';
 
-          if (customdata && customdata.length >= 8) {{
-            // customdata: [labor_income, pension_income, base_expense, education_expense, mortgage_payment, maintenance_cost, workation_cost, investment_return]
-            const laborIncome = customdata[0];
-            const pensionIncome = customdata[1];
-            const baseExpense = customdata[2];
-            const educationExpense = customdata[3];
-            const mortgagePayment = customdata[4];
-            const maintenanceCost = customdata[5];
-            const workationCost = customdata[6];
-            const investmentReturn = customdata[7];
+          if (customdata && customdata.length >= Object.keys(CUSTOMDATA_SCHEMA).length) {{
+            // スキーマを使用してcustomdataから値を取得
+            const laborIncome = getCustomDataValue(customdata, 'labor_income');
+            const pensionIncome = getCustomDataValue(customdata, 'pension_income');
+            const childAllowance = getCustomDataValue(customdata, 'child_allowance');
+            const baseExpense = getCustomDataValue(customdata, 'base_expense');
+            const educationExpense = getCustomDataValue(customdata, 'education_expense');
+            const mortgagePayment = getCustomDataValue(customdata, 'mortgage_payment');
+            const maintenanceCost = getCustomDataValue(customdata, 'maintenance_cost');
+            const workationCost = getCustomDataValue(customdata, 'workation_cost');
+            const pensionPremium = getCustomDataValue(customdata, 'pension_premium');
+            const healthInsurancePremium = getCustomDataValue(customdata, 'health_insurance_premium');
+            const investmentReturn = getCustomDataValue(customdata, 'investment_return');
+            const cash = getCustomDataValue(customdata, 'cash');
+            const stocks = getCustomDataValue(customdata, 'stocks');
+            const autoInvested = getCustomDataValue(customdata, 'auto_invested');
+            const capitalGainsTax = getCustomDataValue(customdata, 'capital_gains_tax');
 
-            const totalIncome = laborIncome + pensionIncome;
-            const totalExpense = baseExpense + educationExpense + mortgagePayment + maintenanceCost + workationCost;
+            const totalIncome = laborIncome + pensionIncome + childAllowance;
+            const totalExpense = baseExpense + educationExpense + mortgagePayment + maintenanceCost + workationCost + pensionPremium + healthInsurancePremium;
 
             // 詳細テーブルを生成
             const tableBody = document.getElementById('detail-table-body');
@@ -308,6 +343,9 @@ def generate_dashboard_html(
             if (pensionIncome > 0) {{
               addRow('年金収入', '+¥' + (pensionIncome / 10000).toFixed(1) + '万', 'income');
             }}
+            if (childAllowance > 0) {{
+              addRow('児童手当', '+¥' + (childAllowance / 10000).toFixed(1) + '万', 'income');
+            }}
             addRow('収入合計', '¥' + (totalIncome / 10000).toFixed(1) + '万', 'subtotal bold');
 
             // 支出セクション
@@ -343,16 +381,38 @@ def generate_dashboard_html(
             if (workationCost > 0) {{
               addRow('ワーケーション費用', '-¥' + (workationCost / 10000).toFixed(1) + '万', 'expense');
             }}
+            if (pensionPremium > 0) {{
+              addRow('国民年金保険料', '-¥' + (pensionPremium / 10000).toFixed(1) + '万', 'expense');
+            }}
+            if (healthInsurancePremium > 0) {{
+              addRow('国民健康保険料', '-¥' + (healthInsurancePremium / 10000).toFixed(1) + '万', 'expense');
+            }}
             addRow('支出合計', '-¥' + (totalExpense / 10000).toFixed(1) + '万', 'subtotal bold');
+
+            // 資産構成セクション
+            addRow('資産構成', '', 'section-header');
+            if (cash >= 0) {{
+              addRow('現金・預金', '¥' + (cash / 10000).toFixed(1) + '万', 'subcategory');
+            }}
+            if (stocks >= 0) {{
+              addRow('投資信託', '¥' + (stocks / 10000).toFixed(1) + '万', 'subcategory');
+            }}
+            addRow('総資産', '¥' + ((cash + stocks) / 10000).toFixed(1) + '万', 'subtotal bold');
 
             // その他セクション
             addRow('その他', '', 'section-header');
             if (investmentReturn > 0) {{
               addRow('運用益', '+¥' + (investmentReturn / 10000).toFixed(1) + '万', 'income');
             }}
+            if (autoInvested > 0) {{
+              addRow('自動投資（NISA）', '-¥' + (autoInvested / 10000).toFixed(1) + '万', 'expense');
+            }}
+            if (capitalGainsTax > 0) {{
+              addRow('譲渡益課税', '-¥' + (capitalGainsTax / 10000).toFixed(1) + '万', 'expense');
+            }}
 
             // 純変動
-            const netChange = (totalIncome - totalExpense + investmentReturn) / 10000;
+            const netChange = (totalIncome - totalExpense + investmentReturn - autoInvested - capitalGainsTax) / 10000;
             const netChangeStr = (netChange >= 0 ? '+' : '') + '¥' + netChange.toFixed(1) + '万';
             addRow('純変動', netChangeStr, 'total');
 
@@ -371,6 +431,13 @@ def generate_dashboard_html(
               items.push({{
                 label: '年金収入',
                 value: pensionIncome / 10000,
+                measure: 'relative'
+              }});
+            }}
+            if (childAllowance !== 0) {{
+              items.push({{
+                label: '児童手当',
+                value: childAllowance / 10000,
                 measure: 'relative'
               }});
             }}
@@ -431,10 +498,38 @@ def generate_dashboard_html(
                 measure: 'relative'
               }});
             }}
+            if (pensionPremium !== 0) {{
+              items.push({{
+                label: '国民年金',
+                value: -pensionPremium / 10000,
+                measure: 'relative'
+              }});
+            }}
+            if (healthInsurancePremium !== 0) {{
+              items.push({{
+                label: '国民健康保険',
+                value: -healthInsurancePremium / 10000,
+                measure: 'relative'
+              }});
+            }}
             if (investmentReturn !== 0) {{
               items.push({{
                 label: '運用益',
                 value: investmentReturn / 10000,
+                measure: 'relative'
+              }});
+            }}
+            if (autoInvested !== 0) {{
+              items.push({{
+                label: '自動投資',
+                value: -autoInvested / 10000,
+                measure: 'relative'
+              }});
+            }}
+            if (capitalGainsTax !== 0) {{
+              items.push({{
+                label: '譲渡益課税',
+                value: -capitalGainsTax / 10000,
                 measure: 'relative'
               }});
             }}
