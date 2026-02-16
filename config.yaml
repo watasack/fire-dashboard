@@ -220,6 +220,27 @@ workation:
   start_child_age: 18          # 高校卒業（18歳）
   annual_cost: 700000          # 年間70万円（夏1ヶ月+冬1ヶ月）
 
+# 資産配分設定（現金・株の分離管理）
+asset_allocation:
+  enabled: true                # 資産配分機能を有効化
+
+  # 現金管理
+  cash_buffer_months: 6        # 生活費の何ヶ月分を現金で保持
+  auto_invest_threshold: 1.5   # 現金バッファの何倍で自動投資開始
+
+  # NISA設定
+  nisa_enabled: true           # NISA投資を有効化
+  nisa_annual_limit: 3600000   # 新NISA年間投資上限360万円（2024年〜）
+  invest_beyond_nisa: true     # NISA枠超過後も課税口座で投資を継続（falseにするとNISA枠のみ）
+
+  # 取り崩し戦略
+  withdrawal_strategy: 'cash_first'  # cash_first, balanced
+  min_cash_balance: 5000000    # 最低限保持する現金残高（500万円、破綻ライン）
+
+  # 税金設定
+  capital_gains_tax_rate: 0.20315  # 譲渡益課税20.315%（所得税15.315% + 住民税5%）
+  nisa_tax_exempt: true        # NISA枠内の利益は非課税
+
 # 可視化設定
 visualization:
   theme: 'plotly_white'
