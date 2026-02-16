@@ -58,11 +58,6 @@ simulation:
 
 # FIRE設定
 fire:
-  withdrawal_rate: 0.04        # 4%ルール
-  safety_buffer: 1.0           # 安全バッファ 0%（余剰なし）
-  target_calculation_method: 'simulation'  # または 'simple'（支出×25）
-  tolerance: 100000            # 二分探索の許容誤差（円）
-
   # ライフステージ別の基本生活費（教育費・住宅ローン・住宅メンテナンスを除く）
   # 子供の年齢に応じて自動的に切り替わります
   # 家計調査2024年平均（二人以上世帯）から住居費・教育費を除き、
@@ -103,13 +98,6 @@ education:
       junior_high: 'public'    # private or public
       high: 'public'           # private or public
       university: 'national'   # national, private_arts, private_science
-    # 複数の子供がいる場合は追加
-    # - birthdate: '2024/04/15'
-    #   kindergarten: 'public'
-    #   elementary: 'public'
-    #   junior_high: 'public'
-    #   high: 'public'
-    #   university: 'national'
 
   # 教育段階別の年間費用（円）- 文部科学省の調査を基にした標準値
   costs:
@@ -144,16 +132,8 @@ child_allowance:
 # 住宅ローン設定
 mortgage:
   enabled: true                # 住宅ローンを有効化
-  # 月々の返済額（円）
-  monthly_payment: 156300      # 合計: 156,300円/月
-  # 内訳
-  breakdown:
-    land_loan_husband: 22000   # 土地ローン（夫）
-    land_loan_wife: 22000      # 土地ローン（妻）
-    building_loan_husband: 68200  # 建物ローン（夫）
-    building_loan_wife: 44100  # 建物ローン（妻）
-  # 返済終了日
-  end_date: '2059/12/31'       # 35年ローン、2059年12月終了
+  monthly_payment: 156300      # 月々の返済額（円）
+  end_date: '2059/12/31'       # 返済終了日（35年ローン、2059年12月終了）
 
 # 住宅メンテナンス費用設定
 house_maintenance:
@@ -233,8 +213,7 @@ asset_allocation:
   nisa_annual_limit: 3600000   # 新NISA年間投資上限360万円（2024年〜）
   invest_beyond_nisa: true     # NISA枠超過後も課税口座で投資を継続（falseにするとNISA枠のみ）
 
-  # 取り崩し戦略
-  withdrawal_strategy: 'cash_first'  # cash_first, balanced
+  # 現金管理
   min_cash_balance: 5000000    # 最低限保持する現金残高（500万円、破綻ライン）
 
   # 税金設定
@@ -246,8 +225,6 @@ visualization:
   theme: 'plotly_white'
   color_scheme:
     assets: '#06b6d4'          # 総資産（シアン）
-    net_assets: '#0d9488'      # 純資産（ティール）
-    debt: '#e11d48'            # 債務（ローズ）
     income: '#0d9488'          # 収入（ティール）
     expense: '#d97706'         # 支出（アンバー）
 
