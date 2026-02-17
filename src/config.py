@@ -73,8 +73,6 @@ def _validate_config(config: Dict[str, Any]) -> None:
             if param not in scenario_config:
                 raise ValueError(f"Missing parameter: simulation.{scenario}.{param}")
 
-    # FIRE設定の確認（必須パラメータなし）
-    # fire_config = config.get('fire', {})
 
 
 def get_scenario_config(config: Dict[str, Any], scenario: str = 'standard') -> Dict[str, Any]:
