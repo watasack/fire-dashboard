@@ -1041,7 +1041,12 @@ def simulate_future_assets(
             capital_gains_this_year = 0
 
         # 収入の成長（複利）
-        income = monthly_income * (1 + income_growth_rate) ** years
+        # 修平（会社員）: income_growth_rateを適用
+        # 桜（個人事業主）: 固定（案件次第で変動するため保守的に成長なしと想定）
+        if shuhei_income_base + sakura_income_base > 0:
+            income = shuhei_income_base * (1 + income_growth_rate) ** years + sakura_income_base
+        else:
+            income = monthly_income * (1 + income_growth_rate) ** years
 
         # ライフステージ別の基本生活費を計算（月額に変換前）
         fallback_annual_expense = monthly_expense * 12 * (1 + expense_growth_rate) ** years
@@ -1103,8 +1108,12 @@ def simulate_future_assets(
         else:
             total_income = income + monthly_pension_income + monthly_child_allowance
             labor_income = income  # FIRE前は労働収入
-            shuhei_income_monthly = income * shuhei_ratio
-            sakura_income_monthly = income * (1 - shuhei_ratio)
+            if shuhei_income_base + sakura_income_base > 0:
+                shuhei_income_monthly = shuhei_income_base * (1 + income_growth_rate) ** years
+                sakura_income_monthly = sakura_income_base  # 固定
+            else:
+                shuhei_income_monthly = income * shuhei_ratio
+                sakura_income_monthly = income * (1 - shuhei_ratio)
 
         # 1. 収入を現金に加算
         cash += total_income
