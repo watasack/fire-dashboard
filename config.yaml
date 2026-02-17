@@ -26,7 +26,7 @@ simulation:
   years: 50                    # シミュレーション期間（年）
   start_age: 35                # 現在の年齢（オプション）
   life_expectancy: 90          # 想定寿命
-  initial_labor_income: 700000 # 初期労働収入（月額・円）
+  initial_labor_income: 765875 # 世帯手取り月額（円）: 修平465,875 + 桜300,000
   post_fire_income: 20000      # FIRE後の副収入（月額・円）開発業務など
 
   # 標準シナリオ（バランス型）
@@ -165,10 +165,9 @@ pension:
       birthdate: '1990/05/13'     # 生年月日（YYYY/MM/DD形式）
       pension_type: 'employee'    # 厚生年金 + 国民年金
       work_start_age: 23          # 就労開始年齢（大卒想定）
-      avg_monthly_salary: 700000  # 平均月収（円）- 厚生年金計算用
+      avg_monthly_salary: 625615  # 平均標準報酬額（円）- 厚生年金計算用
+      # 算出根拠: 年収7,507,388円（月固定556,000×12 + ボーナス417,694×2）/ 12ヶ月
       # 動的計算により、FIRE達成タイミングに応じて年金額が自動計算されます
-      # 35歳FIRE想定: 約136.8万円/年（厚生年金55.2万 + 国民年金81.6万）
-      # 65歳就労想定: 約275.0万円/年（厚生年金193.4万 + 国民年金81.6万）
     - name: '桜'
       birthdate: '1991/04/20'     # 生年月日（YYYY/MM/DD形式）
       pension_type: 'national'    # 国民年金のみ
