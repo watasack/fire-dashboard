@@ -328,15 +328,20 @@ def calculate_national_pension_premium(
 def calculate_national_health_insurance_premium(
     year_offset: float,
     config: Dict[str, Any],
-    fire_achieved: bool = False
+    fire_achieved: bool = False,
+    prev_year_capital_gains: float = 0
 ) -> float:
     """
-    国民健康保険料を計算（FIRE後のみ計上）
+    国民健康保険料を動的計算（FIRE後のみ計上）
+
+    国民健康保険料 = 所得割 + 均等割 + 平等割（上限あり）
+    所得割は前年の所得（副業収入 + 株式譲渡益）に基づいて計算する。
 
     Args:
         year_offset: シミュレーション開始からの経過年数
         config: 設定辞書
         fire_achieved: FIRE達成済みか（True: FIRE後、False: FIRE前）
+        prev_year_capital_gains: 前年の株式譲渡益（円）
 
     Returns:
         年間国民健康保険料（円）
@@ -349,10 +354,37 @@ def calculate_national_health_insurance_premium(
     if not fire_achieved:
         return 0
 
-    social_insurance_config = config['social_insurance']
-    annual_premium = social_insurance_config.get('national_health_insurance_annual_premium', 500000)
+    si = config['social_insurance']
 
-    return annual_premium
+    # --- 所得の算出 ---
+    # 副業収入（年額）
+    post_fire_income = config['simulation'].get('post_fire_income', 0)
+    annual_side_income = post_fire_income * 12
+
+    # 前年の株式譲渡益（キャピタルゲイン）
+    # 国民健康保険の所得割は分離課税の譲渡所得も含む
+    capital_gains = prev_year_capital_gains
+
+    # 合計所得
+    total_income = annual_side_income + capital_gains
+
+    # --- 所得割 ---
+    basic_deduction = si.get('health_insurance_basic_deduction', 430000)
+    taxable_income = max(0, total_income - basic_deduction)
+    income_rate = si.get('health_insurance_income_rate', 0.11)
+    income_based_premium = taxable_income * income_rate
+
+    # --- 均等割 + 平等割 ---
+    per_person = si.get('health_insurance_per_person', 50000)
+    members = si.get('health_insurance_members', 2)
+    per_household = si.get('health_insurance_per_household', 30000)
+    fixed_premium = per_person * members + per_household
+
+    # --- 合計（上限適用）---
+    max_premium = si.get('health_insurance_max_premium', 1060000)
+    total_premium = min(income_based_premium + fixed_premium, max_premium)
+
+    return total_premium
 
 
 def calculate_mortgage_payment(year_offset: float, config: Dict[str, Any]) -> float:
@@ -551,9 +583,21 @@ def simulate_post_fire_assets(
     # FIRE後の副収入
     post_fire_income = config['simulation'].get('post_fire_income', 0)
 
+    # 健康保険料の動的計算用（年間キャピタルゲイン追跡）
+    from datetime import datetime
+    current_date_post = datetime.now()
+    current_year_post = (current_date_post + relativedelta(months=int(years_offset * 12))).year
+    capital_gains_this_year_post = 0
+    prev_year_capital_gains_post = 0
+
     # 月次シミュレーション（FIRE後）
     for month in range(remaining_months):
         years = years_offset + month / 12
+        date_post = current_date_post + relativedelta(months=int(years * 12))
+        if date_post.year > current_year_post:
+            current_year_post = date_post.year
+            prev_year_capital_gains_post = capital_gains_this_year_post
+            capital_gains_this_year_post = 0
 
         # 基本生活費
         annual_base_expense = calculate_base_expense(years, config, 0)
@@ -591,7 +635,10 @@ def simulate_post_fire_assets(
         annual_pension_premium = calculate_national_pension_premium(years, config, fire_achieved=True)
         monthly_pension_premium = annual_pension_premium / 12
 
-        annual_health_insurance_premium = calculate_national_health_insurance_premium(years, config, fire_achieved=True)
+        annual_health_insurance_premium = calculate_national_health_insurance_premium(
+            years, config, fire_achieved=True,
+            prev_year_capital_gains=prev_year_capital_gains_post
+        )
         monthly_health_insurance_premium = annual_health_insurance_premium / 12
 
         # 総支出
@@ -642,6 +689,7 @@ def simulate_post_fire_assets(
                         sale_cost_basis = actual_sale * avg_cost_basis
                         capital_gain = max(0, actual_sale - sale_cost_basis)
                         capital_gains_tax = capital_gain * capital_gains_tax_rate
+                        capital_gains_this_year_post += capital_gain  # 年間譲渡益を集計
 
                         cash += actual_sale - capital_gains_tax
                         stocks -= actual_sale
@@ -690,6 +738,7 @@ def simulate_post_fire_assets(
                         sale_cost_basis = actual_sale * avg_cost_basis
                         capital_gain = max(0, actual_sale - sale_cost_basis)
                         capital_gains_tax = capital_gain * capital_gains_tax_rate
+                        capital_gains_this_year_post += capital_gain  # 年間譲渡益を集計
 
                         cash += actual_sale - capital_gains_tax
                         stocks -= actual_sale
@@ -950,6 +999,8 @@ def simulate_future_assets(
     current_date = datetime.now()
     current_year = current_date.year
     nisa_used_this_year = 0  # 今年のNISA投資額
+    capital_gains_this_year = 0   # 今年の株式譲渡益（健康保険料計算用）
+    prev_year_capital_gains = 0   # 前年の株式譲渡益（来年の健康保険料計算用）
 
     # 月次シミュレーション
     for month in range(simulation_months + 1):
@@ -959,10 +1010,12 @@ def simulate_future_assets(
         # 年数（成長率計算用）
         years = month / 12
 
-        # 年が変わったらNISA枠をリセット
+        # 年が変わったらNISA枠と譲渡益集計をリセット
         if date.year > current_year:
             current_year = date.year
             nisa_used_this_year = 0
+            prev_year_capital_gains = capital_gains_this_year  # 前年の譲渡益を保存
+            capital_gains_this_year = 0
 
         # 収入の成長（複利）
         income = monthly_income * (1 + income_growth_rate) ** years
@@ -1006,7 +1059,10 @@ def simulate_future_assets(
         annual_pension_premium = calculate_national_pension_premium(years, config, fire_achieved)
         monthly_pension_premium = annual_pension_premium / 12
 
-        annual_health_insurance_premium = calculate_national_health_insurance_premium(years, config, fire_achieved)
+        annual_health_insurance_premium = calculate_national_health_insurance_premium(
+            years, config, fire_achieved,
+            prev_year_capital_gains=prev_year_capital_gains
+        )
         monthly_health_insurance_premium = annual_health_insurance_premium / 12
 
         # 総支出 = 基本支出 + 教育費 + 住宅ローン + メンテナンス費用 + ワーケーション費用 + 社会保険料
@@ -1066,6 +1122,7 @@ def simulate_future_assets(
                         sale_cost_basis = actual_sale * avg_cost_basis
                         capital_gain = max(0, actual_sale - sale_cost_basis)
                         capital_gains_tax = capital_gain * capital_gains_tax_rate
+                        capital_gains_this_year += capital_gain  # 年間譲渡益を集計
 
                         cash += actual_sale - capital_gains_tax
                         stocks -= actual_sale
@@ -1121,6 +1178,7 @@ def simulate_future_assets(
                         sale_cost_basis = actual_sale * avg_cost_basis
                         capital_gain = max(0, actual_sale - sale_cost_basis)
                         rebalance_tax = capital_gain * capital_gains_tax_rate
+                        capital_gains_this_year += capital_gain  # 年間譲渡益を集計
 
                         cash += actual_sale - rebalance_tax
                         stocks -= actual_sale
@@ -1336,7 +1394,11 @@ def simulate_with_withdrawal(
         if config is not None:
             annual_pension_premium = calculate_national_pension_premium(years_elapsed, config, fire_achieved=True)
             monthly_pension_premium = annual_pension_premium / 12
-            annual_health_insurance_premium = calculate_national_health_insurance_premium(years_elapsed, config, fire_achieved=True)
+            # simulate_with_withdrawalはFIREチェック用の簡易計算なので、
+            # 実際の譲渡益は不明のため0で近似（保守的な見積もり）
+            annual_health_insurance_premium = calculate_national_health_insurance_premium(
+                years_elapsed, config, fire_achieved=True, prev_year_capital_gains=0
+            )
             monthly_health_insurance_premium = annual_health_insurance_premium / 12
 
         # 総支出 = 基本支出 + 教育費 + 住宅ローン + メンテナンス費用 + ワーケーション費用 + 社会保険料
