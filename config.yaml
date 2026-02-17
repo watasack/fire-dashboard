@@ -26,7 +26,10 @@ simulation:
   years: 50                    # シミュレーション期間（年）
   start_age: 35                # 現在の年齢（オプション）
   life_expectancy: 90          # 想定寿命
-  initial_labor_income: 765875 # 世帯手取り月額（円）: 修平465,875 + 桜300,000
+  # 労働収入（夫婦別設定）
+  shuhei_income: 465875  # 修平の手取り月額（円）: 年収7,507,388→社保・税引後
+  sakura_income: 300000  # 桜の手取り月額（円）: 個人事業主の想定手取り
+  initial_labor_income: 765875 # 世帯手取り合計（shuhei_income + sakura_income）
   post_fire_income: 20000      # FIRE後の副収入（月額・円）開発業務など
 
   # 標準シナリオ（バランス型）

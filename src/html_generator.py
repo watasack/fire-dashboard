@@ -253,6 +253,8 @@ def generate_dashboard_html(
           if (customdata && customdata.length >= Object.keys(CUSTOMDATA_SCHEMA).length) {{
             // スキーマを使用してcustomdataから値を取得
             const laborIncome = getCustomDataValue(customdata, 'labor_income');
+            const shuheiIncome = getCustomDataValue(customdata, 'shuhei_income');
+            const sakuraIncome = getCustomDataValue(customdata, 'sakura_income');
             const pensionIncome = getCustomDataValue(customdata, 'pension_income');
             const childAllowance = getCustomDataValue(customdata, 'child_allowance');
             const baseExpense = getCustomDataValue(customdata, 'base_expense');
@@ -339,6 +341,12 @@ def generate_dashboard_html(
             addRow('収入', '', 'section-header');
             if (laborIncome > 0) {{
               addRow('労働収入', '+¥' + (laborIncome / 10000).toFixed(1) + '万', 'income');
+              if (shuheiIncome > 0) {{
+                addRow('└ 修平（会社員）', '+¥' + (shuheiIncome / 10000).toFixed(1) + '万', 'subcategory');
+              }}
+              if (sakuraIncome > 0) {{
+                addRow('└ 桜（個人事業主）', '+¥' + (sakuraIncome / 10000).toFixed(1) + '万', 'subcategory');
+              }}
             }}
             if (pensionIncome > 0) {{
               addRow('年金収入', '+¥' + (pensionIncome / 10000).toFixed(1) + '万', 'income');

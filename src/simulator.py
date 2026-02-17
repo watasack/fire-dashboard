@@ -998,6 +998,14 @@ def simulate_future_assets(
     # シミュレーション結果を格納
     results = []
 
+    # 夫婦別収入の比率を計算（詳細表示用）
+    shuhei_income_base = config['simulation'].get('shuhei_income', 0)
+    sakura_income_base = config['simulation'].get('sakura_income', 0)
+    if shuhei_income_base + sakura_income_base > 0:
+        shuhei_ratio = shuhei_income_base / (shuhei_income_base + sakura_income_base)
+    else:
+        shuhei_ratio = 1.0  # 個別設定がない場合は全額を修平に割り当て
+
     # 初期値
     cash = current_cash
     stocks = current_stocks
@@ -1090,9 +1098,13 @@ def simulate_future_assets(
         if fire_achieved:
             total_income = monthly_pension_income + monthly_child_allowance + post_fire_income
             labor_income = post_fire_income  # FIRE後は副収入のみ
+            shuhei_income_monthly = 0
+            sakura_income_monthly = 0
         else:
             total_income = income + monthly_pension_income + monthly_child_allowance
             labor_income = income  # FIRE前は労働収入
+            shuhei_income_monthly = income * shuhei_ratio
+            sakura_income_monthly = income * (1 - shuhei_ratio)
 
         # 1. 収入を現金に加算
         cash += total_income
@@ -1291,6 +1303,8 @@ def simulate_future_assets(
             'income': total_income,
             'pension_income': monthly_pension_income,
             'labor_income': labor_income,
+            'shuhei_income': shuhei_income_monthly,
+            'sakura_income': sakura_income_monthly,
             'child_allowance': monthly_child_allowance,
             'expense': expense,
             'base_expense': base_expense,
