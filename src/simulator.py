@@ -836,26 +836,41 @@ def calculate_base_expense(year_offset: float, config: Dict[str, Any], fallback_
     # 基本支出（第一子の年齢に基づく）
     base_expense = base_expense_by_stage.get(stage, fallback_expense)
 
-    # 追加の子供による生活費増加を計算
-    additional_child_expense = config.get('fire', {}).get('additional_child_expense', 0)
+    # 第二子以降：各子供の年齢（ステージ）に応じた追加費用を加算
+    additional_by_stage = config.get('fire', {}).get('additional_child_expense_by_stage', {})
 
-    if additional_child_expense > 0 and len(children) > 1:
-        # シミュレーション時点で出生済みの追加子供数をカウント
+    if additional_by_stage and len(children) > 1:
         simulation_date = current_date + pd.Timedelta(days=year_offset * 365.25)
-        born_children_count = 0
 
-        for child in children:
-            child_birthdate_str = child.get('birthdate')
-            if child_birthdate_str:
-                child_birthdate = datetime.strptime(child_birthdate_str, '%Y/%m/%d')
-                if child_birthdate <= simulation_date:
-                    born_children_count += 1
+        for additional_child in children[1:]:
+            child_birthdate_str = additional_child.get('birthdate')
+            if not child_birthdate_str:
+                continue
 
-        # 第一子を除く追加子供の人数
-        additional_children = max(0, born_children_count - 1)
+            child_birthdate = datetime.strptime(child_birthdate_str, '%Y/%m/%d')
 
-        # 追加子供分の生活費を加算
-        base_expense += additional_child_expense * additional_children
+            # まだ生まれていない場合はスキップ
+            if child_birthdate > simulation_date:
+                continue
+
+            # 各子供の年齢からステージを判定
+            child_current_age = (current_date - child_birthdate).days / 365.25
+            child_age = child_current_age + year_offset
+
+            if child_age < 6:
+                child_stage = 'young_child'
+            elif child_age < 12:
+                child_stage = 'elementary'
+            elif child_age < 15:
+                child_stage = 'junior_high'
+            elif child_age < 18:
+                child_stage = 'high_school'
+            elif child_age < 22:
+                child_stage = 'university'
+            else:
+                child_stage = 'empty_nest'
+
+            base_expense += additional_by_stage.get(child_stage, 0)
 
     return base_expense
 
