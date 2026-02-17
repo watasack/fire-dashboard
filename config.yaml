@@ -1,16 +1,10 @@
 # FIRE Dashboard Configuration
 
-# プロジェクト情報
-project:
-  name: "FIRE Dashboard"
-  description: "Financial Independence, Retire Early"
-
 # データソース設定
 data:
   encoding: 'cp932'
   asset_file: 'data/資産推移月次.csv'
   transaction_pattern: 'data/収入・支出詳細_*.csv'
-  date_format: '%Y/%m/%d'
 
   # 収入予測設定（将来シミュレーションで使用する収入の条件）
   income_forecast:
@@ -218,22 +212,11 @@ asset_allocation:
 
   # 税金設定
   capital_gains_tax_rate: 0.20315  # 譲渡益課税20.315%（所得税15.315% + 住民税5%）
-  nisa_tax_exempt: true        # NISA枠内の利益は非課税
 
 # 可視化設定
 visualization:
-  theme: 'plotly_white'
-  color_scheme:
-    assets: '#06b6d4'          # 総資産（シアン）
-    income: '#0d9488'          # 収入（ティール）
-    expense: '#d97706'         # 支出（アンバー）
-
-  chart_height: 550
-  responsive: true
   font_family: "'Segoe UI', -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Meiryo', sans-serif"
 
 # 出力設定
 output:
   html_file: 'dashboard/index.html'
-  include_raw_data: false      # セキュリティ考慮（falseで集計値のみ）
-  update_timestamp: true
