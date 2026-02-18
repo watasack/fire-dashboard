@@ -30,7 +30,7 @@ simulation:
   shuhei_income: 465875  # 修平の手取り月額（円）: 年収7,507,388→社保・税引後
   sakura_income: 300000  # 桜の手取り月額（円）: 個人事業主の想定手取り
   initial_labor_income: 765875 # 世帯手取り合計（shuhei_income + sakura_income）
-  post_fire_income: 20000      # FIRE後の副収入（月額・円）開発業務など
+  post_fire_income: 100000      # FIRE後の副収入（月額・円）開発業務など
 
   # 標準シナリオ（バランス型）
   standard:
@@ -71,7 +71,7 @@ fire:
   # 第二子以降、各子供の年齢（ステージ）に応じた追加費用を加算
   # ベースは第一子のステージの世帯費用 + 各追加子供の年齢別増加分
   additional_child_expense_by_stage:
-    young_child: 500000   # 0-5歳:  50万/年（食費増・おむつ・ベビー用品・保育関連）
+    young_child: 500000   # 0-5歳:  50万/年（食費増・おむつ・ベビー用品等）※保育園費はeducation.costs.nurseryで別途計上
     elementary:  400000   # 6-11歳: 40万/年（習い事・文房具・給食費・学童）
     junior_high: 450000   # 12-14歳: 45万/年（部活・制服・修学旅行）
     high_school: 450000   # 15-17歳: 45万/年（交通費・部活・受験費用）
