@@ -534,6 +534,157 @@ def calculate_workation_cost(year_offset: float, config: Dict[str, Any]) -> floa
         return 0
 
 
+def _sell_stocks_with_tax(
+    shortage: float,
+    stocks: float,
+    nisa_balance: float,
+    nisa_cost_basis: float,
+    stocks_cost_basis: float,
+    capital_gains_tax_rate: float,
+    allocation_enabled: bool,
+) -> dict:
+    """
+    NISA優先で株を売却し、shortage分を確保する。
+
+    呼び出し側での使い分け:
+      支出不足型: cash += result['cash_from_taxable']         （NISA分はcashを経由せず支出に充当）
+      最低現金型: cash += result['nisa_sold'] + result['cash_from_taxable']（全額cashへ）
+
+    Returns:
+      stocks, nisa_balance, nisa_cost_basis, stocks_cost_basis: 更新後の値
+      nisa_sold:         NISA売却額（非課税）
+      cash_from_taxable: 課税口座売却後の現金（税引後）
+      capital_gain:      実現益（呼び出し側でcapital_gains_this_yearに加算）
+      total_sold:        総売却額
+    """
+    nisa_sold = 0.0
+    cash_from_taxable = 0.0
+    capital_gain = 0.0
+
+    if not allocation_enabled:
+        # 資産配分無効: 税なし単純売却（全額cash_from_taxableとして返す）
+        sold = min(shortage, stocks)
+        return {
+            'stocks': stocks - sold,
+            'nisa_balance': nisa_balance,
+            'nisa_cost_basis': nisa_cost_basis,
+            'stocks_cost_basis': max(0.0, stocks_cost_basis - sold),
+            'nisa_sold': 0.0,
+            'cash_from_taxable': sold,
+            'capital_gain': 0.0,
+            'total_sold': sold,
+        }
+
+    # NISA優先売却（非課税）
+    if nisa_balance > 0 and shortage > 0:
+        nisa_sold = min(shortage, nisa_balance)
+        nisa_sold_cost = nisa_sold / stocks * stocks_cost_basis if stocks > 0 else 0.0
+        nisa_balance -= nisa_sold
+        nisa_cost_basis = max(0.0, nisa_cost_basis - nisa_sold_cost)
+        stocks -= nisa_sold
+        stocks_cost_basis = max(0.0, stocks_cost_basis - nisa_sold_cost)
+        shortage -= nisa_sold
+
+    # 課税口座売却（税引後でshorageを確保）
+    taxable_sold = 0.0
+    if shortage > 0 and stocks > 0:
+        taxable_stocks = stocks - nisa_balance
+        if taxable_stocks > 0:
+            avg_cost_basis = (stocks_cost_basis - nisa_cost_basis) / taxable_stocks
+            gain_ratio = max(0.0, 1.0 - avg_cost_basis)
+            effective_tax_rate = capital_gains_tax_rate * gain_ratio
+            required_sale = shortage / (1 - effective_tax_rate) if effective_tax_rate < 1 else shortage
+            taxable_sold = min(required_sale, taxable_stocks)
+            sale_cost = taxable_sold * avg_cost_basis
+            capital_gain = max(0.0, taxable_sold - sale_cost)
+            tax = capital_gain * capital_gains_tax_rate
+            cash_from_taxable = taxable_sold - tax
+            stocks -= taxable_sold
+            stocks_cost_basis = max(0.0, stocks_cost_basis - sale_cost)
+
+    return {
+        'stocks': stocks,
+        'nisa_balance': nisa_balance,
+        'nisa_cost_basis': nisa_cost_basis,
+        'stocks_cost_basis': stocks_cost_basis,
+        'nisa_sold': nisa_sold,
+        'cash_from_taxable': cash_from_taxable,
+        'capital_gain': capital_gain,
+        'total_sold': nisa_sold + taxable_sold,
+    }
+
+
+def _calculate_monthly_income(
+    years: float,
+    fire_achieved: bool,
+    fire_month,
+    shuhei_income_base: float,
+    sakura_income_base: float,
+    monthly_income: float,
+    shuhei_ratio: float,
+    income_growth_rate: float,
+    config: dict,
+) -> dict:
+    """
+    月次収入を計算する。FIRE前後で労働収入の扱いを切り替える。
+
+    Returns:
+      total_income:          月次合計収入
+      labor_income:          労働収入（FIRE後は post_fire_income）
+      pension_income:        月次年金収入
+      child_allowance:       月次児童手当
+      shuhei_income_monthly: 修平の月収（FIRE後は0）
+      sakura_income_monthly: 桜の月収（FIRE後は0）
+      post_fire_income:      FIRE後副収入設定値
+    """
+    from datetime import datetime
+
+    # 年金収入
+    fire_year_offset = (fire_month / 12) if fire_month is not None else None
+    annual_pension_income = calculate_pension_income(
+        years, config, fire_achieved=fire_achieved, fire_year_offset=fire_year_offset
+    )
+    monthly_pension_income = annual_pension_income / 12
+
+    # 児童手当
+    monthly_child_allowance = calculate_child_allowance(years, config) / 12
+
+    post_fire_income = config['simulation'].get('post_fire_income', 0)
+
+    if fire_achieved:
+        return {
+            'total_income': monthly_pension_income + monthly_child_allowance + post_fire_income,
+            'labor_income': post_fire_income,
+            'pension_income': monthly_pension_income,
+            'child_allowance': monthly_child_allowance,
+            'shuhei_income_monthly': 0.0,
+            'sakura_income_monthly': 0.0,
+            'post_fire_income': post_fire_income,
+        }
+
+    # FIRE前: 労働収入を成長率に応じて計算
+    # 修平（会社員）: income_growth_rateを適用
+    # 桜（個人事業主）: 固定（成長なし）
+    if shuhei_income_base + sakura_income_base > 0:
+        income = shuhei_income_base * (1 + income_growth_rate) ** years + sakura_income_base
+        shuhei_income_monthly = shuhei_income_base * (1 + income_growth_rate) ** years
+        sakura_income_monthly = sakura_income_base
+    else:
+        income = monthly_income * (1 + income_growth_rate) ** years
+        shuhei_income_monthly = income * shuhei_ratio
+        sakura_income_monthly = income * (1 - shuhei_ratio)
+
+    return {
+        'total_income': income + monthly_pension_income + monthly_child_allowance,
+        'labor_income': income,
+        'pension_income': monthly_pension_income,
+        'child_allowance': monthly_child_allowance,
+        'shuhei_income_monthly': shuhei_income_monthly,
+        'sakura_income_monthly': sakura_income_monthly,
+        'post_fire_income': post_fire_income,
+    }
+
+
 def simulate_post_fire_assets(
     current_cash: float,
     current_stocks: float,
@@ -671,47 +822,17 @@ def simulate_post_fire_assets(
             shortage = expense - cash
             cash = 0
 
-            if allocation_enabled:
-                # 税金を考慮した取り崩し額を計算
-
-                # NISA枠内の株を優先的に取り崩し（非課税）
-                if nisa_balance > 0:
-                    nisa_withdrawal = min(shortage, nisa_balance)
-                    nisa_withdrawal_shares = nisa_withdrawal / stocks * stocks_cost_basis if stocks > 0 else 0
-                    nisa_balance -= nisa_withdrawal
-                    nisa_cost_basis -= min(nisa_withdrawal_shares, nisa_cost_basis)
-                    stocks -= nisa_withdrawal
-                    stocks_cost_basis -= min(nisa_withdrawal_shares, stocks_cost_basis)
-                    shortage -= nisa_withdrawal
-
-                # まだ不足している場合は課税口座から取り崩し
-                if shortage > 0 and stocks > 0:
-                    # 税引き後でshortageを得るために必要な売却額
-                    taxable_stocks = stocks - nisa_balance  # NISA以外の株
-                    if taxable_stocks > 0:
-                        avg_cost_basis = (stocks_cost_basis - nisa_cost_basis) / taxable_stocks if taxable_stocks > 0 else 1
-                        # 売却額 x (1 - (時価 - 簿価) / 時価 x 税率) = shortage
-                        # 簡易計算: 売却額が小さい場合は shortage / (1 - tax_rate * gain_ratio) で近似
-                        gain_ratio = max(0, (1 - avg_cost_basis / 1.0))  # 時価1に対する簿価の割合
-                        effective_tax_rate = capital_gains_tax_rate * gain_ratio
-                        required_sale = shortage / (1 - effective_tax_rate) if effective_tax_rate < 1 else shortage
-
-                        actual_sale = min(required_sale, taxable_stocks)
-                        sale_cost_basis = actual_sale * avg_cost_basis
-                        capital_gain = max(0, actual_sale - sale_cost_basis)
-                        capital_gains_tax = capital_gain * capital_gains_tax_rate
-                        capital_gains_this_year_post += capital_gain  # 年間譲渡益を集計
-
-                        cash += actual_sale - capital_gains_tax
-                        stocks -= actual_sale
-                        stocks_cost_basis -= sale_cost_basis
-            else:
-                # 資産配分が無効の場合はシンプルに株を売却
-                if stocks > 0:
-                    withdrawal_from_stocks = min(shortage, stocks)
-                    stocks -= withdrawal_from_stocks
-                    stocks_cost_basis -= min(withdrawal_from_stocks, stocks_cost_basis)
-                    cash += withdrawal_from_stocks
+            # 支出不足型: NISAはshorageを直接削減、課税分のみcashへ
+            result = _sell_stocks_with_tax(
+                shortage, stocks, nisa_balance, nisa_cost_basis,
+                stocks_cost_basis, capital_gains_tax_rate, allocation_enabled,
+            )
+            stocks = result['stocks']
+            nisa_balance = result['nisa_balance']
+            nisa_cost_basis = result['nisa_cost_basis']
+            stocks_cost_basis = result['stocks_cost_basis']
+            cash += result['cash_from_taxable']
+            capital_gains_this_year_post += result['capital_gain']
 
         # 運用リターン（株のみ）
         investment_return = stocks * monthly_return_rate
@@ -721,39 +842,18 @@ def simulate_post_fire_assets(
         if allocation_enabled:
             min_cash_balance = config['asset_allocation'].get('min_cash_balance', 5000000)
             if cash < min_cash_balance and stocks > 0:
-                # 現金が最低残高を下回る場合、株式を売却して補充
                 shortage = min_cash_balance - cash
-
-                # NISA枠内の株を優先的に売却（非課税）
-                if nisa_balance > 0:
-                    nisa_sale = min(shortage, nisa_balance)
-                    nisa_sale_cost = nisa_sale / stocks * stocks_cost_basis if stocks > 0 else 0
-                    nisa_balance -= nisa_sale
-                    nisa_cost_basis -= min(nisa_sale_cost, nisa_cost_basis)
-                    stocks -= nisa_sale
-                    stocks_cost_basis -= min(nisa_sale_cost, stocks_cost_basis)
-                    cash += nisa_sale
-                    shortage -= nisa_sale
-
-                # まだ不足している場合は課税口座から売却
-                if shortage > 0 and stocks > 0:
-                    taxable_stocks = stocks - nisa_balance
-                    if taxable_stocks > 0:
-                        avg_cost_basis = (stocks_cost_basis - nisa_cost_basis) / taxable_stocks if taxable_stocks > 0 else 1
-                        # 税引き後でshortageを得るために必要な売却額
-                        gain_ratio = max(0, (1 - avg_cost_basis / 1.0))
-                        effective_tax_rate = capital_gains_tax_rate * gain_ratio
-                        required_sale = shortage / (1 - effective_tax_rate) if effective_tax_rate < 1 else shortage
-
-                        actual_sale = min(required_sale, taxable_stocks)
-                        sale_cost_basis = actual_sale * avg_cost_basis
-                        capital_gain = max(0, actual_sale - sale_cost_basis)
-                        capital_gains_tax = capital_gain * capital_gains_tax_rate
-                        capital_gains_this_year_post += capital_gain  # 年間譲渡益を集計
-
-                        cash += actual_sale - capital_gains_tax
-                        stocks -= actual_sale
-                        stocks_cost_basis -= sale_cost_basis
+                # 最低現金型: NISAも課税分も両方cashへ
+                result = _sell_stocks_with_tax(
+                    shortage, stocks, nisa_balance, nisa_cost_basis,
+                    stocks_cost_basis, capital_gains_tax_rate, allocation_enabled,
+                )
+                stocks = result['stocks']
+                nisa_balance = result['nisa_balance']
+                nisa_cost_basis = result['nisa_cost_basis']
+                stocks_cost_basis = result['stocks_cost_basis']
+                cash += result['nisa_sold'] + result['cash_from_taxable']
+                capital_gains_this_year_post += result['capital_gain']
 
         # 資産が破綻ライン以下になったら終了
         if cash + stocks <= 5_000_000:
@@ -1051,13 +1151,18 @@ def simulate_future_assets(
             prev_year_capital_gains = capital_gains_this_year  # 前年の譲渡益を保存
             capital_gains_this_year = 0
 
-        # 収入の成長（複利）
-        # 修平（会社員）: income_growth_rateを適用
-        # 桜（個人事業主）: 固定（案件次第で変動するため保守的に成長なしと想定）
-        if shuhei_income_base + sakura_income_base > 0:
-            income = shuhei_income_base * (1 + income_growth_rate) ** years + sakura_income_base
-        else:
-            income = monthly_income * (1 + income_growth_rate) ** years
+        # 収入計算（労働収入・年金・児童手当・FIRE前後の切替）
+        _income = _calculate_monthly_income(
+            years, fire_achieved, fire_month,
+            shuhei_income_base, sakura_income_base, monthly_income,
+            shuhei_ratio, income_growth_rate, config,
+        )
+        total_income = _income['total_income']
+        labor_income = _income['labor_income']
+        monthly_pension_income = _income['pension_income']
+        monthly_child_allowance = _income['child_allowance']
+        shuhei_income_monthly = _income['shuhei_income_monthly']
+        sakura_income_monthly = _income['sakura_income_monthly']
 
         # ライフステージ別の基本生活費を計算（月額に変換前）
         fallback_annual_expense = monthly_expense * 12 * (1 + expense_growth_rate) ** years
@@ -1065,66 +1170,27 @@ def simulate_future_assets(
         base_expense = annual_base_expense / 12
 
         # 教育費を追加（年間費用を月額に換算）
-        annual_education_expense = calculate_education_expense(years, config)
-        monthly_education_expense = annual_education_expense / 12
-
-        # 年金収入を追加（年間収入を月額に換算）
-        # FIRE達成している場合は、FIRE時点までの加入期間で年金額を計算
-        fire_year_offset = (fire_month / 12) if fire_month is not None else None
-        annual_pension_income = calculate_pension_income(
-            years,
-            config,
-            fire_achieved=fire_achieved,
-            fire_year_offset=fire_year_offset
-        )
-        monthly_pension_income = annual_pension_income / 12
-
-        # 児童手当を追加（年間手当を月額に換算）
-        annual_child_allowance = calculate_child_allowance(years, config)
-        monthly_child_allowance = annual_child_allowance / 12
+        monthly_education_expense = calculate_education_expense(years, config) / 12
 
         # 住宅ローン支払額を追加
         monthly_mortgage_payment = calculate_mortgage_payment(years, config)
 
         # 住宅メンテナンス費用を追加（年間費用を月額に換算）
-        annual_maintenance_cost = calculate_house_maintenance(years, config)
-        monthly_maintenance_cost = annual_maintenance_cost / 12
+        monthly_maintenance_cost = calculate_house_maintenance(years, config) / 12
 
         # ワーケーション費用を追加（年間費用を月額に換算）
-        annual_workation_cost = calculate_workation_cost(years, config)
-        monthly_workation_cost = annual_workation_cost / 12
+        monthly_workation_cost = calculate_workation_cost(years, config) / 12
 
         # 社会保険料を追加（FIRE後のみ）
-        annual_pension_premium = calculate_national_pension_premium(years, config, fire_achieved)
-        monthly_pension_premium = annual_pension_premium / 12
-
-        annual_health_insurance_premium = calculate_national_health_insurance_premium(
-            years, config, fire_achieved,
-            prev_year_capital_gains=prev_year_capital_gains
-        )
-        monthly_health_insurance_premium = annual_health_insurance_premium / 12
+        monthly_pension_premium = calculate_national_pension_premium(years, config, fire_achieved) / 12
+        monthly_health_insurance_premium = calculate_national_health_insurance_premium(
+            years, config, fire_achieved, prev_year_capital_gains=prev_year_capital_gains
+        ) / 12
 
         # 総支出 = 基本支出 + 教育費 + 住宅ローン + メンテナンス費用 + ワーケーション費用 + 社会保険料
-        expense = base_expense + monthly_education_expense + monthly_mortgage_payment + monthly_maintenance_cost + monthly_workation_cost + monthly_pension_premium + monthly_health_insurance_premium
-
-        # FIRE達成後は労働収入を0にする（仕事を辞める想定）
-        # ただし、年金収入、児童手当、副収入は継続
-        post_fire_income = config['simulation'].get('post_fire_income', 0)
-
-        if fire_achieved:
-            total_income = monthly_pension_income + monthly_child_allowance + post_fire_income
-            labor_income = post_fire_income  # FIRE後は副収入のみ
-            shuhei_income_monthly = 0
-            sakura_income_monthly = 0
-        else:
-            total_income = income + monthly_pension_income + monthly_child_allowance
-            labor_income = income  # FIRE前は労働収入
-            if shuhei_income_base + sakura_income_base > 0:
-                shuhei_income_monthly = shuhei_income_base * (1 + income_growth_rate) ** years
-                sakura_income_monthly = sakura_income_base  # 固定
-            else:
-                shuhei_income_monthly = income * shuhei_ratio
-                sakura_income_monthly = income * (1 - shuhei_ratio)
+        expense = (base_expense + monthly_education_expense + monthly_mortgage_payment
+                   + monthly_maintenance_cost + monthly_workation_cost
+                   + monthly_pension_premium + monthly_health_insurance_premium)
 
         # 1. 収入を現金に加算
         cash += total_income
@@ -1139,55 +1205,19 @@ def simulate_future_assets(
             shortage = expense - cash
             cash = 0
 
-            if allocation_enabled:
-                # 税金を考慮した取り崩し額を計算
-                # 必要額 = shortage / (1 - tax_rate) （税引き後でshortageを確保）
-
-                # NISA枠内の株を優先的に取り崩し（非課税）
-                if nisa_balance > 0:
-                    nisa_withdrawal = min(shortage, nisa_balance)
-                    nisa_withdrawal_shares = nisa_withdrawal / stocks * stocks_cost_basis if stocks > 0 else 0
-                    nisa_balance -= nisa_withdrawal
-                    nisa_cost_basis -= min(nisa_withdrawal_shares, nisa_cost_basis)
-                    stocks -= nisa_withdrawal
-                    stocks_cost_basis -= min(nisa_withdrawal_shares, stocks_cost_basis)
-                    shortage -= nisa_withdrawal
-
-                # まだ不足している場合は課税口座から取り崩し
-                if shortage > 0 and stocks > 0:
-                    # 税引き後でshortageを得るために必要な売却額
-                    taxable_stocks = stocks - nisa_balance  # NISA以外の株
-                    if taxable_stocks > 0:
-                        avg_cost_basis = (stocks_cost_basis - nisa_cost_basis) / taxable_stocks if taxable_stocks > 0 else 1
-                        # 売却額 x (1 - (時価 - 簿価) / 時価 x 税率) = shortage
-                        # 簡易計算: 売却額が小さい場合は shortage / (1 - tax_rate * gain_ratio) で近似
-                        gain_ratio = max(0, (1 - avg_cost_basis / 1.0))  # 時価1に対する簿価の割合
-                        effective_tax_rate = capital_gains_tax_rate * gain_ratio
-                        required_sale = shortage / (1 - effective_tax_rate) if effective_tax_rate < 1 else shortage
-
-                        actual_sale = min(required_sale, taxable_stocks)
-                        sale_cost_basis = actual_sale * avg_cost_basis
-                        capital_gain = max(0, actual_sale - sale_cost_basis)
-                        capital_gains_tax = capital_gain * capital_gains_tax_rate
-                        capital_gains_this_year += capital_gain  # 年間譲渡益を集計
-
-                        cash += actual_sale - capital_gains_tax
-                        stocks -= actual_sale
-                        stocks_cost_basis -= sale_cost_basis
-                        withdrawal_from_stocks = actual_sale
-                    else:
-                        withdrawal_from_stocks = 0
-                        capital_gains_tax = 0
-                else:
-                    withdrawal_from_stocks = 0
-                    capital_gains_tax = 0
-            else:
-                # 資産配分が無効の場合はシンプルに株を売却
-                withdrawal_from_stocks = min(shortage, stocks)
-                stocks -= withdrawal_from_stocks
-                stocks_cost_basis -= min(withdrawal_from_stocks, stocks_cost_basis)
-                cash += withdrawal_from_stocks
-                capital_gains_tax = 0
+            # 支出不足型: NISAはshorageを直接削減、課税分のみcashへ
+            result = _sell_stocks_with_tax(
+                shortage, stocks, nisa_balance, nisa_cost_basis,
+                stocks_cost_basis, capital_gains_tax_rate, allocation_enabled,
+            )
+            stocks = result['stocks']
+            nisa_balance = result['nisa_balance']
+            nisa_cost_basis = result['nisa_cost_basis']
+            stocks_cost_basis = result['stocks_cost_basis']
+            cash += result['cash_from_taxable']
+            capital_gains_this_year += result['capital_gain']
+            withdrawal_from_stocks = result['total_sold']
+            capital_gains_tax = result['capital_gain'] * capital_gains_tax_rate
 
         # 3. 運用リターン（株のみ）
         investment_return = stocks * monthly_return_rate
@@ -1197,39 +1227,18 @@ def simulate_future_assets(
         # 3.5. FIRE後は最低現金残高を維持（資産配分が有効な場合）
         if allocation_enabled and fire_achieved:
             if cash < min_cash_balance and stocks > 0:
-                # 現金が最低残高を下回る場合、株式を売却して補充
                 shortage = min_cash_balance - cash
-
-                # NISA枠内の株を優先的に売却（非課税）
-                if nisa_balance > 0:
-                    nisa_sale = min(shortage, nisa_balance)
-                    nisa_sale_cost = nisa_sale / stocks * stocks_cost_basis if stocks > 0 else 0
-                    nisa_balance -= nisa_sale
-                    nisa_cost_basis -= min(nisa_sale_cost, nisa_cost_basis)
-                    stocks -= nisa_sale
-                    stocks_cost_basis -= min(nisa_sale_cost, stocks_cost_basis)
-                    cash += nisa_sale
-                    shortage -= nisa_sale
-
-                # まだ不足している場合は課税口座から売却
-                if shortage > 0 and stocks > 0:
-                    taxable_stocks = stocks - nisa_balance
-                    if taxable_stocks > 0:
-                        avg_cost_basis = (stocks_cost_basis - nisa_cost_basis) / taxable_stocks if taxable_stocks > 0 else 1
-                        # 税引き後でshortageを得るために必要な売却額
-                        gain_ratio = max(0, (1 - avg_cost_basis / 1.0))
-                        effective_tax_rate = capital_gains_tax_rate * gain_ratio
-                        required_sale = shortage / (1 - effective_tax_rate) if effective_tax_rate < 1 else shortage
-
-                        actual_sale = min(required_sale, taxable_stocks)
-                        sale_cost_basis = actual_sale * avg_cost_basis
-                        capital_gain = max(0, actual_sale - sale_cost_basis)
-                        rebalance_tax = capital_gain * capital_gains_tax_rate
-                        capital_gains_this_year += capital_gain  # 年間譲渡益を集計
-
-                        cash += actual_sale - rebalance_tax
-                        stocks -= actual_sale
-                        stocks_cost_basis -= sale_cost_basis
+                # 最低現金型: NISAも課税分も両方cashへ
+                result = _sell_stocks_with_tax(
+                    shortage, stocks, nisa_balance, nisa_cost_basis,
+                    stocks_cost_basis, capital_gains_tax_rate, allocation_enabled,
+                )
+                stocks = result['stocks']
+                nisa_balance = result['nisa_balance']
+                nisa_cost_basis = result['nisa_cost_basis']
+                stocks_cost_basis = result['stocks_cost_basis']
+                cash += result['nisa_sold'] + result['cash_from_taxable']
+                capital_gains_this_year += result['capital_gain']
 
         # 4. 余剰現金がある場合は自動投資（FIRE前のみ、資産配分が有効な場合）
         auto_invested = 0
@@ -1284,7 +1293,7 @@ def simulate_future_assets(
             # FIRE後の社会保険料を含める必要があるため、fire_achieved=Trueで再計算
             annual_pension_premium_for_fire = calculate_national_pension_premium(years, config, fire_achieved=True)
             annual_health_insurance_premium_for_fire = calculate_national_health_insurance_premium(years, config, fire_achieved=True)
-            current_annual_expense = (base_expense + monthly_education_expense + monthly_mortgage_payment) * 12 + annual_pension_premium_for_fire + annual_health_insurance_premium_for_fire + annual_maintenance_cost + annual_workation_cost
+            current_annual_expense = (base_expense + monthly_education_expense + monthly_mortgage_payment + monthly_maintenance_cost + monthly_workation_cost) * 12 + annual_pension_premium_for_fire + annual_health_insurance_premium_for_fire
 
             # 余剰現金を計算（FIRE時は最低残高を確保）
             if allocation_enabled:
