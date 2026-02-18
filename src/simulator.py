@@ -32,6 +32,50 @@ def _get_age_at_offset(birthdate_str: str, year_offset: float) -> float:
     return current_age + year_offset
 
 
+def _get_life_stage(child_age: float) -> str:
+    """
+    子供の年齢からライフステージキーを返す。
+
+    Returns:
+        'young_child' | 'elementary' | 'junior_high' | 'high_school' | 'university' | 'empty_nest'
+    """
+    if child_age < 6:
+        return 'young_child'
+    elif child_age < 12:
+        return 'elementary'
+    elif child_age < 15:
+        return 'junior_high'
+    elif child_age < 18:
+        return 'high_school'
+    elif child_age < 22:
+        return 'university'
+    else:
+        return 'empty_nest'
+
+
+def _is_enabled(config: Dict, section: str) -> bool:
+    """設定セクションの enabled フラグを返す。"""
+    return config.get(section, {}).get('enabled', False)
+
+
+def _advance_year(
+    date_year: int,
+    current_year: int,
+    capital_gains_this_year: float,
+) -> tuple:
+    """
+    月次ループで年が変わった場合に年次カウンターをリセットする。
+
+    Returns:
+        (new_current_year, new_capital_gains_this_year, year_advanced: bool)
+        year_advanced=True の場合、呼び出し側で capital_gains_this_year の元の値を
+        prev_year_capital_gains として保存すること。
+    """
+    if date_year > current_year:
+        return date_year, 0.0, True
+    return current_year, capital_gains_this_year, False
+
+
 def calculate_education_expense(year_offset: float, config: Dict[str, Any]) -> float:
     """
     指定年における教育費を計算
@@ -43,7 +87,7 @@ def calculate_education_expense(year_offset: float, config: Dict[str, Any]) -> f
     Returns:
         年間教育費（円）
     """
-    if not config.get('education', {}).get('enabled', False):
+    if not _is_enabled(config, 'education'):
         return 0
 
     children = config['education'].get('children', [])
@@ -156,7 +200,7 @@ def calculate_pension_income(
     Returns:
         年間年金収入（円）
     """
-    if not config.get('pension', {}).get('enabled', False):
+    if not _is_enabled(config, 'pension'):
         return 0
 
     people = config['pension'].get('people', [])
@@ -236,7 +280,7 @@ def calculate_child_allowance(year_offset: float, config: Dict[str, Any]) -> flo
         年間児童手当額（円）
     """
     # 児童手当が無効の場合は0を返す
-    if not config.get('child_allowance', {}).get('enabled', False):
+    if not _is_enabled(config, 'child_allowance'):
         return 0
 
     children = config.get('education', {}).get('children', [])
@@ -290,7 +334,7 @@ def calculate_national_pension_premium(
         年間国民年金保険料（円）
     """
     # 社会保険設定が無効の場合は0を返す
-    if not config.get('social_insurance', {}).get('enabled', False):
+    if not _is_enabled(config, 'social_insurance'):
         return 0
 
     # FIRE前は会社の厚生年金なので計上不要
@@ -344,7 +388,7 @@ def calculate_national_health_insurance_premium(
         年間国民健康保険料（円）
     """
     # 社会保険設定が無効の場合は0を返す
-    if not config.get('social_insurance', {}).get('enabled', False):
+    if not _is_enabled(config, 'social_insurance'):
         return 0
 
     # FIRE前は会社の健康保険なので計上不要
@@ -396,7 +440,7 @@ def calculate_mortgage_payment(year_offset: float, config: Dict[str, Any]) -> fl
         月次住宅ローン支払額（円）
     """
     # 住宅ローンが無効の場合は0を返す
-    if not config.get('mortgage', {}).get('enabled', False):
+    if not _is_enabled(config, 'mortgage'):
         return 0
 
     mortgage_config = config['mortgage']
@@ -434,7 +478,7 @@ def calculate_house_maintenance(year_offset: float, config: Dict[str, Any]) -> f
         年間メンテナンス費用（円）
     """
     # 住宅メンテナンスが無効の場合は0を返す
-    if not config.get('house_maintenance', {}).get('enabled', False):
+    if not _is_enabled(config, 'house_maintenance'):
         return 0
 
     maintenance_config = config['house_maintenance']
@@ -483,7 +527,7 @@ def calculate_workation_cost(year_offset: float, config: Dict[str, Any]) -> floa
         年間ワーケーション費用（円）
     """
     # ワーケーションが無効の場合は0を返す
-    if not config.get('workation', {}).get('enabled', False):
+    if not _is_enabled(config, 'workation'):
         return 0
 
     workation_config = config['workation']
@@ -704,7 +748,7 @@ def simulate_post_fire_assets(
     monthly_return_rate = (1 + annual_return_rate) ** (1/12) - 1
 
     # 資産配分設定
-    allocation_enabled = config.get('asset_allocation', {}).get('enabled', False)
+    allocation_enabled = _is_enabled(config, 'asset_allocation')
     if allocation_enabled:
         capital_gains_tax_rate = config['asset_allocation'].get('capital_gains_tax_rate', 0.20315)
     else:
@@ -731,10 +775,12 @@ def simulate_post_fire_assets(
     for month in range(remaining_months):
         years = years_offset + month / 12
         date_post = current_date_post + relativedelta(months=int(years * 12))
-        if date_post.year > current_year_post:
-            current_year_post = date_post.year
-            prev_year_capital_gains_post = capital_gains_this_year_post
-            capital_gains_this_year_post = 0
+        _prev_gains = capital_gains_this_year_post
+        current_year_post, capital_gains_this_year_post, _year_advanced = _advance_year(
+            date_post.year, current_year_post, capital_gains_this_year_post
+        )
+        if _year_advanced:
+            prev_year_capital_gains_post = _prev_gains
 
         # 基本生活費
         annual_base_expense = calculate_base_expense(years, config, 0)
@@ -884,7 +930,7 @@ def can_retire_now(
     # 現金と株の分離（指定されていない場合は全額株と仮定）
     if current_cash is None or current_stocks is None:
         # 資産配分が有効な場合は、適切に分離
-        allocation_enabled = config.get('asset_allocation', {}).get('enabled', False)
+        allocation_enabled = _is_enabled(config, 'asset_allocation')
         if allocation_enabled:
             cash_buffer_months = config['asset_allocation'].get('cash_buffer_months', 6)
             monthly_expense = current_annual_expense / 12
@@ -951,21 +997,8 @@ def calculate_base_expense(year_offset: float, config: Dict[str, Any], fallback_
 
     child_age = _get_age_at_offset(birthdate_str, year_offset)
 
-    # 年齢に応じたライフステージを判定
-    if child_age < 6:
-        stage = 'young_child'
-    elif child_age < 12:
-        stage = 'elementary'
-    elif child_age < 15:
-        stage = 'junior_high'
-    elif child_age < 18:
-        stage = 'high_school'
-    elif child_age < 22:
-        stage = 'university'
-    else:
-        stage = 'empty_nest'
-
     # 基本支出（第一子の年齢に基づく）
+    stage = _get_life_stage(child_age)
     base_expense = base_expense_by_stage.get(stage, fallback_expense)
 
     # 第二子以降：各子供の年齢（ステージ）に応じた追加費用を加算
@@ -987,19 +1020,7 @@ def calculate_base_expense(year_offset: float, config: Dict[str, Any], fallback_
 
             # 各子供の年齢からステージを判定
             child_age = _get_age_at_offset(child_birthdate_str, year_offset)
-
-            if child_age < 6:
-                child_stage = 'young_child'
-            elif child_age < 12:
-                child_stage = 'elementary'
-            elif child_age < 15:
-                child_stage = 'junior_high'
-            elif child_age < 18:
-                child_stage = 'high_school'
-            elif child_age < 22:
-                child_stage = 'university'
-            else:
-                child_stage = 'empty_nest'
+            child_stage = _get_life_stage(child_age)
 
             base_expense += additional_by_stage.get(child_stage, 0)
 
@@ -1060,7 +1081,7 @@ def simulate_future_assets(
     monthly_return_rate = (1 + annual_return_rate) ** (1/12) - 1
 
     # 資産配分設定
-    allocation_enabled = config.get('asset_allocation', {}).get('enabled', False)
+    allocation_enabled = _is_enabled(config, 'asset_allocation')
     if allocation_enabled:
         cash_buffer_months = config['asset_allocation'].get('cash_buffer_months', 6)
         auto_invest_threshold = config['asset_allocation'].get('auto_invest_threshold', 1.5)
@@ -1115,11 +1136,13 @@ def simulate_future_assets(
         years = month / 12
 
         # 年が変わったらNISA枠と譲渡益集計をリセット
-        if date.year > current_year:
-            current_year = date.year
+        _prev_gains = capital_gains_this_year
+        current_year, capital_gains_this_year, _year_advanced = _advance_year(
+            date.year, current_year, capital_gains_this_year
+        )
+        if _year_advanced:
             nisa_used_this_year = 0
-            prev_year_capital_gains = capital_gains_this_year  # 前年の譲渡益を保存
-            capital_gains_this_year = 0
+            prev_year_capital_gains = _prev_gains
 
         # 収入計算（労働収入・年金・児童手当・FIRE前後の切替）
         _income = _calculate_monthly_income(
