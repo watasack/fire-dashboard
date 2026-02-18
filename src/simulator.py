@@ -15,6 +15,10 @@ _EMPLOYEE_PENSION_MULTIPLIER = 0.005481        # 厚生年金乗率（給付乗�
 _PENSION_MAX_CONTRIBUTION_YEARS = 40           # 国民年金最大加入年数
 _BANKRUPTCY_THRESHOLD = 5_000_000              # 破綻ライン（円）
 
+# 国民健康保険料計算用定数（config未設定時のフォールバック）
+_HEALTH_INS_BASIC_DEDUCTION = 430_000  # 基礎控除（2024年度・円）
+_HEALTH_INS_DEFAULT_INCOME_RATE = 0.11  # 所得割率デフォルト（40歳以上・全国平均）
+
 
 class _StockSaleResult(NamedTuple):
     """_sell_stocks_with_tax() の戻り値。"""
@@ -191,6 +195,56 @@ def _calculate_employees_pension_amount(avg_monthly_salary: float, contribution_
     return annual_pension
 
 
+def _calculate_person_pension(
+    person: dict,
+    year_offset: float,
+    start_age: float,
+    fire_achieved: bool,
+    fire_year_offset: float,
+) -> float:
+    """
+    1人分の年金年間受給額を計算する。
+
+    Args:
+        person: config['pension']['people'] の1エントリ
+        year_offset: シミュレーション開始からの経過年数
+        start_age: 年金受給開始年齢
+        fire_achieved: FIRE達成フラグ
+        fire_year_offset: FIRE達成時点の経過年数（年）
+
+    Returns:
+        年間年金受給額（円）。受給開始前は 0。
+    """
+    birthdate_str = person.get('birthdate')
+    if not birthdate_str:
+        return 0
+
+    person_age = _get_age_at_offset(birthdate_str, year_offset)
+    if person_age < start_age:
+        return 0
+
+    pension_type = person.get('pension_type', 'employee')
+
+    if pension_type == 'employee':
+        avg_monthly_salary = person.get('avg_monthly_salary', 0)
+        work_start_age = person.get('work_start_age', 23)
+        if fire_achieved and fire_year_offset is not None:
+            work_end_age = _get_age_at_offset(birthdate_str, fire_year_offset)
+        else:
+            work_end_age = min(person_age, 65)
+        work_months = int(max(0, work_end_age - work_start_age) * 12)
+        employees_pension = _calculate_employees_pension_amount(avg_monthly_salary, work_months)
+        national_pension = _calculate_national_pension_amount(min(40, 60 - 20))
+        return employees_pension + national_pension
+
+    elif pension_type == 'national':
+        return _calculate_national_pension_amount(min(40, 60 - 20))
+
+    else:
+        # 従来の固定値フォールバック（後方互換性）
+        return person.get('annual_amount', 0)
+
+
 def calculate_pension_income(
     year_offset: float,
     config: Dict[str, Any],
@@ -215,69 +269,11 @@ def calculate_pension_income(
     if not _is_enabled(config, 'pension'):
         return 0
 
-    people = config['pension'].get('people', [])
     start_age = config['pension'].get('start_age', 65)
-
-    total_pension_income = 0
-
-    for person in people:
-        # 生年月日から現在の年齢を計算
-        birthdate_str = person.get('birthdate')
-        if not birthdate_str:
-            continue
-
-        person_age = _get_age_at_offset(birthdate_str, year_offset)
-
-        # 年金受給開始年齢に達していなければスキップ
-        if person_age < start_age:
-            continue
-
-        # 年金計算方法の選択
-        pension_type = person.get('pension_type', 'employee')  # 'employee' or 'national'
-
-        if pension_type == 'employee':
-            # 厚生年金 + 国民年金の計算
-
-            # 厚生年金の計算
-            avg_monthly_salary = person.get('avg_monthly_salary', 0)
-            work_start_age = person.get('work_start_age', 23)
-
-            # FIRE達成していれば、FIRE時点までの加入期間
-            # 達成していなければ、現在年齢までの加入期間（最大65歳まで）
-            if fire_achieved and fire_year_offset is not None:
-                # FIRE達成時の年齢
-                fire_age = _get_age_at_offset(birthdate_str, fire_year_offset)
-                work_end_age = fire_age
-            else:
-                # まだFIRE未達成の場合は、シミュレーション年の年齢まで働く（最大65歳）
-                work_end_age = min(person_age, 65)
-
-            # 厚生年金加入期間（月数）
-            work_years = max(0, work_end_age - work_start_age)
-            work_months = int(work_years * 12)
-
-            # 厚生年金額を計算
-            employees_pension = _calculate_employees_pension_amount(avg_monthly_salary, work_months)
-
-            # 国民年金の計算（20歳から60歳まで、最大40年）
-            national_pension_years = min(40, 60 - 20)  # 満額想定
-            national_pension = _calculate_national_pension_amount(national_pension_years)
-
-            # 合計
-            annual_pension = employees_pension + national_pension
-
-        elif pension_type == 'national':
-            # 国民年金のみ
-            national_pension_years = min(40, 60 - 20)  # 満額想定
-            annual_pension = _calculate_national_pension_amount(national_pension_years)
-
-        else:
-            # 従来の固定値フォールバック（後方互換性）
-            annual_pension = person.get('annual_amount', 0)
-
-        total_pension_income += annual_pension
-
-    return total_pension_income
+    return sum(
+        _calculate_person_pension(person, year_offset, start_age, fire_achieved, fire_year_offset)
+        for person in config['pension'].get('people', [])
+    )
 
 
 def calculate_child_allowance(year_offset: float, config: Dict[str, Any]) -> float:
@@ -422,9 +418,9 @@ def calculate_national_health_insurance_premium(
     total_income = annual_side_income + capital_gains
 
     # --- 所得割 ---
-    basic_deduction = si.get('health_insurance_basic_deduction', 430000)
+    basic_deduction = si.get('health_insurance_basic_deduction', _HEALTH_INS_BASIC_DEDUCTION)
     taxable_income = max(0, total_income - basic_deduction)
-    income_rate = si.get('health_insurance_income_rate', 0.11)
+    income_rate = si.get('health_insurance_income_rate', _HEALTH_INS_DEFAULT_INCOME_RATE)
     income_based_premium = taxable_income * income_rate
 
     # --- 均等割 + 平等割 ---

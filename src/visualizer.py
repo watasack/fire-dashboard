@@ -12,6 +12,51 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from src.data_schema import get_customdata_column_names
 
+# 資産エリアチャート用の色定数
+_COLOR_PRE_FIRE_CASH  = 'rgba(6, 182, 212, 0.4)'   # FIRE前 現金（シアン薄）
+_COLOR_PRE_FIRE_STOCK = 'rgba(6, 182, 212, 0.7)'   # FIRE前 株式（シアン濃）
+_COLOR_POST_FIRE_CASH  = 'rgba(16, 185, 129, 0.4)'  # FIRE後 現金（グリーン薄）
+_COLOR_POST_FIRE_STOCK = 'rgba(16, 185, 129, 0.7)'  # FIRE後 株式（グリーン濃）
+
+
+def _add_stacked_asset_traces(
+    fig,
+    df,
+    group_key: str,
+    cash_name: str,
+    stock_name: str,
+    cash_color: str,
+    stock_color: str,
+    customdata,
+    cash_hover: str,
+    stock_hover: str,
+) -> None:
+    """現金・株式の積み上げエリアトレースをfigに追加する（FIRE前/後/全期間で共通）。"""
+    fig.add_trace(go.Scatter(
+        x=df['date'],
+        y=df['cash'] / 10000,
+        name=cash_name,
+        legendgroup=group_key,
+        stackgroup=group_key,
+        line=dict(width=0),
+        fillcolor=cash_color,
+        customdata=customdata,
+        hovertemplate=cash_hover,
+        showlegend=True,
+    ))
+    fig.add_trace(go.Scatter(
+        x=df['date'],
+        y=df['stocks'] / 10000,
+        name=stock_name,
+        legendgroup=group_key,
+        stackgroup=group_key,
+        line=dict(width=0),
+        fillcolor=stock_color,
+        customdata=customdata,
+        hovertemplate=stock_hover,
+        showlegend=True,
+    ))
+
 
 def get_common_layout(config: Dict[str, Any], title: str = "") -> dict:
     """
@@ -220,106 +265,40 @@ def create_fire_timeline_chart(
             # FIRE達成前（労働期間）- シアン系の積み上げエリア
             df_pre = df[df['date'] <= achievement_date].copy()
             if len(df_pre) > 0:
-                # クリックデータ用にカスタムデータを準備（スキーマから取得）
-                customdata_columns = get_customdata_column_names()
-                customdata_pre = df_pre[customdata_columns].values
-
-                # 現金（下層）
-                fig.add_trace(go.Scatter(
-                    x=df_pre['date'],
-                    y=df_pre['cash'] / 10000,
-                    name='現金（FIRE前）',
-                    legendgroup='pre',
-                    stackgroup='pre',
-                    line=dict(width=0),
-                    fillcolor='rgba(6, 182, 212, 0.4)',
-                    customdata=customdata_pre,
-                    hovertemplate='<b>FIRE前</b><br><b>%{x|%Y年%m月}</b><br>現金: <b>¥%{y:,.0f}万</b><extra></extra>',
-                    showlegend=True
-                ))
-
-                # 株式（上層）
-                fig.add_trace(go.Scatter(
-                    x=df_pre['date'],
-                    y=df_pre['stocks'] / 10000,
-                    name='株式（FIRE前）',
-                    legendgroup='pre',
-                    stackgroup='pre',
-                    line=dict(width=0),
-                    fillcolor='rgba(6, 182, 212, 0.7)',
-                    customdata=customdata_pre,
-                    hovertemplate='<b>FIRE前</b><br><b>%{x|%Y年%m月}</b><br>株式: <b>¥%{y:,.0f}万</b><extra></extra>',
-                    showlegend=True
-                ))
+                customdata_pre = df_pre[get_customdata_column_names()].values
+                _add_stacked_asset_traces(
+                    fig, df_pre, 'pre',
+                    '現金（FIRE前）', '株式（FIRE前）',
+                    _COLOR_PRE_FIRE_CASH, _COLOR_PRE_FIRE_STOCK,
+                    customdata_pre,
+                    '<b>FIRE前</b><br><b>%{x|%Y年%m月}</b><br>現金: <b>¥%{y:,.0f}万</b><extra></extra>',
+                    '<b>FIRE前</b><br><b>%{x|%Y年%m月}</b><br>株式: <b>¥%{y:,.0f}万</b><extra></extra>',
+                )
 
             # FIRE達成後（リタイア期間）- グリーン系の積み上げエリア
             df_post = df[df['date'] >= achievement_date].copy()  # 90歳まで全期間
             if len(df_post) > 0:
-                # クリックデータ用にカスタムデータを準備（スキーマから取得）
-                customdata_columns = get_customdata_column_names()
-                customdata_post = df_post[customdata_columns].values
-
-                # 現金（下層）
-                fig.add_trace(go.Scatter(
-                    x=df_post['date'],
-                    y=df_post['cash'] / 10000,
-                    name='現金（FIRE後）',
-                    legendgroup='post',
-                    stackgroup='post',
-                    line=dict(width=0),
-                    fillcolor='rgba(16, 185, 129, 0.4)',
-                    customdata=customdata_post,
-                    hovertemplate='<b>FIRE後</b><br><b>%{x|%Y年%m月}</b><br>現金: <b>¥%{y:,.0f}万</b><extra></extra>',
-                    showlegend=True
-                ))
-
-                # 株式（上層）
-                fig.add_trace(go.Scatter(
-                    x=df_post['date'],
-                    y=df_post['stocks'] / 10000,
-                    name='株式（FIRE後）',
-                    legendgroup='post',
-                    stackgroup='post',
-                    line=dict(width=0),
-                    fillcolor='rgba(16, 185, 129, 0.7)',
-                    customdata=customdata_post,
-                    hovertemplate='<b>FIRE後</b><br><b>%{x|%Y年%m月}</b><br>株式: <b>¥%{y:,.0f}万</b><extra></extra>',
-                    showlegend=True
-                ))
+                customdata_post = df_post[get_customdata_column_names()].values
+                _add_stacked_asset_traces(
+                    fig, df_post, 'post',
+                    '現金（FIRE後）', '株式（FIRE後）',
+                    _COLOR_POST_FIRE_CASH, _COLOR_POST_FIRE_STOCK,
+                    customdata_post,
+                    '<b>FIRE後</b><br><b>%{x|%Y年%m月}</b><br>現金: <b>¥%{y:,.0f}万</b><extra></extra>',
+                    '<b>FIRE後</b><br><b>%{x|%Y年%m月}</b><br>株式: <b>¥%{y:,.0f}万</b><extra></extra>',
+                )
         else:
             # すでに達成済みの場合は全てグリーン系の積み上げエリア
             df_all = df.head(480).copy()
-            # クリックデータ用にカスタムデータを準備（スキーマから取得）
-            customdata_columns = get_customdata_column_names()
-            customdata_all = df_all[customdata_columns].values
-
-            # 現金（下層）
-            fig.add_trace(go.Scatter(
-                x=df_all['date'],
-                y=df_all['cash'] / 10000,
-                name='現金',
-                legendgroup='all',
-                stackgroup='all',
-                line=dict(width=0),
-                fillcolor='rgba(16, 185, 129, 0.4)',
-                customdata=customdata_all,
-                hovertemplate='<b>現金</b><br>%{x|%Y年%m月}<br>¥%{y:,.0f}万円<extra></extra>',
-                showlegend=True
-            ))
-
-            # 株式（上層）
-            fig.add_trace(go.Scatter(
-                x=df_all['date'],
-                y=df_all['stocks'] / 10000,
-                name='株式',
-                legendgroup='all',
-                stackgroup='all',
-                line=dict(width=0),
-                fillcolor='rgba(16, 185, 129, 0.7)',
-                customdata=customdata_all,
-                hovertemplate='<b>株式</b><br>%{x|%Y年%m月}<br>¥%{y:,.0f}万円<extra></extra>',
-                showlegend=True
-            ))
+            customdata_all = df_all[get_customdata_column_names()].values
+            _add_stacked_asset_traces(
+                fig, df_all, 'all',
+                '現金', '株式',
+                _COLOR_POST_FIRE_CASH, _COLOR_POST_FIRE_STOCK,
+                customdata_all,
+                '<b>現金</b><br>%{x|%Y年%m月}<br>¥%{y:,.0f}万円<extra></extra>',
+                '<b>株式</b><br>%{x|%Y年%m月}<br>¥%{y:,.0f}万円<extra></extra>',
+            )
 
 
     # FIRE目標額（targetは後で使用するため計算のみ）
@@ -548,7 +527,6 @@ def create_fire_timeline_chart(
     current_date = datetime.now()
 
     # 左端のラベルが見切れないように、少し前から表示開始
-    from dateutil.relativedelta import relativedelta
     x_min = current_date - relativedelta(months=6)  # 6ヶ月前から表示
     x_max = current_date
 
