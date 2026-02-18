@@ -636,6 +636,151 @@ def _sell_stocks_with_tax(
     }
 
 
+def _calculate_monthly_expenses(
+    years: float,
+    config: Dict[str, Any],
+    monthly_expense: float,
+    expense_growth_rate: float,
+    fire_achieved: bool,
+    prev_year_capital_gains: float,
+) -> dict:
+    """
+    月次支出の全項目を計算する。
+
+    Returns:
+        base_expense, education_expense, mortgage_payment, maintenance_cost,
+        workation_cost, pension_premium, health_insurance_premium, total（全て月額・円）
+    """
+    fallback_annual = monthly_expense * 12 * (1 + expense_growth_rate) ** years
+    base_expense = calculate_base_expense(years, config, fallback_annual) / 12
+    education_expense = calculate_education_expense(years, config) / 12
+    mortgage_payment = calculate_mortgage_payment(years, config)
+    maintenance_cost = calculate_house_maintenance(years, config) / 12
+    workation_cost = calculate_workation_cost(years, config) / 12
+    pension_premium = calculate_national_pension_premium(years, config, fire_achieved) / 12
+    health_insurance_premium = calculate_national_health_insurance_premium(
+        years, config, fire_achieved, prev_year_capital_gains
+    ) / 12
+    total = (base_expense + education_expense + mortgage_payment
+             + maintenance_cost + workation_cost
+             + pension_premium + health_insurance_premium)
+    return {
+        'base_expense': base_expense,
+        'education_expense': education_expense,
+        'mortgage_payment': mortgage_payment,
+        'maintenance_cost': maintenance_cost,
+        'workation_cost': workation_cost,
+        'pension_premium': pension_premium,
+        'health_insurance_premium': health_insurance_premium,
+        'total': total,
+    }
+
+
+def _auto_invest_surplus(
+    cash: float,
+    stocks: float,
+    stocks_cost_basis: float,
+    nisa_balance: float,
+    nisa_cost_basis: float,
+    nisa_used_this_year: float,
+    expense: float,
+    cash_buffer_months: float,
+    min_cash_balance: float,
+    auto_invest_threshold: float,
+    nisa_enabled: bool,
+    nisa_annual_limit: float,
+    invest_beyond_nisa: bool,
+) -> dict:
+    """
+    余剰現金をNISA優先で自動投資する（FIRE前専用）。
+
+    Returns:
+        cash, stocks, stocks_cost_basis, nisa_balance,
+        nisa_cost_basis, nisa_used_this_year, auto_invested
+    """
+    auto_invested = 0
+    expense_based_buffer = expense * cash_buffer_months
+    required_cash_balance = max(expense_based_buffer, min_cash_balance)
+    cash_threshold = required_cash_balance * auto_invest_threshold
+
+    if cash > cash_threshold:
+        surplus = cash - required_cash_balance
+
+        nisa_remaining = nisa_annual_limit - nisa_used_this_year if nisa_enabled else 0
+        if nisa_remaining > 0 and surplus > 0:
+            nisa_invest = min(surplus, nisa_remaining)
+            cash -= nisa_invest
+            stocks += nisa_invest
+            stocks_cost_basis += nisa_invest
+            nisa_balance += nisa_invest
+            nisa_cost_basis += nisa_invest
+            nisa_used_this_year += nisa_invest
+            auto_invested += nisa_invest
+            surplus -= nisa_invest
+
+        if surplus > 0 and invest_beyond_nisa:
+            taxable_invest = surplus
+            cash -= taxable_invest
+            stocks += taxable_invest
+            stocks_cost_basis += taxable_invest
+            auto_invested += taxable_invest
+
+        if cash < min_cash_balance:
+            adjustment = min_cash_balance - cash
+            cash += adjustment
+            stocks -= adjustment
+            stocks_cost_basis -= adjustment
+            auto_invested -= adjustment
+
+    return {
+        'cash': cash, 'stocks': stocks, 'stocks_cost_basis': stocks_cost_basis,
+        'nisa_balance': nisa_balance, 'nisa_cost_basis': nisa_cost_basis,
+        'nisa_used_this_year': nisa_used_this_year, 'auto_invested': auto_invested,
+    }
+
+
+def _build_monthly_result(
+    date, month: int,
+    cash: float, stocks: float, stocks_cost_basis: float, nisa_balance: float,
+    total_income: float, monthly_pension_income: float, labor_income: float,
+    shuhei_income_monthly: float, sakura_income_monthly: float,
+    monthly_child_allowance: float,
+    expense: float, base_expense: float, monthly_education_expense: float,
+    monthly_mortgage_payment: float, monthly_maintenance_cost: float,
+    monthly_workation_cost: float, monthly_pension_premium: float,
+    monthly_health_insurance_premium: float,
+    investment_return: float, auto_invested: float,
+    capital_gains_tax: float, fire_achieved: bool, fire_month,
+) -> dict:
+    """月次シミュレーション結果の1行分を構築する。"""
+    return {
+        'date': date, 'month': month,
+        'assets': max(0, cash + stocks),
+        'cash': max(0, cash), 'stocks': max(0, stocks),
+        'stocks_cost_basis': max(0, stocks_cost_basis),
+        'nisa_balance': max(0, nisa_balance),
+        'income': total_income,
+        'pension_income': monthly_pension_income,
+        'labor_income': labor_income,
+        'shuhei_income': shuhei_income_monthly,
+        'sakura_income': sakura_income_monthly,
+        'child_allowance': monthly_child_allowance,
+        'expense': expense, 'base_expense': base_expense,
+        'education_expense': monthly_education_expense,
+        'mortgage_payment': monthly_mortgage_payment,
+        'maintenance_cost': monthly_maintenance_cost,
+        'workation_cost': monthly_workation_cost,
+        'pension_premium': monthly_pension_premium,
+        'health_insurance_premium': monthly_health_insurance_premium,
+        'net_cashflow': total_income - expense,
+        'investment_return': investment_return,
+        'auto_invested': auto_invested,
+        'capital_gains_tax': capital_gains_tax,
+        'fire_achieved': fire_achieved,
+        'fire_month': fire_month,
+    }
+
+
 def _calculate_monthly_income(
     years: float,
     fire_achieved: bool,
@@ -1087,6 +1232,7 @@ def simulate_future_assets(
         auto_invest_threshold = config['asset_allocation'].get('auto_invest_threshold', 1.5)
         nisa_enabled = config['asset_allocation'].get('nisa_enabled', True)
         nisa_annual_limit = config['asset_allocation'].get('nisa_annual_limit', 3600000)
+        invest_beyond_nisa = config['asset_allocation'].get('invest_beyond_nisa', True)
         min_cash_balance = config['asset_allocation'].get('min_cash_balance', 1000000)
         capital_gains_tax_rate = config['asset_allocation'].get('capital_gains_tax_rate', 0.20315)
     else:
@@ -1095,6 +1241,7 @@ def simulate_future_assets(
         auto_invest_threshold = 999  # 自動投資しない
         nisa_enabled = False
         nisa_annual_limit = 0
+        invest_beyond_nisa = False
         min_cash_balance = 0
         capital_gains_tax_rate = 0.20315
 
@@ -1157,33 +1304,19 @@ def simulate_future_assets(
         shuhei_income_monthly = _income['shuhei_income_monthly']
         sakura_income_monthly = _income['sakura_income_monthly']
 
-        # ライフステージ別の基本生活費を計算（月額に変換前）
-        fallback_annual_expense = monthly_expense * 12 * (1 + expense_growth_rate) ** years
-        annual_base_expense = calculate_base_expense(years, config, fallback_annual_expense)
-        base_expense = annual_base_expense / 12
-
-        # 教育費を追加（年間費用を月額に換算）
-        monthly_education_expense = calculate_education_expense(years, config) / 12
-
-        # 住宅ローン支払額を追加
-        monthly_mortgage_payment = calculate_mortgage_payment(years, config)
-
-        # 住宅メンテナンス費用を追加（年間費用を月額に換算）
-        monthly_maintenance_cost = calculate_house_maintenance(years, config) / 12
-
-        # ワーケーション費用を追加（年間費用を月額に換算）
-        monthly_workation_cost = calculate_workation_cost(years, config) / 12
-
-        # 社会保険料を追加（FIRE後のみ）
-        monthly_pension_premium = calculate_national_pension_premium(years, config, fire_achieved) / 12
-        monthly_health_insurance_premium = calculate_national_health_insurance_premium(
-            years, config, fire_achieved, prev_year_capital_gains=prev_year_capital_gains
-        ) / 12
-
-        # 総支出 = 基本支出 + 教育費 + 住宅ローン + メンテナンス費用 + ワーケーション費用 + 社会保険料
-        expense = (base_expense + monthly_education_expense + monthly_mortgage_payment
-                   + monthly_maintenance_cost + monthly_workation_cost
-                   + monthly_pension_premium + monthly_health_insurance_premium)
+        # 支出計算（全項目）
+        _exp = _calculate_monthly_expenses(
+            years, config, monthly_expense, expense_growth_rate,
+            fire_achieved, prev_year_capital_gains
+        )
+        base_expense                     = _exp['base_expense']
+        monthly_education_expense        = _exp['education_expense']
+        monthly_mortgage_payment         = _exp['mortgage_payment']
+        monthly_maintenance_cost         = _exp['maintenance_cost']
+        monthly_workation_cost           = _exp['workation_cost']
+        monthly_pension_premium          = _exp['pension_premium']
+        monthly_health_insurance_premium = _exp['health_insurance_premium']
+        expense                          = _exp['total']
 
         # 1. 収入を現金に加算
         cash += total_income
@@ -1236,47 +1369,18 @@ def simulate_future_assets(
         # 4. 余剰現金がある場合は自動投資（FIRE前のみ、資産配分が有効な場合）
         auto_invested = 0
         if allocation_enabled and not fire_achieved:
-            # 現金バッファを計算（最低残高と支出ベースのバッファの大きい方を採用）
-            expense_based_buffer = expense * cash_buffer_months
-            required_cash_balance = max(expense_based_buffer, min_cash_balance)
-            cash_threshold = required_cash_balance * auto_invest_threshold
-
-            if cash > cash_threshold:
-                # 最低残高を確保した上での余剰を計算
-                surplus = cash - required_cash_balance
-
-                # NISA枠を優先的に使用
-                nisa_remaining = nisa_annual_limit - nisa_used_this_year if nisa_enabled else 0
-
-                if nisa_remaining > 0 and surplus > 0:
-                    # NISA枠がある場合はNISAで投資
-                    nisa_invest = min(surplus, nisa_remaining)
-                    cash -= nisa_invest
-                    stocks += nisa_invest
-                    stocks_cost_basis += nisa_invest
-                    nisa_balance += nisa_invest
-                    nisa_cost_basis += nisa_invest
-                    nisa_used_this_year += nisa_invest
-                    auto_invested += nisa_invest
-                    surplus -= nisa_invest
-
-                # NISA枠を使い切った後も余剰がある場合は課税口座で投資（設定で制御）
-                invest_beyond_nisa = config.get('asset_allocation', {}).get('invest_beyond_nisa', True)
-                if surplus > 0 and invest_beyond_nisa:
-                    taxable_invest = surplus
-                    cash -= taxable_invest
-                    stocks += taxable_invest
-                    stocks_cost_basis += taxable_invest
-                    auto_invested += taxable_invest
-
-                # 安全チェック: 投資後も最低残高を下回っていないか確認
-                if cash < min_cash_balance:
-                    # 投資しすぎた場合は調整（通常は発生しないはずだが念のため）
-                    adjustment = min_cash_balance - cash
-                    cash += adjustment
-                    stocks -= adjustment
-                    stocks_cost_basis -= adjustment
-                    auto_invested -= adjustment
+            _inv = _auto_invest_surplus(
+                cash, stocks, stocks_cost_basis, nisa_balance, nisa_cost_basis,
+                nisa_used_this_year, expense, cash_buffer_months, min_cash_balance,
+                auto_invest_threshold, nisa_enabled, nisa_annual_limit, invest_beyond_nisa,
+            )
+            cash                = _inv['cash']
+            stocks              = _inv['stocks']
+            stocks_cost_basis   = _inv['stocks_cost_basis']
+            nisa_balance        = _inv['nisa_balance']
+            nisa_cost_basis     = _inv['nisa_cost_basis']
+            nisa_used_this_year = _inv['nisa_used_this_year']
+            auto_invested       = _inv['auto_invested']
 
         # FIRE達成チェック: 今退職しても寿命まで資産が持つか?
         # 収入・支出・運用益を全て処理した後の資産で判定
@@ -1314,35 +1418,15 @@ def simulate_future_assets(
                 print(f"  FIRE可能! at month {month} ({years:.1f} years), assets=JPY{total_assets:,.0f} (cash={cash:,.0f}, stocks={stocks:,.0f}, potential_investment={potential_investment:,.0f})")
 
         # 記録
-        results.append({
-            'date': date,
-            'month': month,
-            'assets': max(0, cash + stocks),  # 総資産
-            'cash': max(0, cash),
-            'stocks': max(0, stocks),
-            'stocks_cost_basis': max(0, stocks_cost_basis),
-            'nisa_balance': max(0, nisa_balance),
-            'income': total_income,
-            'pension_income': monthly_pension_income,
-            'labor_income': labor_income,
-            'shuhei_income': shuhei_income_monthly,
-            'sakura_income': sakura_income_monthly,
-            'child_allowance': monthly_child_allowance,
-            'expense': expense,
-            'base_expense': base_expense,
-            'education_expense': monthly_education_expense,
-            'mortgage_payment': monthly_mortgage_payment,
-            'maintenance_cost': monthly_maintenance_cost,
-            'workation_cost': monthly_workation_cost,
-            'pension_premium': monthly_pension_premium,
-            'health_insurance_premium': monthly_health_insurance_premium,
-            'net_cashflow': total_income - expense,
-            'investment_return': investment_return,
-            'auto_invested': auto_invested,
-            'capital_gains_tax': capital_gains_tax,
-            'fire_achieved': fire_achieved,
-            'fire_month': fire_month,
-        })
+        results.append(_build_monthly_result(
+            date, month, cash, stocks, stocks_cost_basis, nisa_balance,
+            total_income, monthly_pension_income, labor_income,
+            shuhei_income_monthly, sakura_income_monthly, monthly_child_allowance,
+            expense, base_expense, monthly_education_expense,
+            monthly_mortgage_payment, monthly_maintenance_cost, monthly_workation_cost,
+            monthly_pension_premium, monthly_health_insurance_premium,
+            investment_return, auto_invested, capital_gains_tax, fire_achieved, fire_month,
+        ))
 
         # 資産が破綻ライン（500万円）以下になったら終了
         if cash + stocks <= _BANKRUPTCY_THRESHOLD:
