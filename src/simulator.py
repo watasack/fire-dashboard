@@ -6,7 +6,7 @@
 import pandas as pd
 import numpy as np
 from datetime import datetime
-from typing import Dict, Any, List
+from typing import Dict, Any, List, NamedTuple
 from dateutil.relativedelta import relativedelta
 
 # 年金・資産計算用定数
@@ -14,6 +14,18 @@ _NATIONAL_PENSION_FULL_AMOUNT = 816_000       # 国民年金満額（2024年度,
 _EMPLOYEE_PENSION_MULTIPLIER = 0.005481        # 厚生年金乗率（給付乗率）
 _PENSION_MAX_CONTRIBUTION_YEARS = 40           # 国民年金最大加入年数
 _BANKRUPTCY_THRESHOLD = 5_000_000              # 破綻ライン（円）
+
+
+class _StockSaleResult(NamedTuple):
+    """_sell_stocks_with_tax() の戻り値。"""
+    stocks: float            # 更新後の株式残高
+    nisa_balance: float      # 更新後のNISA残高
+    nisa_cost_basis: float   # 更新後のNISA簿価
+    stocks_cost_basis: float # 更新後の株式簿価
+    nisa_sold: float         # NISA売却額（非課税）
+    cash_from_taxable: float # 課税口座売却後の現金（税引後）
+    capital_gain: float      # 実現益（capital_gains_this_year に加算する値）
+    total_sold: float        # 総売却額（nisa_sold + 課税口座売却額）
 
 
 def _get_age_at_offset(birthdate_str: str, year_offset: float) -> float:
@@ -564,13 +576,13 @@ def _sell_stocks_with_tax(
     stocks_cost_basis: float,
     capital_gains_tax_rate: float,
     allocation_enabled: bool,
-) -> dict:
+) -> _StockSaleResult:
     """
     NISA優先で株を売却し、shortage分を確保する。
 
     呼び出し側での使い分け:
-      支出不足型: cash += result['cash_from_taxable']         （NISA分はcashを経由せず支出に充当）
-      最低現金型: cash += result['nisa_sold'] + result['cash_from_taxable']（全額cashへ）
+      支出不足型: cash += result.cash_from_taxable         （NISA分はcashを経由せず支出に充当）
+      最低現金型: cash += result.nisa_sold + result.cash_from_taxable（全額cashへ）
 
     Returns:
       stocks, nisa_balance, nisa_cost_basis, stocks_cost_basis: 更新後の値
@@ -586,16 +598,16 @@ def _sell_stocks_with_tax(
     if not allocation_enabled:
         # 資産配分無効: 税なし単純売却（全額cash_from_taxableとして返す）
         sold = min(shortage, stocks)
-        return {
-            'stocks': stocks - sold,
-            'nisa_balance': nisa_balance,
-            'nisa_cost_basis': nisa_cost_basis,
-            'stocks_cost_basis': max(0.0, stocks_cost_basis - sold),
-            'nisa_sold': 0.0,
-            'cash_from_taxable': sold,
-            'capital_gain': 0.0,
-            'total_sold': sold,
-        }
+        return _StockSaleResult(
+            stocks=stocks - sold,
+            nisa_balance=nisa_balance,
+            nisa_cost_basis=nisa_cost_basis,
+            stocks_cost_basis=max(0.0, stocks_cost_basis - sold),
+            nisa_sold=0.0,
+            cash_from_taxable=sold,
+            capital_gain=0.0,
+            total_sold=sold,
+        )
 
     # NISA優先売却（非課税）
     if nisa_balance > 0 and shortage > 0:
@@ -624,16 +636,16 @@ def _sell_stocks_with_tax(
             stocks -= taxable_sold
             stocks_cost_basis = max(0.0, stocks_cost_basis - sale_cost)
 
-    return {
-        'stocks': stocks,
-        'nisa_balance': nisa_balance,
-        'nisa_cost_basis': nisa_cost_basis,
-        'stocks_cost_basis': stocks_cost_basis,
-        'nisa_sold': nisa_sold,
-        'cash_from_taxable': cash_from_taxable,
-        'capital_gain': capital_gain,
-        'total_sold': nisa_sold + taxable_sold,
-    }
+    return _StockSaleResult(
+        stocks=stocks,
+        nisa_balance=nisa_balance,
+        nisa_cost_basis=nisa_cost_basis,
+        stocks_cost_basis=stocks_cost_basis,
+        nisa_sold=nisa_sold,
+        cash_from_taxable=cash_from_taxable,
+        capital_gain=capital_gain,
+        total_sold=nisa_sold + taxable_sold,
+    )
 
 
 def _calculate_monthly_expenses(
@@ -993,12 +1005,12 @@ def simulate_post_fire_assets(
                 shortage, stocks, nisa_balance, nisa_cost_basis,
                 stocks_cost_basis, capital_gains_tax_rate, allocation_enabled,
             )
-            stocks = result['stocks']
-            nisa_balance = result['nisa_balance']
-            nisa_cost_basis = result['nisa_cost_basis']
-            stocks_cost_basis = result['stocks_cost_basis']
-            cash += result['cash_from_taxable']
-            capital_gains_this_year_post += result['capital_gain']
+            stocks = result.stocks
+            nisa_balance = result.nisa_balance
+            nisa_cost_basis = result.nisa_cost_basis
+            stocks_cost_basis = result.stocks_cost_basis
+            cash += result.cash_from_taxable
+            capital_gains_this_year_post += result.capital_gain
 
         # 運用リターン（株のみ）
         investment_return = stocks * monthly_return_rate
@@ -1014,12 +1026,12 @@ def simulate_post_fire_assets(
                     shortage, stocks, nisa_balance, nisa_cost_basis,
                     stocks_cost_basis, capital_gains_tax_rate, allocation_enabled,
                 )
-                stocks = result['stocks']
-                nisa_balance = result['nisa_balance']
-                nisa_cost_basis = result['nisa_cost_basis']
-                stocks_cost_basis = result['stocks_cost_basis']
-                cash += result['nisa_sold'] + result['cash_from_taxable']
-                capital_gains_this_year_post += result['capital_gain']
+                stocks = result.stocks
+                nisa_balance = result.nisa_balance
+                nisa_cost_basis = result.nisa_cost_basis
+                stocks_cost_basis = result.stocks_cost_basis
+                cash += result.nisa_sold + result.cash_from_taxable
+                capital_gains_this_year_post += result.capital_gain
 
         # 資産が破綻ライン以下になったら終了
         if cash + stocks <= _BANKRUPTCY_THRESHOLD:
@@ -1336,14 +1348,14 @@ def simulate_future_assets(
                 shortage, stocks, nisa_balance, nisa_cost_basis,
                 stocks_cost_basis, capital_gains_tax_rate, allocation_enabled,
             )
-            stocks = result['stocks']
-            nisa_balance = result['nisa_balance']
-            nisa_cost_basis = result['nisa_cost_basis']
-            stocks_cost_basis = result['stocks_cost_basis']
-            cash += result['cash_from_taxable']
-            capital_gains_this_year += result['capital_gain']
-            withdrawal_from_stocks = result['total_sold']
-            capital_gains_tax = result['capital_gain'] * capital_gains_tax_rate
+            stocks = result.stocks
+            nisa_balance = result.nisa_balance
+            nisa_cost_basis = result.nisa_cost_basis
+            stocks_cost_basis = result.stocks_cost_basis
+            cash += result.cash_from_taxable
+            capital_gains_this_year += result.capital_gain
+            withdrawal_from_stocks = result.total_sold
+            capital_gains_tax = result.capital_gain * capital_gains_tax_rate
 
         # 3. 運用リターン（株のみ）
         investment_return = stocks * monthly_return_rate
@@ -1359,12 +1371,12 @@ def simulate_future_assets(
                     shortage, stocks, nisa_balance, nisa_cost_basis,
                     stocks_cost_basis, capital_gains_tax_rate, allocation_enabled,
                 )
-                stocks = result['stocks']
-                nisa_balance = result['nisa_balance']
-                nisa_cost_basis = result['nisa_cost_basis']
-                stocks_cost_basis = result['stocks_cost_basis']
-                cash += result['nisa_sold'] + result['cash_from_taxable']
-                capital_gains_this_year += result['capital_gain']
+                stocks = result.stocks
+                nisa_balance = result.nisa_balance
+                nisa_cost_basis = result.nisa_cost_basis
+                stocks_cost_basis = result.stocks_cost_basis
+                cash += result.nisa_sold + result.cash_from_taxable
+                capital_gains_this_year += result.capital_gain
 
         # 4. 余剰現金がある場合は自動投資（FIRE前のみ、資産配分が有効な場合）
         auto_invested = 0
