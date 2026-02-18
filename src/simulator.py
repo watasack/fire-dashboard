@@ -5,9 +5,31 @@
 
 import pandas as pd
 import numpy as np
+from datetime import datetime
 from typing import Dict, Any, List
 from dateutil.relativedelta import relativedelta
-from src.data_schema import get_column_names
+
+# 年金・資産計算用定数
+_NATIONAL_PENSION_FULL_AMOUNT = 816_000       # 国民年金満額（2024年度, 円/年）
+_EMPLOYEE_PENSION_MULTIPLIER = 0.005481        # 厚生年金乗率（給付乗率）
+_PENSION_MAX_CONTRIBUTION_YEARS = 40           # 国民年金最大加入年数
+_BANKRUPTCY_THRESHOLD = 5_000_000              # 破綻ライン（円）
+
+
+def _get_age_at_offset(birthdate_str: str, year_offset: float) -> float:
+    """
+    生年月日文字列とシミュレーション経過年数から、その時点での年齢を返す。
+
+    Args:
+        birthdate_str: 生年月日（'YYYY/MM/DD'形式）
+        year_offset: シミュレーション開始からの経過年数
+
+    Returns:
+        シミュレーション時点での年齢（歳）
+    """
+    birthdate = datetime.strptime(birthdate_str, '%Y/%m/%d')
+    current_age = (datetime.now() - birthdate).days / 365.25
+    return current_age + year_offset
 
 
 def calculate_education_expense(year_offset: float, config: Dict[str, Any]) -> float:
@@ -29,22 +51,13 @@ def calculate_education_expense(year_offset: float, config: Dict[str, Any]) -> f
 
     total_education_expense = 0
 
-    from datetime import datetime
-    current_date = datetime.now()
-
     for child in children:
         # 生年月日から現在の年齢を計算
         birthdate_str = child.get('birthdate')
         if not birthdate_str:
             continue
 
-        birthdate = datetime.strptime(birthdate_str, '%Y/%m/%d')
-
-        # 現在の年齢を計算
-        current_age = (current_date - birthdate).days / 365.25
-
-        # シミュレーション中の年齢 = 現在年齢 + 経過年数
-        child_age = current_age + year_offset
+        child_age = _get_age_at_offset(birthdate_str, year_offset)
 
         # 年齢に応じた教育段階と費用を計算
         if 0 <= child_age < 3:
@@ -97,13 +110,9 @@ def _calculate_national_pension_amount(contribution_years: float) -> float:
     Returns:
         年間年金額（円）
     """
-    # 2024年度の満額（40年加入）
-    full_amount = 816000
-
-    # 加入年数に応じた按分（40年満額）
-    # 20歳から60歳まで（40年）が最大
-    contribution_years = min(contribution_years, 40)
-    annual_pension = full_amount * (contribution_years / 40)
+    # 加入年数に応じた按分（最大加入年数で満額）
+    contribution_years = min(contribution_years, _PENSION_MAX_CONTRIBUTION_YEARS)
+    annual_pension = _NATIONAL_PENSION_FULL_AMOUNT * (contribution_years / _PENSION_MAX_CONTRIBUTION_YEARS)
 
     return annual_pension
 
@@ -119,12 +128,9 @@ def _calculate_employees_pension_amount(avg_monthly_salary: float, contribution_
     Returns:
         年間年金額（円）
     """
-    # 2003年4月以降の給付乗率（報酬比例部分）
-    # 実際は平成15年3月以前と以降で乗率が異なるが、簡略化のため統一
-    multiplier = 0.005481
-
     # 厚生年金（報酬比例部分）= 平均月収 × 加入月数 × 給付乗率
-    annual_pension = avg_monthly_salary * contribution_months * multiplier
+    # 2003年4月以降の乗率（平成15年3月以前と以降で異なるが、簡略化のため統一）
+    annual_pension = avg_monthly_salary * contribution_months * _EMPLOYEE_PENSION_MULTIPLIER
 
     return annual_pension
 
@@ -158,22 +164,13 @@ def calculate_pension_income(
 
     total_pension_income = 0
 
-    from datetime import datetime
-    current_date = datetime.now()
-
     for person in people:
         # 生年月日から現在の年齢を計算
         birthdate_str = person.get('birthdate')
         if not birthdate_str:
             continue
 
-        birthdate = datetime.strptime(birthdate_str, '%Y/%m/%d')
-
-        # 現在の年齢を計算
-        current_age = (current_date - birthdate).days / 365.25
-
-        # シミュレーション中の年齢 = 現在年齢 + 経過年数
-        person_age = current_age + year_offset
+        person_age = _get_age_at_offset(birthdate_str, year_offset)
 
         # 年金受給開始年齢に達していなければスキップ
         if person_age < start_age:
@@ -193,7 +190,7 @@ def calculate_pension_income(
             # 達成していなければ、現在年齢までの加入期間（最大65歳まで）
             if fire_achieved and fire_year_offset is not None:
                 # FIRE達成時の年齢
-                fire_age = current_age + fire_year_offset
+                fire_age = _get_age_at_offset(birthdate_str, fire_year_offset)
                 work_end_age = fire_age
             else:
                 # まだFIRE未達成の場合は、シミュレーション年の年齢まで働く（最大65歳）
@@ -254,17 +251,12 @@ def calculate_child_allowance(year_offset: float, config: Dict[str, Any]) -> flo
 
     total_annual_allowance = 0
 
-    from datetime import datetime
-    current_date = datetime.now()
-
     for i, child in enumerate(children):
         birthdate_str = child.get('birthdate')
         if not birthdate_str:
             continue
 
-        birthdate = datetime.strptime(birthdate_str, '%Y/%m/%d')
-        current_age = (current_date - birthdate).days / 365.25
-        child_age = current_age + year_offset
+        child_age = _get_age_at_offset(birthdate_str, year_offset)
 
         # 年齢に応じた月額手当を計算（2024年10月改定後）
         if child_age < 3:
@@ -313,9 +305,6 @@ def calculate_national_pension_premium(
     if not pension_people:
         return 0
 
-    from datetime import datetime
-    current_date = datetime.now()
-
     total_annual_premium = 0
 
     for person in pension_people:
@@ -323,11 +312,8 @@ def calculate_national_pension_premium(
         if not birthdate_str:
             continue
 
-        birthdate = datetime.strptime(birthdate_str, '%Y/%m/%d')
-
         # シミュレーション中の年齢を計算
-        current_age = (current_date - birthdate).days / 365.25
-        person_age = current_age + year_offset
+        person_age = _get_age_at_offset(birthdate_str, year_offset)
 
         # 20歳～60歳の間のみ国民年金保険料を支払う
         if 20 <= person_age < 60:
@@ -420,7 +406,6 @@ def calculate_mortgage_payment(year_offset: float, config: Dict[str, Any]) -> fl
     if not end_date_str:
         return 0
 
-    from datetime import datetime
     current_date = datetime.now()
 
     # 終了日をパース
@@ -458,7 +443,6 @@ def calculate_house_maintenance(year_offset: float, config: Dict[str, Any]) -> f
     if not items:
         return 0
 
-    from datetime import datetime
     current_date = datetime.now()
     current_year = current_date.year
 
@@ -512,20 +496,14 @@ def calculate_workation_cost(year_offset: float, config: Dict[str, Any]) -> floa
     if start_child_index >= len(children):
         return 0  # 指定された子供が存在しない
 
-    from datetime import datetime
-    current_date = datetime.now()
-
     # 基準となる子供の情報
     child = children[start_child_index]
     birthdate_str = child.get('birthdate')
     if not birthdate_str:
         return 0
 
-    birthdate = datetime.strptime(birthdate_str, '%Y/%m/%d')
-
     # シミュレーション時点での子供の年齢を計算
-    current_age = (current_date - birthdate).days / 365.25
-    child_age = current_age + year_offset
+    child_age = _get_age_at_offset(birthdate_str, year_offset)
 
     # 開始年齢以降ならワーケーション費用を返す
     if child_age >= start_child_age:
@@ -637,7 +615,6 @@ def _calculate_monthly_income(
       sakura_income_monthly: 桜の月収（FIRE後は0）
       post_fire_income:      FIRE後副収入設定値
     """
-    from datetime import datetime
 
     # 年金収入
     fire_year_offset = (fire_month / 12) if fire_month is not None else None
@@ -711,7 +688,6 @@ def simulate_post_fire_assets(
     Returns:
         90歳時点での資産額
     """
-    from datetime import datetime
 
     # シナリオ設定取得
     scenario_config = config['simulation'][scenario]
@@ -746,7 +722,6 @@ def simulate_post_fire_assets(
     post_fire_income = config['simulation'].get('post_fire_income', 0)
 
     # 健康保険料の動的計算用（年間キャピタルゲイン追跡）
-    from datetime import datetime
     current_date_post = datetime.now()
     current_year_post = (current_date_post + relativedelta(months=int(years_offset * 12))).year
     capital_gains_this_year_post = 0
@@ -840,7 +815,7 @@ def simulate_post_fire_assets(
 
         # 最低現金残高を確保（資産配分が有効な場合）
         if allocation_enabled:
-            min_cash_balance = config['asset_allocation'].get('min_cash_balance', 5000000)
+            min_cash_balance = config['asset_allocation'].get('min_cash_balance', _BANKRUPTCY_THRESHOLD)
             if cash < min_cash_balance and stocks > 0:
                 shortage = min_cash_balance - cash
                 # 最低現金型: NISAも課税分も両方cashへ
@@ -856,7 +831,7 @@ def simulate_post_fire_assets(
                 capital_gains_this_year_post += result['capital_gain']
 
         # 資産が破綻ライン以下になったら終了
-        if cash + stocks <= 5_000_000:
+        if cash + stocks <= _BANKRUPTCY_THRESHOLD:
             return 0
 
     return cash + stocks
@@ -933,7 +908,7 @@ def can_retire_now(
     )
 
     # 破綻ライン: 500万円を下回らないことを確認
-    return final_assets > 5_000_000
+    return final_assets > _BANKRUPTCY_THRESHOLD
 
 
 def calculate_base_expense(year_offset: float, config: Dict[str, Any], fallback_expense: float) -> float:
@@ -967,7 +942,6 @@ def calculate_base_expense(year_offset: float, config: Dict[str, Any], fallback_
         return base_expense_by_stage.get('empty_nest', fallback_expense)
 
     # 最初の子供の年齢を計算してライフステージを決定
-    from datetime import datetime
     current_date = datetime.now()
 
     child = children[0]
@@ -975,9 +949,7 @@ def calculate_base_expense(year_offset: float, config: Dict[str, Any], fallback_
     if not birthdate_str:
         return fallback_expense
 
-    birthdate = datetime.strptime(birthdate_str, '%Y/%m/%d')
-    current_age = (current_date - birthdate).days / 365.25
-    child_age = current_age + year_offset
+    child_age = _get_age_at_offset(birthdate_str, year_offset)
 
     # 年齢に応じたライフステージを判定
     if child_age < 6:
@@ -1014,8 +986,7 @@ def calculate_base_expense(year_offset: float, config: Dict[str, Any], fallback_
                 continue
 
             # 各子供の年齢からステージを判定
-            child_current_age = (current_date - child_birthdate).days / 365.25
-            child_age = child_current_age + year_offset
+            child_age = _get_age_at_offset(child_birthdate_str, year_offset)
 
             if child_age < 6:
                 child_stage = 'young_child'
@@ -1129,7 +1100,6 @@ def simulate_future_assets(
     fire_month = None  # FIRE達成月を記録
 
     # 開始日
-    from datetime import datetime
     current_date = datetime.now()
     current_year = current_date.year
     nisa_used_this_year = 0  # 今年のNISA投資額
@@ -1352,7 +1322,7 @@ def simulate_future_assets(
         })
 
         # 資産が破綻ライン（500万円）以下になったら終了
-        if cash + stocks <= 5_000_000:
+        if cash + stocks <= _BANKRUPTCY_THRESHOLD:
             break
 
     df = pd.DataFrame(results)
@@ -1469,11 +1439,11 @@ def simulate_with_withdrawal(
         assets = assets - total_expense + investment_return + monthly_pension_income + monthly_child_allowance + monthly_post_fire_income
 
         # 資産が破綻ライン（500万円）以下になったら終了
-        if assets <= 5_000_000:
+        if assets <= _BANKRUPTCY_THRESHOLD:
             return 0
 
     # 最終資産も破綻ライン以下なら0を返す
-    if assets <= 5_000_000:
+    if assets <= _BANKRUPTCY_THRESHOLD:
         return 0
 
     return assets

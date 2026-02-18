@@ -30,11 +30,11 @@ simulation:
   shuhei_income: 465875  # 修平の手取り月額（円）: 年収7,507,388→社保・税引後
   sakura_income: 300000  # 桜の手取り月額（円）: 個人事業主の想定手取り
   initial_labor_income: 765875 # 世帯手取り合計（shuhei_income + sakura_income）
-  post_fire_income: 100000      # FIRE後の副収入（月額・円）開発業務など
+  post_fire_income: 20000      # FIRE後の副収入（月額・円）開発業務など
 
   # 標準シナリオ（バランス型）
   standard:
-    annual_return_rate: 0.05   # 年率リターン 4%
+    annual_return_rate: 0.05   # 年率リターン 5%
     inflation_rate: 0.02       # インフレ率 2%
     income_growth_rate: 0.02   # 収入成長率 2%
     expense_growth_rate: 0.02  # 支出成長率 2%（インフレ連動）
