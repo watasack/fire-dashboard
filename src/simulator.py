@@ -47,7 +47,14 @@ def calculate_education_expense(year_offset: float, config: Dict[str, Any]) -> f
         child_age = current_age + year_offset
 
         # 年齢に応じた教育段階と費用を計算
-        if 3 <= child_age < 6:
+        if 0 <= child_age < 3:
+            # 保育園（0-2歳）
+            nursery_type = child.get('nursery', 'none')
+            if nursery_type != 'none':
+                annual_cost = costs.get('nursery', {}).get(nursery_type, 0)
+                total_education_expense += annual_cost
+
+        elif 3 <= child_age < 6:
             # 幼稚園（3-5歳）
             stage_type = child.get('kindergarten', 'public')
             annual_cost = costs['kindergarten'][stage_type]
@@ -240,15 +247,17 @@ def calculate_child_allowance(year_offset: float, config: Dict[str, Any]) -> flo
         return 0
 
     allowance_config = config['child_allowance']
-    under_3_monthly = allowance_config.get('under_3', 15000)
-    age_3_to_15_monthly = allowance_config.get('age_3_to_15', 10000)
+    # 2024年10月改定: 第2子以降0-3歳は2万円/月、支給対象を高校生（18歳未満）まで拡大
+    first_child_under_3 = allowance_config.get('first_child_under_3', 15000)
+    second_child_plus_under_3 = allowance_config.get('second_child_plus_under_3', 20000)
+    age_3_to_high_school = allowance_config.get('age_3_to_high_school', 10000)
 
     total_annual_allowance = 0
 
     from datetime import datetime
     current_date = datetime.now()
 
-    for child in children:
+    for i, child in enumerate(children):
         birthdate_str = child.get('birthdate')
         if not birthdate_str:
             continue
@@ -257,11 +266,13 @@ def calculate_child_allowance(year_offset: float, config: Dict[str, Any]) -> flo
         current_age = (current_date - birthdate).days / 365.25
         child_age = current_age + year_offset
 
-        # 年齢に応じた月額手当を計算
+        # 年齢に応じた月額手当を計算（2024年10月改定後）
         if child_age < 3:
-            monthly_allowance = under_3_monthly
-        elif child_age <= 15:
-            monthly_allowance = age_3_to_15_monthly
+            # 第1子と第2子以降で金額が異なる
+            monthly_allowance = first_child_under_3 if i == 0 else second_child_plus_under_3
+        elif child_age < 18:
+            # 3歳以上高校生以下（18歳未満）: 1万円/月
+            monthly_allowance = age_3_to_high_school
         else:
             monthly_allowance = 0
 

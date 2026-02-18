@@ -89,6 +89,7 @@ education:
   children:
     - name: '颯'               # 名前
       birthdate: '2022/02/26'  # 生年月日（YYYY/MM/DD形式）
+      nursery: 'standard'      # standard（保育園利用）
       kindergarten: 'private'  # private or public
       elementary: 'public'     # private or public
       junior_high: 'public'    # private or public
@@ -96,6 +97,7 @@ education:
       university: 'national'   # national, private_arts, private_science
     - name: '楓'               # 第二子
       birthdate: '2027/04/15'  # 生年月日（YYYY/MM/DD形式）
+      nursery: 'standard'      # standard（保育園利用）
       kindergarten: 'private'  # private or public
       elementary: 'public'     # private or public
       junior_high: 'public'    # private or public
@@ -104,6 +106,10 @@ education:
 
   # 教育段階別の年間費用（円）- 文部科学省の調査を基にした標準値
   costs:
+    nursery:                   # 保育園（0-2歳）
+      standard: 714000         # 約71万円/年（実績: にこにこ保育園 59,572円/月）
+      # ※認可外・私立保育園の実績値。認可保育所は世帯収入に応じた補助あり
+
     kindergarten:              # 幼稚園（3-5歳）
       public: 100000           # 公立: 約10万円/年（幼児教育無償化適用後、給食費・教材費等）
       private: 200000          # 私立: 約20万円/年（幼児教育無償化適用後、給食費・課外活動費・バス代等）
@@ -127,12 +133,14 @@ education:
       private_arts: 900000     # 私立文系: 約90万円/年
       private_science: 1200000 # 私立理系: 約120万円/年
 
-# 児童手当設定
+# 児童手当設定（2024年10月改定後）
 child_allowance:
   enabled: true                # 児童手当を有効化
-  # 年齢別の月額（円）
-  under_3: 15000               # 3歳未満: 1.5万円/月
-  age_3_to_15: 10000           # 3歳以上15歳以下: 1万円/月
+  # 出生順位・年齢別の月額（円）
+  first_child_under_3: 15000        # 第1子 3歳未満: 1.5万円/月
+  second_child_plus_under_3: 20000  # 第2子以降 3歳未満: 2万円/月
+  age_3_to_high_school: 10000       # 3歳以上高校生以下（18歳未満）: 1万円/月
+  # ※2024年10月改定: 第2子以降0-3歳が1.5→2万/月、高校生まで支給対象を拡大
 
 # 住宅ローン設定
 mortgage:
