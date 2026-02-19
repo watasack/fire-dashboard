@@ -406,9 +406,11 @@ def calculate_national_health_insurance_premium(
     si = config['social_insurance']
 
     # --- 所得の算出 ---
-    # 副業収入（年額）
-    post_fire_income = config['simulation'].get('post_fire_income', 0)
-    annual_side_income = post_fire_income * 12
+    # 副業収入（修平 + 桜の年額合計）
+    annual_side_income = (
+        config['simulation'].get('shuhei_post_fire_income', 0)
+        + config['simulation'].get('sakura_post_fire_income', 0)
+    ) * 12
 
     # 前年の株式譲渡益（キャピタルゲイン）
     # 国民健康保険の所得割は分離課税の譲渡所得も含む
@@ -845,12 +847,12 @@ def _calculate_monthly_income(
 
     Returns:
       total_income:          月次合計収入
-      labor_income:          労働収入（FIRE後は post_fire_income）
-      pension_income:        月次年金収入
-      child_allowance:       月次児童手当
-      shuhei_income_monthly: 修平の月収（FIRE後は0）
-      sakura_income_monthly: 桜の月収（FIRE後は0）
-      post_fire_income:      FIRE後副収入設定値
+      labor_income:               労働収入（FIRE後は shuhei + sakura の post_fire 合計）
+      pension_income:             月次年金収入
+      child_allowance:            月次児童手当
+      shuhei_income_monthly:      修平の月収（FIRE後は shuhei_post_fire_income）
+      sakura_income_monthly:      桜の月収（FIRE後は sakura_post_fire_income）
+      post_fire_income:           修平の FIRE後副収入設定値
     """
 
     # 年金収入
@@ -863,17 +865,19 @@ def _calculate_monthly_income(
     # 児童手当
     monthly_child_allowance = calculate_child_allowance(years, config) / 12
 
-    post_fire_income = config['simulation'].get('post_fire_income', 0)
+    shuhei_post_fire_income = config['simulation'].get('shuhei_post_fire_income', 0)
+    sakura_post_fire_income = config['simulation'].get('sakura_post_fire_income', 0)
 
     if fire_achieved:
+        labor_income = shuhei_post_fire_income + sakura_post_fire_income
         return {
-            'total_income': monthly_pension_income + monthly_child_allowance + post_fire_income,
-            'labor_income': post_fire_income,
+            'total_income': monthly_pension_income + monthly_child_allowance + labor_income,
+            'labor_income': labor_income,
             'pension_income': monthly_pension_income,
             'child_allowance': monthly_child_allowance,
-            'shuhei_income_monthly': 0.0,
-            'sakura_income_monthly': 0.0,
-            'post_fire_income': post_fire_income,
+            'shuhei_income_monthly': shuhei_post_fire_income,
+            'sakura_income_monthly': sakura_post_fire_income,
+            'post_fire_income': shuhei_post_fire_income,
         }
 
     # FIRE前: 労働収入を成長率に応じて計算
@@ -896,7 +900,7 @@ def _calculate_monthly_income(
         'child_allowance': monthly_child_allowance,
         'shuhei_income_monthly': shuhei_income_monthly,
         'sakura_income_monthly': sakura_income_monthly,
-        'post_fire_income': post_fire_income,
+        'post_fire_income': shuhei_post_fire_income,
     }
 
 
@@ -956,8 +960,11 @@ def simulate_post_fire_assets(
     nisa_balance = nisa_balance
     nisa_cost_basis = nisa_cost_basis
 
-    # FIRE後の副収入
-    post_fire_income = config['simulation'].get('post_fire_income', 0)
+    # FIRE後の収入（修平の副収入 + 桜の継続収入）
+    post_fire_income = (
+        config['simulation'].get('shuhei_post_fire_income', 0)
+        + config['simulation'].get('sakura_post_fire_income', 0)
+    )
 
     # 健康保険料の動的計算用（年間キャピタルゲイン追跡）
     current_date_post = datetime.now()
@@ -1567,10 +1574,13 @@ def simulate_with_withdrawal(
             annual_workation_cost = calculate_workation_cost(years_elapsed, config)
             monthly_workation_cost = annual_workation_cost / 12
 
-        # FIRE後の副収入を追加（configが提供されている場合）
+        # FIRE後の収入（修平の副収入 + 桜の継続収入）を追加（configが提供されている場合）
         monthly_post_fire_income = 0
         if config is not None:
-            monthly_post_fire_income = config['simulation'].get('post_fire_income', 0)
+            monthly_post_fire_income = (
+                config['simulation'].get('shuhei_post_fire_income', 0)
+                + config['simulation'].get('sakura_post_fire_income', 0)
+            )
 
         # 社会保険料を追加（FIRE後のみ、configが提供されている場合）
         monthly_pension_premium = 0

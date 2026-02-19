@@ -12,6 +12,12 @@ Financial Independence, Retire Early（FIRE）達成・維持のための可視�
 2. **FIRE達成進捗** - 目標額に対する現在の達成率と到達予測を可視化
 3. **カテゴリー別支出分析** - 食費・交通費などカテゴリー別の支出内訳
 4. **将来資産シミュレーション** - 楽観・標準・悲観の3シナリオで将来を予測
+5. **教育費シミュレーション** - 子供の進学パスに応じた教育費を自動計算
+6. **児童手当シミュレーション** - 2024年10月改定後の制度に基づく受給額を計算
+7. **年金収入シミュレーション** - FIRE達成タイミングに応じた厚生年金・国民年金を動的計算
+8. **社会保険料シミュレーション** - FIRE後の国民年金・国民健康保険料を動的計算
+9. **住宅ローン・メンテナンス費** - 返済スケジュールと定期修繕コストを計上
+10. **NISA優先の資産配分管理** - 余剰現金をNISA枠優先で自動投資し、現金バッファを維持
 
 ### FIRE目標額の計算方法
 
@@ -56,16 +62,17 @@ data/
 python scripts/generate_dashboard.py
 ```
 
-実行すると、以下の8ステップが自動的に実行されます：
+実行すると、以下の9ステップが自動的に実行されます：
 
 1. 設定読み込み（`config.yaml`）
 2. データファイル読み込み
 3. データ処理・クリーニング
 4. 現状分析
-5. FIRE目標額計算（二分探索）
-6. 将来シミュレーション（3シナリオ）
-7. グラフ生成（Plotly）
-8. HTML出力
+5. 将来シミュレーション（3シナリオ、FIRE達成検出含む）
+6. FIRE達成情報の抽出
+7. アクションアイテム生成
+8. グラフ生成（Plotly）
+9. HTML出力
 
 生成されたダッシュボードは `dashboard/index.html` に保存されます。
 
@@ -91,6 +98,10 @@ open dashboard/index.html
 simulation:
   years: 50                      # シミュレーション期間（年）
   life_expectancy: 90            # 想定寿命
+  shuhei_income: 465875          # 修平の手取り月額（円）
+  sakura_income: 300000          # 桜の手取り月額（円）
+  shuhei_post_fire_income: 20000    # FIRE後の修平の副収入（月額・円）
+  sakura_post_fire_income: 200000   # FIRE後の桜の月収（個人事業主として継続）
 
   standard:
     annual_return_rate: 0.05     # 年率リターン（5%）
@@ -99,8 +110,26 @@ simulation:
     expense_growth_rate: 0.02    # 支出成長率（2%）
 
 fire:
-  safety_buffer: 1.2             # 安全バッファ（20%）
-  withdrawal_rate: 0.04          # 4%ルール（参考値）
+  base_expense_by_stage:         # ライフステージ別の基本生活費（円/年）
+    young_child: 2800000         # 子供0-5歳（未就学）
+    elementary:  3000000         # 子供6-11歳（小学生）
+    empty_nest:  2500000         # 子供独立後
+
+education:
+  enabled: true
+  children:
+    - name: '颯'
+      birthdate: '2022/02/26'
+      university: 'national'     # national / private_arts / private_science
+
+pension:
+  enabled: true
+  start_age: 65
+
+asset_allocation:
+  nisa_enabled: true
+  nisa_annual_limit: 3600000     # 新NISA年間上限（円）
+  cash_buffer_months: 6          # 現金バッファ（生活費の何ヶ月分）
 ```
 
 設定変更後は、再度 `python scripts/generate_dashboard.py` を実行してください。
@@ -132,6 +161,7 @@ open dashboard/index.html   # macOS/Linux
 │   ├── config.py           # 設定管理
 │   ├── data_loader.py      # データ読み込み
 │   ├── data_processor.py   # データ処理
+│   ├── data_schema.py      # データスキーマ定義
 │   ├── analyzer.py         # 現状分析
 │   ├── simulator.py        # 将来シミュレーション
 │   ├── visualizer.py       # グラフ生成
