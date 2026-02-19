@@ -789,8 +789,48 @@ def _build_monthly_result(
     }
 
 
+def _sakura_income_for_month(date: datetime, sakura_income_base: float, config: dict) -> float:
+    """
+    指定月の桜の月収を返す。産休・育休期間中は config の monthly_income を使用する。
+
+    Args:
+        date: 判定する月の日付
+        sakura_income_base: 通常時の桜の月収
+        config: 設定辞書
+
+    Returns:
+        その月の桜の月収（円）
+    """
+    leave_list = config.get('simulation', {}).get('maternity_leave', [])
+    children = config.get('education', {}).get('children', [])
+
+    for leave in leave_list:
+        child_name = leave.get('child')
+        months_before = leave.get('months_before', 2)
+        months_after = leave.get('months_after', 12)
+        income_during_leave = leave.get('monthly_income', 0)
+
+        # 対象の子供の生年月日を検索
+        birthdate_str = next(
+            (c.get('birthdate') for c in children if c.get('name') == child_name),
+            None,
+        )
+        if birthdate_str is None:
+            continue
+
+        birthdate = datetime.strptime(birthdate_str, '%Y/%m/%d')
+        leave_start = birthdate - relativedelta(months=months_before)
+        leave_end = birthdate + relativedelta(months=months_after)
+
+        if leave_start <= date <= leave_end:
+            return income_during_leave
+
+    return sakura_income_base
+
+
 def _calculate_monthly_income(
     years: float,
+    date: datetime,
     fire_achieved: bool,
     fire_month,
     shuhei_income_base: float,
@@ -838,11 +878,12 @@ def _calculate_monthly_income(
 
     # FIRE前: 労働収入を成長率に応じて計算
     # 修平（会社員）: income_growth_rateを適用
-    # 桜（個人事業主）: 固定（成長なし）
+    # 桜（個人事業主）: 固定（成長なし）。産休・育休期間中は月収を変動させる
+    sakura_income_current = _sakura_income_for_month(date, sakura_income_base, config)
     if shuhei_income_base + sakura_income_base > 0:
-        income = shuhei_income_base * (1 + income_growth_rate) ** years + sakura_income_base
         shuhei_income_monthly = shuhei_income_base * (1 + income_growth_rate) ** years
-        sakura_income_monthly = sakura_income_base
+        sakura_income_monthly = sakura_income_current
+        income = shuhei_income_monthly + sakura_income_monthly
     else:
         income = monthly_income * (1 + income_growth_rate) ** years
         shuhei_income_monthly = income * shuhei_ratio
@@ -1301,7 +1342,7 @@ def simulate_future_assets(
 
         # 収入計算（労働収入・年金・児童手当・FIRE前後の切替）
         _income = _calculate_monthly_income(
-            years, fire_achieved, fire_month,
+            years, date, fire_achieved, fire_month,
             shuhei_income_base, sakura_income_base, monthly_income,
             shuhei_ratio, income_growth_rate, config,
         )

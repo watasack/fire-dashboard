@@ -32,6 +32,13 @@ simulation:
   initial_labor_income: 765875 # 世帯手取り合計（shuhei_income + sakura_income）
   post_fire_income: 20000      # FIRE後の副収入（月額・円）開発業務など
 
+  # 産休・育休による収入変動（個人事業主のため育休給付金なし → 期間中は0円）
+  maternity_leave:
+    - child: '楓'              # education.children の name と一致させる
+      months_before: 2         # 産前2ヶ月前から
+      months_after: 12         # 産後12ヶ月まで（計14ヶ月）
+      monthly_income: 0        # 期間中の桜の月収（給付金がある場合は金額を入力）
+
   # 標準シナリオ（バランス型）
   standard:
     annual_return_rate: 0.05   # 年率リターン 5%
