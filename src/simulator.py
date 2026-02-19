@@ -869,6 +869,10 @@ def _calculate_monthly_income(
     sakura_post_fire_income = config['simulation'].get('sakura_post_fire_income', 0)
 
     if fire_achieved:
+        # 年金受給開始後は完全リタイア（労働収入なし）
+        if monthly_pension_income > 0:
+            shuhei_post_fire_income = 0
+            sakura_post_fire_income = 0
         labor_income = shuhei_post_fire_income + sakura_post_fire_income
         return {
             'total_income': monthly_pension_income + monthly_child_allowance + labor_income,
@@ -1000,6 +1004,9 @@ def simulate_post_fire_assets(
         )
         monthly_pension_income = annual_pension_income / 12
 
+        # 年金受給開始後は完全リタイア（労働収入なし）
+        effective_post_fire_income = 0 if monthly_pension_income > 0 else post_fire_income
+
         # 児童手当
         annual_child_allowance = calculate_child_allowance(years, config)
         monthly_child_allowance = annual_child_allowance / 12
@@ -1030,8 +1037,8 @@ def simulate_post_fire_assets(
                   monthly_maintenance_cost + monthly_workation_cost +
                   monthly_pension_premium + monthly_health_insurance_premium)
 
-        # 収入（FIRE後は副収入 + 年金 + 児童手当のみ）
-        total_income = post_fire_income + monthly_pension_income + monthly_child_allowance
+        # 収入（年金受給前: 副収入 + 年金 + 児童手当、年金受給後: 年金 + 児童手当のみ）
+        total_income = effective_post_fire_income + monthly_pension_income + monthly_child_allowance
 
         # 収入を現金に加算
         cash += total_income
@@ -1574,9 +1581,9 @@ def simulate_with_withdrawal(
             annual_workation_cost = calculate_workation_cost(years_elapsed, config)
             monthly_workation_cost = annual_workation_cost / 12
 
-        # FIRE後の収入（修平の副収入 + 桜の継続収入）を追加（configが提供されている場合）
+        # FIRE後の収入（年金受給前のみ: 修平の副収入 + 桜の継続収入）
         monthly_post_fire_income = 0
-        if config is not None:
+        if config is not None and monthly_pension_income == 0:
             monthly_post_fire_income = (
                 config['simulation'].get('shuhei_post_fire_income', 0)
                 + config['simulation'].get('sakura_post_fire_income', 0)
