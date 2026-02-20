@@ -2138,8 +2138,8 @@ def simulate_with_random_returns(
             'monthly_return': monthly_return
         })
 
-        # 破綻判定
-        if assets <= _BANKRUPTCY_THRESHOLD:
+        # 破綻判定（資産がゼロ以下になったら終了）
+        if assets <= 0:
             break
 
     return pd.DataFrame(results)
@@ -2207,7 +2207,8 @@ def run_monte_carlo_simulation(
         else:
             final_assets = 0
 
-        success = final_assets >= _BANKRUPTCY_THRESHOLD
+        # 成功判定: 資産がゼロ以上（マイナスにならなかった）なら成功
+        success = final_assets > 0
 
         results.append({
             'final_assets': final_assets,
