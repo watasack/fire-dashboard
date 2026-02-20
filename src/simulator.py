@@ -921,6 +921,199 @@ def _calculate_monthly_income(
     }
 
 
+def _initialize_post_fire_simulation(
+    current_cash: float,
+    current_stocks: float,
+    years_offset: float,
+    config: Dict[str, Any],
+    scenario: str,
+    nisa_balance: float,
+    nisa_cost_basis: float,
+    stocks_cost_basis: Optional[float]
+) -> Dict[str, Any]:
+    """
+    FIRE後シミュレーションの初期状態を設定
+
+    Returns:
+        初期化済みの設定と状態変数を含む辞書
+    """
+    # シナリオ設定取得
+    scenario_config = config['simulation'][scenario]
+    annual_return_rate = scenario_config['annual_return_rate']
+
+    # シミュレーション期間
+    life_expectancy = config['simulation'].get('life_expectancy', 90)
+    start_age = config['simulation'].get('start_age', 35)
+    current_age = start_age + years_offset
+    remaining_years = life_expectancy - current_age
+    remaining_months = int(remaining_years * 12)
+
+    # 月次リターン率
+    monthly_return_rate = _get_monthly_return_rate(annual_return_rate)
+
+    # 資産配分設定
+    allocation_enabled = _is_enabled(config, 'asset_allocation')
+    if allocation_enabled:
+        capital_gains_tax_rate = config['asset_allocation'].get('capital_gains_tax_rate', 0.20315)
+        min_cash_balance = config['asset_allocation'].get('min_cash_balance', 1000000)
+    else:
+        capital_gains_tax_rate = 0.20315
+        min_cash_balance = 0
+
+    # FIRE後の収入
+    post_fire_income = (
+        config['simulation'].get('shuhei_post_fire_income', 0)
+        + config['simulation'].get('sakura_post_fire_income', 0)
+    )
+
+    return {
+        'cash': current_cash,
+        'stocks': current_stocks,
+        'stocks_cost_basis': stocks_cost_basis if stocks_cost_basis is not None else current_stocks,
+        'nisa_balance': nisa_balance,
+        'nisa_cost_basis': nisa_cost_basis,
+        'remaining_months': remaining_months,
+        'monthly_return_rate': monthly_return_rate,
+        'allocation_enabled': allocation_enabled,
+        'capital_gains_tax_rate': capital_gains_tax_rate,
+        'min_cash_balance': min_cash_balance,
+        'post_fire_income': post_fire_income,
+    }
+
+
+def _process_post_fire_monthly_cycle(
+    month: int,
+    cash: float,
+    stocks: float,
+    stocks_cost_basis: float,
+    nisa_balance: float,
+    nisa_cost_basis: float,
+    current_year_post: int,
+    capital_gains_this_year_post: float,
+    prev_year_capital_gains_post: float,
+    years_offset: float,
+    config: Dict[str, Any],
+    current_date_post: datetime,
+    monthly_return_rate: float,
+    allocation_enabled: bool,
+    capital_gains_tax_rate: float,
+    min_cash_balance: float,
+    post_fire_income: float,
+) -> Dict[str, Any]:
+    """
+    FIRE後の1ヶ月分のシミュレーション処理
+
+    Returns:
+        更新後の状態と破綻フラグを含む辞書
+    """
+    years = years_offset + month / 12
+    date_post = current_date_post + relativedelta(months=int(years * 12))
+
+    # 年度管理
+    _prev_gains = capital_gains_this_year_post
+    current_year_post, capital_gains_this_year_post, _year_advanced = _advance_year(
+        date_post.year, current_year_post, capital_gains_this_year_post
+    )
+    if _year_advanced:
+        prev_year_capital_gains_post = _prev_gains
+
+    # 支出計算
+    annual_base_expense = calculate_base_expense(years, config, 0)
+    base_expense = annual_base_expense / 12
+
+    annual_education_expense = calculate_education_expense(years, config)
+    monthly_education_expense = annual_education_expense / 12
+
+    monthly_mortgage_payment = calculate_mortgage_payment(years, config)
+
+    annual_maintenance_cost = calculate_house_maintenance(years, config)
+    monthly_maintenance_cost = annual_maintenance_cost / 12
+
+    annual_workation_cost = calculate_workation_cost(years, config)
+    monthly_workation_cost = annual_workation_cost / 12
+
+    annual_pension_premium = calculate_national_pension_premium(years, config, fire_achieved=True)
+    monthly_pension_premium = annual_pension_premium / 12
+
+    annual_health_insurance_premium = calculate_national_health_insurance_premium(
+        years, config, fire_achieved=True,
+        prev_year_capital_gains=prev_year_capital_gains_post
+    )
+    monthly_health_insurance_premium = annual_health_insurance_premium / 12
+
+    expense = (base_expense + monthly_education_expense + monthly_mortgage_payment +
+              monthly_maintenance_cost + monthly_workation_cost +
+              monthly_pension_premium + monthly_health_insurance_premium)
+
+    # 収入計算
+    annual_pension_income = calculate_pension_income(
+        years, config, fire_achieved=True, fire_year_offset=years_offset
+    )
+    monthly_pension_income = annual_pension_income / 12
+
+    # 年金受給開始後は完全リタイア
+    effective_post_fire_income = 0 if monthly_pension_income > 0 else post_fire_income
+
+    annual_child_allowance = calculate_child_allowance(years, config)
+    monthly_child_allowance = annual_child_allowance / 12
+
+    total_income = effective_post_fire_income + monthly_pension_income + monthly_child_allowance
+
+    # 収入を現金に加算
+    cash += total_income
+
+    # 支出を現金から引き出し
+    if cash >= expense:
+        cash -= expense
+    else:
+        shortage = expense - cash
+        cash = 0
+        result = _sell_stocks_with_tax(
+            shortage, stocks, nisa_balance, nisa_cost_basis,
+            stocks_cost_basis, capital_gains_tax_rate, allocation_enabled,
+        )
+        stocks = result.stocks
+        nisa_balance = result.nisa_balance
+        nisa_cost_basis = result.nisa_cost_basis
+        stocks_cost_basis = result.stocks_cost_basis
+        cash += result.cash_from_taxable
+        capital_gains_this_year_post += result.capital_gain
+
+    # 運用リターン
+    investment_return = stocks * monthly_return_rate
+    stocks += investment_return
+
+    # 最低現金残高維持
+    if allocation_enabled:
+        if cash < min_cash_balance and stocks > 0:
+            shortage = min_cash_balance - cash
+            result = _sell_stocks_with_tax(
+                shortage, stocks, nisa_balance, nisa_cost_basis,
+                stocks_cost_basis, capital_gains_tax_rate, allocation_enabled,
+            )
+            stocks = result.stocks
+            nisa_balance = result.nisa_balance
+            nisa_cost_basis = result.nisa_cost_basis
+            stocks_cost_basis = result.stocks_cost_basis
+            cash += result.nisa_sold + result.cash_from_taxable
+            capital_gains_this_year_post += result.capital_gain
+
+    # 破綻判定
+    should_break = (cash + stocks <= _BANKRUPTCY_THRESHOLD)
+
+    return {
+        'cash': cash,
+        'stocks': stocks,
+        'stocks_cost_basis': stocks_cost_basis,
+        'nisa_balance': nisa_balance,
+        'nisa_cost_basis': nisa_cost_basis,
+        'current_year_post': current_year_post,
+        'capital_gains_this_year_post': capital_gains_this_year_post,
+        'prev_year_capital_gains_post': prev_year_capital_gains_post,
+        'should_break': should_break,
+    }
+
+
 def simulate_post_fire_assets(
     current_cash: float,
     current_stocks: float,
@@ -948,157 +1141,52 @@ def simulate_post_fire_assets(
         90歳時点での資産額
     """
 
-    # シナリオ設定取得
-    scenario_config = config['simulation'][scenario]
-    annual_return_rate = scenario_config['annual_return_rate']
-
-    # シミュレーション期間
-    life_expectancy = config['simulation'].get('life_expectancy', 90)
-    start_age = config['simulation'].get('start_age', 35)
-    current_age = start_age + years_offset
-    remaining_years = life_expectancy - current_age
-    remaining_months = int(remaining_years * 12)
-
-    # 月次リターン率（複利計算）
-    monthly_return_rate = _get_monthly_return_rate(annual_return_rate)
-
-    # 資産配分設定
-    allocation_enabled = _is_enabled(config, 'asset_allocation')
-    if allocation_enabled:
-        capital_gains_tax_rate = config['asset_allocation'].get('capital_gains_tax_rate', 0.20315)
-    else:
-        capital_gains_tax_rate = 0.20315
-
-    # 初期値
-    cash = current_cash
-    stocks = current_stocks
-    if stocks_cost_basis is None:
-        stocks_cost_basis = current_stocks  # 簿価は時価と仮定
-    nisa_balance = nisa_balance
-    nisa_cost_basis = nisa_cost_basis
-
-    # FIRE後の収入（修平の副収入 + 桜の継続収入）
-    post_fire_income = (
-        config['simulation'].get('shuhei_post_fire_income', 0)
-        + config['simulation'].get('sakura_post_fire_income', 0)
+    # 初期化
+    init = _initialize_post_fire_simulation(
+        current_cash, current_stocks, years_offset, config, scenario,
+        nisa_balance, nisa_cost_basis, stocks_cost_basis
     )
 
-    # 健康保険料の動的計算用（年間キャピタルゲイン追跡）
+    cash = init['cash']
+    stocks = init['stocks']
+    stocks_cost_basis = init['stocks_cost_basis']
+    nisa_balance = init['nisa_balance']
+    nisa_cost_basis = init['nisa_cost_basis']
+    remaining_months = init['remaining_months']
+    monthly_return_rate = init['monthly_return_rate']
+    allocation_enabled = init['allocation_enabled']
+    capital_gains_tax_rate = init['capital_gains_tax_rate']
+    min_cash_balance = init['min_cash_balance']
+    post_fire_income = init['post_fire_income']
+
+    # 健康保険料の動的計算用
     current_date_post = datetime.now()
     current_year_post = (current_date_post + relativedelta(months=int(years_offset * 12))).year
     capital_gains_this_year_post = 0
     prev_year_capital_gains_post = 0
 
-    # 月次シミュレーション（FIRE後）
+    # 月次シミュレーション
     for month in range(remaining_months):
-        years = years_offset + month / 12
-        date_post = current_date_post + relativedelta(months=int(years * 12))
-        _prev_gains = capital_gains_this_year_post
-        current_year_post, capital_gains_this_year_post, _year_advanced = _advance_year(
-            date_post.year, current_year_post, capital_gains_this_year_post
+        cycle_result = _process_post_fire_monthly_cycle(
+            month, cash, stocks, stocks_cost_basis, nisa_balance, nisa_cost_basis,
+            current_year_post, capital_gains_this_year_post, prev_year_capital_gains_post,
+            years_offset, config, current_date_post,
+            monthly_return_rate, allocation_enabled,
+            capital_gains_tax_rate, min_cash_balance, post_fire_income,
         )
-        if _year_advanced:
-            prev_year_capital_gains_post = _prev_gains
 
-        # 基本生活費
-        annual_base_expense = calculate_base_expense(years, config, 0)
-        base_expense = annual_base_expense / 12
+        # 状態を更新
+        cash = cycle_result['cash']
+        stocks = cycle_result['stocks']
+        stocks_cost_basis = cycle_result['stocks_cost_basis']
+        nisa_balance = cycle_result['nisa_balance']
+        nisa_cost_basis = cycle_result['nisa_cost_basis']
+        current_year_post = cycle_result['current_year_post']
+        capital_gains_this_year_post = cycle_result['capital_gains_this_year_post']
+        prev_year_capital_gains_post = cycle_result['prev_year_capital_gains_post']
 
-        # 教育費
-        annual_education_expense = calculate_education_expense(years, config)
-        monthly_education_expense = annual_education_expense / 12
-
-        # 年金収入（FIRE後なので、FIRE時点までの加入期間で計算）
-        annual_pension_income = calculate_pension_income(
-            years,
-            config,
-            fire_achieved=True,
-            fire_year_offset=years_offset  # FIRE達成時点
-        )
-        monthly_pension_income = annual_pension_income / 12
-
-        # 年金受給開始後は完全リタイア（労働収入なし）
-        effective_post_fire_income = 0 if monthly_pension_income > 0 else post_fire_income
-
-        # 児童手当
-        annual_child_allowance = calculate_child_allowance(years, config)
-        monthly_child_allowance = annual_child_allowance / 12
-
-        # 住宅ローン
-        monthly_mortgage_payment = calculate_mortgage_payment(years, config)
-
-        # 住宅メンテナンス
-        annual_maintenance_cost = calculate_house_maintenance(years, config)
-        monthly_maintenance_cost = annual_maintenance_cost / 12
-
-        # ワーケーション
-        annual_workation_cost = calculate_workation_cost(years, config)
-        monthly_workation_cost = annual_workation_cost / 12
-
-        # 社会保険料（FIRE後）
-        annual_pension_premium = calculate_national_pension_premium(years, config, fire_achieved=True)
-        monthly_pension_premium = annual_pension_premium / 12
-
-        annual_health_insurance_premium = calculate_national_health_insurance_premium(
-            years, config, fire_achieved=True,
-            prev_year_capital_gains=prev_year_capital_gains_post
-        )
-        monthly_health_insurance_premium = annual_health_insurance_premium / 12
-
-        # 総支出
-        expense = (base_expense + monthly_education_expense + monthly_mortgage_payment +
-                  monthly_maintenance_cost + monthly_workation_cost +
-                  monthly_pension_premium + monthly_health_insurance_premium)
-
-        # 収入（年金受給前: 副収入 + 年金 + 児童手当、年金受給後: 年金 + 児童手当のみ）
-        total_income = effective_post_fire_income + monthly_pension_income + monthly_child_allowance
-
-        # 収入を現金に加算
-        cash += total_income
-
-        # 支出を現金から引き出し
-        if cash >= expense:
-            cash -= expense
-        else:
-            # 現金が足りない場合は株から取り崩し
-            shortage = expense - cash
-            cash = 0
-
-            # 支出不足型: NISAはshorageを直接削減、課税分のみcashへ
-            result = _sell_stocks_with_tax(
-                shortage, stocks, nisa_balance, nisa_cost_basis,
-                stocks_cost_basis, capital_gains_tax_rate, allocation_enabled,
-            )
-            stocks = result.stocks
-            nisa_balance = result.nisa_balance
-            nisa_cost_basis = result.nisa_cost_basis
-            stocks_cost_basis = result.stocks_cost_basis
-            cash += result.cash_from_taxable
-            capital_gains_this_year_post += result.capital_gain
-
-        # 運用リターン（株のみ）
-        investment_return = stocks * monthly_return_rate
-        stocks += investment_return
-
-        # 最低現金残高を確保（資産配分が有効な場合）
-        if allocation_enabled:
-            min_cash_balance = config['asset_allocation'].get('min_cash_balance', _BANKRUPTCY_THRESHOLD)
-            if cash < min_cash_balance and stocks > 0:
-                shortage = min_cash_balance - cash
-                # 最低現金型: NISAも課税分も両方cashへ
-                result = _sell_stocks_with_tax(
-                    shortage, stocks, nisa_balance, nisa_cost_basis,
-                    stocks_cost_basis, capital_gains_tax_rate, allocation_enabled,
-                )
-                stocks = result.stocks
-                nisa_balance = result.nisa_balance
-                nisa_cost_basis = result.nisa_cost_basis
-                stocks_cost_basis = result.stocks_cost_basis
-                cash += result.nisa_sold + result.cash_from_taxable
-                capital_gains_this_year_post += result.capital_gain
-
-        # 資産が破綻ライン以下になったら終了
-        if cash + stocks <= _BANKRUPTCY_THRESHOLD:
+        # 破綻判定
+        if cycle_result['should_break']:
             return 0
 
     return cash + stocks
