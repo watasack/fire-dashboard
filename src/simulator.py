@@ -2094,6 +2094,9 @@ def simulate_with_random_returns(
     """
     ランダムリターンを使った資産推移シミュレーション（モンテカルロ用）
 
+    シミュレーションは期間内（90歳まで）すべて実行され、早期終了しない。
+    資産がマイナスになっても計算を続け、最終的な資産額で成功/失敗を判定する。
+
     Args:
         current_cash: 現在の現金
         current_stocks: 現在の株式
@@ -2102,7 +2105,7 @@ def simulate_with_random_returns(
         scenario: シナリオ名
 
     Returns:
-        資産推移のDataFrame
+        資産推移のDataFrame（全期間分）
     """
     # 初期化（simulate_with_withdrawalと同様）
     init = _initialize_withdrawal_simulation(
@@ -2127,7 +2130,7 @@ def simulate_with_random_returns(
         monthly_return = random_returns[month]
         investment_return = assets * monthly_return
 
-        # 資産更新
+        # 資産更新（マイナスになっても計算継続）
         assets = assets - monthly_expense + investment_return
 
         # 結果記録
@@ -2138,9 +2141,7 @@ def simulate_with_random_returns(
             'monthly_return': monthly_return
         })
 
-        # 破綻判定（資産がゼロ以下になったら終了）
-        if assets <= 0:
-            break
+        # 早期終了なし: 期間内すべて計算する
 
     return pd.DataFrame(results)
 
