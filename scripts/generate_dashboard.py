@@ -30,9 +30,10 @@ from src.analyzer import (
     analyze_expense_by_category,
     generate_action_items
 )
-from src.simulator import simulate_future_assets
+from src.simulator import simulate_future_assets, run_monte_carlo_simulation
 from src.visualizer import (
-    create_fire_timeline_chart
+    create_fire_timeline_chart,
+    create_monte_carlo_distribution_chart
 )
 from src.html_generator import generate_dashboard_html
 
@@ -157,17 +158,37 @@ def main():
         print(f"  Generated {len(action_items)} action items")
         print("[OK] Action items generated\n")
 
+        # 7.5. モンテカルロシミュレーション（有効な場合のみ）
+        mc_results = None
+        mc_config = config['simulation'].get('monte_carlo', {})
+        if mc_config.get('enabled', False):
+            print("[7.5/10] Running Monte Carlo simulation...")
+            mc_iterations = mc_config.get('iterations', 1000)
+            mc_results = run_monte_carlo_simulation(
+                current_cash=current_status['cash_deposits'],
+                current_stocks=current_status['investment_trusts'],
+                config=config,
+                scenario='standard',
+                iterations=mc_iterations
+            )
+            print("[OK] Monte Carlo simulation complete\n")
+
         # 8. グラフ生成
-        print("[8/9] Creating visualizations...")
+        print("[8/10] Creating visualizations...")
         charts = {
             'fire_timeline': create_fire_timeline_chart(
                 current_status, fire_target, fire_achievement, simulations, config
             )
         }
+
+        # モンテカルログラフを追加（有効な場合のみ）
+        if mc_results is not None:
+            charts['monte_carlo'] = create_monte_carlo_distribution_chart(mc_results, config)
+
         print("[OK] Visualizations created\n")
 
         # 9. HTML生成
-        print("[9/9] Generating HTML dashboard...")
+        print("[9/10] Generating HTML dashboard...")
         generate_dashboard_html(
             charts=charts,
             summary_data={
@@ -176,6 +197,7 @@ def main():
                 'fire_achievement': fire_achievement,
                 'trends': trends,
                 'expense_breakdown': expense_breakdown,
+                'monte_carlo': mc_results,
                 'update_time': datetime.now()
             },
             action_items=action_items,

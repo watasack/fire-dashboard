@@ -655,3 +655,86 @@ def create_fire_timeline_chart(
     fig.update_layout(layout)
 
     return fig
+
+
+def create_monte_carlo_distribution_chart(
+    mc_results: Dict[str, Any],
+    config: Dict[str, Any]
+) -> go.Figure:
+    """
+    モンテカルロシミュレーション結果の分布グラフ
+
+    Args:
+        mc_results: run_monte_carlo_simulation() の結果
+        config: 設定辞書
+
+    Returns:
+        ヒストグラム + 成功確率表示のFigure
+    """
+    fig = go.Figure()
+
+    # 最終資産を万円単位に変換
+    final_assets = [r['final_assets'] / 10000 for r in mc_results['all_results']]
+
+    # ヒストグラム
+    fig.add_trace(go.Histogram(
+        x=final_assets,
+        nbinsx=50,
+        name='最終資産分布',
+        marker={'color': 'rgba(34, 197, 94, 0.7)'},
+        hovertemplate='最終資産: %{x:.0f}万円<br>頻度: %{y}<extra></extra>'
+    ))
+
+    # 成功確率をアノテーション
+    success_rate = mc_results['success_rate']
+    median_assets = mc_results['median_final_assets'] / 10000
+    percentile_10 = mc_results['percentile_10'] / 10000
+    percentile_90 = mc_results['percentile_90'] / 10000
+
+    annotations = [
+        # 成功確率（メイン）
+        dict(
+            text=f'<b>FIRE成功確率: {success_rate*100:.1f}%</b>',
+            x=0.5, y=0.95,
+            xref='paper', yref='paper',
+            showarrow=False,
+            font={'size': 20, 'color': '#10b981' if success_rate >= 0.9 else '#f59e0b'},
+            bgcolor='rgba(255, 255, 255, 0.95)',
+            bordercolor='#10b981' if success_rate >= 0.9 else '#f59e0b',
+            borderwidth=2,
+            borderpad=8
+        ),
+        # 統計情報
+        dict(
+            text=f'中央値: {median_assets:,.0f}万円<br>'
+                 f'10%ile: {percentile_10:,.0f}万円<br>'
+                 f'90%ile: {percentile_90:,.0f}万円',
+            x=0.02, y=0.98,
+            xref='paper', yref='paper',
+            showarrow=False,
+            font={'size': 12, 'color': '#475569'},
+            bgcolor='rgba(255, 255, 255, 0.9)',
+            align='left',
+            xanchor='left',
+            yanchor='top'
+        )
+    ]
+
+    layout = get_common_layout(config, 'FIRE成功確率（モンテカルロシミュレーション）')
+    layout.update({
+        'xaxis': {
+            'title': '最終資産（90歳時点・万円）',
+            'gridcolor': '#e2e8f0'
+        },
+        'yaxis': {
+            'title': '頻度',
+            'gridcolor': '#e2e8f0'
+        },
+        'height': 450,
+        'annotations': annotations,
+        'showlegend': False
+    })
+
+    fig.update_layout(layout)
+
+    return fig

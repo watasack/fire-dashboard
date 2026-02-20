@@ -61,6 +61,13 @@ simulation:
     income_growth_rate: 0.00   # 収入成長率 0%
     expense_growth_rate: 0.04  # 支出成長率 4%
 
+  # モンテカルロシミュレーション設定
+  monte_carlo:
+    enabled: true              # モンテカルロシミュレーションを有効化
+    iterations: 1000           # シミュレーション回数（1000回以上推奨）
+    return_std_dev: 0.15       # 年率リターンの標準偏差（15% = 市場変動の目安）
+    show_distribution: true    # 結果分布グラフを表示
+
 # FIRE設定
 fire:
   # ライフステージ別の基本生活費（教育費・住宅ローン・住宅メンテナンスを除く）

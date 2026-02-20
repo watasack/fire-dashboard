@@ -7,6 +7,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 from typing import Dict, Any, List, NamedTuple, Optional, Tuple
+from dataclasses import dataclass, field
 from dateutil.relativedelta import relativedelta
 
 # 年金・資産計算用定数
@@ -32,6 +33,84 @@ class _StockSaleResult(NamedTuple):
     total_sold: float        # 総売却額（nisa_sold + 課税口座売却額）
 
 
+@dataclass
+class SimulationState:
+    """
+    シミュレーションの状態を保持するクラス
+
+    月次シミュレーション処理の共通化のため、各シミュレーション関数が
+    共有する状態変数を一つのクラスにまとめる。
+    """
+    # 時間
+    month_index: int
+    current_date: datetime
+    year_offset: float
+
+    # 資産
+    cash: float
+    stocks: float
+    nisa_balance: float
+    stocks_cost_basis: float
+    nisa_cost_basis: float
+
+    # 年度管理
+    current_year: int
+    nisa_annual_invested: float = 0.0
+
+    # 譲渡益
+    capital_gains_this_year: float = 0.0
+    prev_year_capital_gains: float = 0.0
+
+    # FIRE関連
+    fire_achieved: bool = False
+    fire_achievement_month: Optional[int] = None
+
+    # 設定
+    config: Dict[str, Any] = field(default_factory=dict)
+    params: Dict[str, Any] = field(default_factory=dict)  # シナリオパラメータ
+
+
+class SimulationCallbacks:
+    """
+    シミュレーション固有の処理を定義するコールバッククラス
+
+    各シミュレーション関数は、このクラスを継承して固有の処理を実装する。
+    """
+
+    def on_month_start(self, state: SimulationState) -> None:
+        """
+        月初処理（オプション）
+
+        Args:
+            state: シミュレーション状態（破壊的に更新可能）
+        """
+        pass
+
+    def on_month_end(self, state: SimulationState) -> Optional[Dict[str, Any]]:
+        """
+        月末処理（オプション）
+
+        Args:
+            state: シミュレーション状態（破壊的に更新可能）
+
+        Returns:
+            結果レコードに追加するデータ（オプション）
+        """
+        return None
+
+    def should_terminate(self, state: SimulationState) -> bool:
+        """
+        シミュレーション終了判定
+
+        Args:
+            state: シミュレーション状態
+
+        Returns:
+            True ならシミュレーション終了
+        """
+        return False
+
+
 def _get_monthly_return_rate(annual_return_rate: float) -> float:
     """
     年率リターンから月次リターン率を計算（複利）。
@@ -43,6 +122,51 @@ def _get_monthly_return_rate(annual_return_rate: float) -> float:
         月次リターン率
     """
     return (1 + annual_return_rate) ** (1/12) - 1
+
+
+def generate_random_returns(
+    annual_return_mean: float,
+    annual_return_std: float,
+    total_months: int,
+    random_seed: Optional[int] = None
+) -> np.ndarray:
+    """
+    月次リターンをランダム生成（正規分布）
+
+    モンテカルロシミュレーション用に、市場変動を考慮した
+    ランダムな月次リターン率を生成する。
+
+    Args:
+        annual_return_mean: 年率リターン平均（例: 0.05 = 5%）
+        annual_return_std: 年率リターン標準偏差（例: 0.15 = 15%）
+        total_months: シミュレーション月数
+        random_seed: 乱数シード（再現性のため、オプション）
+
+    Returns:
+        月次リターン率の配列（長さ: total_months）
+
+    Example:
+        >>> returns = generate_random_returns(0.05, 0.15, 12, random_seed=42)
+        >>> len(returns)
+        12
+        >>> -0.5 < returns[0] < 0.5  # 月次リターンが妥当な範囲内
+        True
+    """
+    if random_seed is not None:
+        np.random.seed(random_seed)
+
+    # 年率 → 月率に変換
+    monthly_return_mean = (1 + annual_return_mean) ** (1/12) - 1
+    monthly_return_std = annual_return_std / np.sqrt(12)
+
+    # 正規分布からサンプリング
+    returns = np.random.normal(
+        loc=monthly_return_mean,
+        scale=monthly_return_std,
+        size=total_months
+    )
+
+    return returns
 
 
 def _get_age_at_offset(birthdate_str: str, year_offset: float) -> float:
@@ -1958,5 +2082,155 @@ def simulate_with_withdrawal(
         return 0
 
     return assets
+
+
+def simulate_with_random_returns(
+    current_cash: float,
+    current_stocks: float,
+    config: Dict[str, Any],
+    random_returns: np.ndarray,
+    scenario: str = 'standard'
+) -> pd.DataFrame:
+    """
+    ランダムリターンを使った資産推移シミュレーション（モンテカルロ用）
+
+    Args:
+        current_cash: 現在の現金
+        current_stocks: 現在の株式
+        config: 設定辞書
+        random_returns: 月次リターン率の配列（generate_random_returns()で生成）
+        scenario: シナリオ名
+
+    Returns:
+        資産推移のDataFrame
+    """
+    # 初期化（simulate_with_withdrawalと同様）
+    init = _initialize_withdrawal_simulation(
+        current_cash + current_stocks,  # 簡易化: 初期資産を全額株として扱う
+        config['simulation'].get('annual_base_expense', 2400000),  # デフォルト年間支出
+        len(random_returns) // 12,  # 年数
+        0.05  # リターン率はダミー（ランダムリターンを使うため）
+    )
+
+    assets = init['assets']
+    total_months = len(random_returns)
+    results = []
+
+    for month in range(total_months):
+        year_offset = month / 12
+
+        # 支出計算（簡易版）
+        annual_expense = config['simulation'].get('annual_base_expense', 2400000)
+        monthly_expense = annual_expense / 12
+
+        # ランダムリターンを適用
+        monthly_return = random_returns[month]
+        investment_return = assets * monthly_return
+
+        # 資産更新
+        assets = assets - monthly_expense + investment_return
+
+        # 結果記録
+        results.append({
+            'month': month,
+            'year_offset': year_offset,
+            'assets': assets,
+            'monthly_return': monthly_return
+        })
+
+        # 破綻判定
+        if assets <= _BANKRUPTCY_THRESHOLD:
+            break
+
+    return pd.DataFrame(results)
+
+
+def run_monte_carlo_simulation(
+    current_cash: float,
+    current_stocks: float,
+    config: Dict[str, Any],
+    scenario: str = 'standard',
+    iterations: int = 1000
+) -> Dict[str, Any]:
+    """
+    モンテカルロシミュレーションを実行し、FIRE成功確率を計算
+
+    Args:
+        current_cash: 現在の現金
+        current_stocks: 現在の株式
+        config: 設定辞書
+        scenario: シナリオ名
+        iterations: シミュレーション回数
+
+    Returns:
+        {
+            'success_rate': 成功確率（0-1）,
+            'median_final_assets': 最終資産の中央値,
+            'percentile_10': 下位10%の最終資産,
+            'percentile_90': 上位10%の最終資産,
+            'mean_final_assets': 最終資産の平均値,
+            'all_results': 全イテレーションの結果リスト
+        }
+    """
+    print(f"Running Monte Carlo simulation ({iterations} iterations)...")
+
+    results = []
+    params = config['simulation'][scenario]
+
+    # モンテカルロ設定を取得
+    mc_config = config['simulation'].get('monte_carlo', {})
+    return_std_dev = mc_config.get('return_std_dev', 0.15)  # デフォルト15%
+    simulation_years = config['simulation'].get('life_expectancy', 90) - config['simulation'].get('start_age', 35)
+    total_months = simulation_years * 12
+
+    for i in range(iterations):
+        # 進捗表示
+        if (i + 1) % 100 == 0:
+            print(f"  Progress: {i + 1}/{iterations} iterations completed")
+
+        # ランダムリターンを生成
+        random_returns = generate_random_returns(
+            params['annual_return_rate'],
+            return_std_dev,
+            total_months,
+            random_seed=i  # 再現性のため
+        )
+
+        # シミュレーション実行
+        df = simulate_with_random_returns(
+            current_cash, current_stocks, config, random_returns, scenario
+        )
+
+        # 最終資産を記録
+        if len(df) > 0:
+            final_assets = df['assets'].iloc[-1]
+        else:
+            final_assets = 0
+
+        success = final_assets >= _BANKRUPTCY_THRESHOLD
+
+        results.append({
+            'final_assets': final_assets,
+            'success': success,
+            'months_survived': len(df)
+        })
+
+    # 統計情報を計算
+    success_count = sum(1 for r in results if r['success'])
+    success_rate = success_count / iterations
+    final_assets_list = [r['final_assets'] for r in results]
+
+    print(f"[OK] Monte Carlo simulation complete!")
+    print(f"  Success rate: {success_rate*100:.1f}%")
+    print(f"  Median final assets: JPY{np.median(final_assets_list):,.0f}")
+
+    return {
+        'success_rate': success_rate,
+        'median_final_assets': np.median(final_assets_list),
+        'mean_final_assets': np.mean(final_assets_list),
+        'percentile_10': np.percentile(final_assets_list, 10),
+        'percentile_90': np.percentile(final_assets_list, 90),
+        'all_results': results
+    }
 
 

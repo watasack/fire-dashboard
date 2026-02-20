@@ -30,10 +30,16 @@ def generate_dashboard_html(
     fire_achievement = summary_data.get('fire_achievement')
     trends = summary_data['trends']
     expense_breakdown = summary_data['expense_breakdown']
+    monte_carlo = summary_data.get('monte_carlo')
     update_time = summary_data['update_time']
 
     # グラフをHTMLに変換
     fire_timeline_html = charts['fire_timeline'].to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True})
+
+    # モンテカルログラフ（存在する場合のみ）
+    monte_carlo_html = ''
+    if 'monte_carlo' in charts:
+        monte_carlo_html = charts['monte_carlo'].to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True})
 
     # FIRE達成情報の文字列生成
     if fire_achievement:
@@ -171,6 +177,25 @@ def generate_dashboard_html(
         </div>
       </div>
     </section>
+
+    <!-- モンテカルロシミュレーション（有効な場合のみ） -->
+    {f'''
+    <section class="main-chart" style="margin-top: 20px;">
+      <div class="chart-panel">
+        <h2 class="chart-title">FIRE成功確率分析（モンテカルロシミュレーション）</h2>
+        <div class="chart-content">
+          {monte_carlo_html}
+        </div>
+        <div style="margin-top: 16px; padding: 16px; background: #f8fafc; border-radius: 8px; font-size: 13px; color: #475569;">
+          <p style="margin: 0 0 8px 0; font-weight: 600;">💡 モンテカルロシミュレーションとは</p>
+          <p style="margin: 0; line-height: 1.6;">
+            市場の変動を考慮して、{monte_carlo.get("iterations", 1000) if monte_carlo else 1000}回のランダムシミュレーションを実行。
+            成功確率が<strong>90%以上</strong>であれば、比較的安全なFIRE計画と言えます。
+          </p>
+        </div>
+      </div>
+    </section>
+    ''' if monte_carlo_html else ''}
 
   </div>
 
