@@ -1,6 +1,7 @@
 # データファイル（プライバシー保護）
 data/*.csv
 data/*.xlsx
+data/paypay
 
 # 生成されたダッシュボード
 dashboard/

@@ -100,6 +100,314 @@ def get_common_layout(config: Dict[str, Any], title: str = "") -> dict:
     }
 
 
+def _calculate_x_axis_range(
+    simulations: Dict[str, pd.DataFrame],
+    life_events: List[Dict]
+) -> tuple:
+    """
+    X軸の表示範囲を計算（現在±6ヶ月マージン付き）。
+
+    Args:
+        simulations: シナリオ別シミュレーション結果
+        life_events: ライフイベントリスト
+
+    Returns:
+        (x_min, x_max) のタプル
+    """
+    current_date = datetime.now()
+
+    # 左端のラベルが見切れないように、少し前から表示開始
+    x_min = current_date - relativedelta(months=6)  # 6ヶ月前から表示
+    x_max = current_date
+
+    # シミュレーションデータから最大日付を取得
+    if len(simulations) > 0:
+        first_scenario = list(simulations.values())[0]
+        x_max = max(x_max, first_scenario['date'].max())
+
+    # ライフイベントから最大日付を取得
+    if len(life_events) > 0:
+        last_event_date = life_events[-1]['date']
+        x_max = max(x_max, last_event_date)
+
+    # 右端のラベルが見切れないように、少し後まで表示
+    x_max = x_max + relativedelta(months=6)  # 6ヶ月後まで表示
+
+    return x_min, x_max
+
+
+def _add_reference_markers(
+    fig: go.Figure,
+    current_status: Dict[str, Any],
+    fire_target: Dict[str, Any],
+    fire_achievement: Dict[str, Any],
+    simulations: Dict[str, pd.DataFrame]
+) -> None:
+    """
+    基準線・マーカー（現在位置、FIRE縦線、破綻ライン）を fig に追加する。
+
+    Args:
+        fig: Plotly図オブジェクト
+        current_status: 現状分析結果
+        fire_target: FIRE目標額情報
+        fire_achievement: FIRE達成予想情報
+        simulations: シナリオ別シミュレーション結果
+    """
+    # FIRE目標額（targetは後で使用するため計算のみ）
+    target = fire_target['recommended_target'] / 10000
+
+    # 現在位置のマーカー
+    current_assets = current_status['net_assets'] / 10000
+    now = pd.Timestamp.now()
+    fig.add_trace(go.Scatter(
+        x=[now],
+        y=[current_assets],
+        name='現在',
+        mode='markers+text',
+        marker=dict(size=12, color='#0d9488', symbol='circle'),
+        text=['現在'],
+        textposition='top center',
+        textfont=dict(size=11, color='#0d9488', weight='bold'),
+        hovertemplate=f'<b>現在</b><br>{current_assets:,.0f}万円<extra></extra>',
+        showlegend=False
+    ))
+
+    # FIRE達成時期の縦線（細線・直線）
+    achievement_date = None
+    if fire_achievement and not fire_achievement.get('achieved'):
+        achievement_date = fire_achievement['achievement_date']
+
+    if achievement_date:
+        y_max = max(
+            simulations['standard']['assets'].max() / 10000 if 'standard' in simulations else 0,
+            target
+        ) * 1.1
+
+        fig.add_trace(go.Scatter(
+            x=[achievement_date, achievement_date],
+            y=[0, y_max],
+            name='FIRE達成時期',
+            mode='lines',
+            line={'color': '#f59e0b', 'width': 1},
+            hovertemplate=f'<b>FIRE達成時期</b><br>{achievement_date.strftime("%Y年%m月")}<extra></extra>',
+            showlegend=True
+        ))
+
+    # 破綻ライン（500万円）- 細線・直線
+    if len(simulations) > 0 and achievement_date:
+        first_scenario = list(simulations.values())[0]
+        x_start = first_scenario['date'].iloc[0]
+        df_post = first_scenario[first_scenario['date'] >= achievement_date]
+        x_end = df_post['date'].iloc[-1] if len(df_post) > 0 else achievement_date
+
+        fig.add_trace(go.Scatter(
+            x=[x_start, x_end],
+            y=[500, 500],
+            name='破綻ライン',
+            mode='lines',
+            line={'color': '#dc2626', 'width': 1},
+            hovertemplate='<b>破綻ライン</b><br>¥500万<extra></extra>',
+            showlegend=True
+        ))
+
+
+def _add_life_events_timeline(
+    fig: go.Figure,
+    life_events: List[Dict],
+    simulations: Dict[str, pd.DataFrame]
+) -> tuple:
+    """
+    ライフイベントタイムラインを fig に追加し、annotations/shapes を返す。
+
+    Args:
+        fig: Plotly図オブジェクト
+        life_events: イベントリスト
+        simulations: シナリオ別シミュレーション結果
+
+    Returns:
+        (annotations, shapes) のタプル
+    """
+    annotations = []
+    shapes = []
+
+    if len(life_events) == 0 or len(simulations) == 0:
+        return annotations, shapes
+
+    # Y軸の最小値を計算（タイムライン用のスペース確保）
+    first_scenario = list(simulations.values())[0]
+    y_max = first_scenario['assets'].max() / 10000
+    y_timeline = -y_max * 0.15  # グラフの下部15%の位置
+
+    # タイムライン軸（水平線）を追加（シミュレーション全体の期間）
+    timeline_x0 = first_scenario['date'].iloc[0]
+    timeline_x1 = first_scenario['date'].iloc[-1]
+
+    # 時系列軸（水平線）
+    shapes.append({
+        'type': 'line',
+        'xref': 'x',
+        'yref': 'y',
+        'x0': timeline_x0,
+        'y0': y_timeline,
+        'x1': timeline_x1,
+        'y1': y_timeline,
+        'line': {
+            'color': '#94a3b8',
+            'width': 2,
+            'dash': 'solid'
+        },
+        'opacity': 0.6
+    })
+
+    # イベントの配置位置を計算（衝突回避アルゴリズム）
+    event_positions = _calculate_event_positions(life_events)
+
+    for i, event in enumerate(life_events):
+        # イベントの日付と位置
+        event_date = event['date']
+        y_offset, x_offset_days = event_positions[i]
+
+        # 横方向のオフセットを適用した表示位置
+        display_date = event_date + pd.Timedelta(days=x_offset_days)
+
+        # イベントから軸への縦線
+        shapes.append({
+            'type': 'line',
+            'xref': 'x',
+            'yref': 'y',
+            'x0': event_date,
+            'y0': y_timeline,
+            'x1': event_date,
+            'y1': y_timeline + y_offset,
+            'line': {
+                'color': event['color'],
+                'width': 1.5,
+                'dash': 'dot'
+            },
+            'opacity': 0.5
+        })
+
+        # タイムライン上のマーカー
+        shapes.append({
+            'type': 'circle',
+            'xref': 'x',
+            'yref': 'y',
+            'x0': event_date - pd.Timedelta(days=15),
+            'y0': y_timeline - 20,
+            'x1': event_date + pd.Timedelta(days=15),
+            'y1': y_timeline + 20,
+            'fillcolor': event['color'],
+            'line': {'color': event['color'], 'width': 2},
+            'opacity': 0.9
+        })
+
+        # イベントラベル（横方向にもオフセット）
+        annotation = {
+            'x': display_date,  # 横方向にオフセットした位置
+            'y': y_timeline + y_offset,
+            'xref': 'x',
+            'yref': 'y',
+            'text': event['label'],
+            'showarrow': True,
+            'arrowhead': 2,
+            'arrowsize': 1,
+            'arrowwidth': 1.5,
+            'arrowcolor': event['color'],
+            'ax': 0,
+            'ay': -30 if y_offset > 0 else 30,  # 上にあるイベントは矢印を上向きに
+            'font': {'size': 12, 'color': event['color'], 'weight': 'bold'},
+            'bgcolor': 'rgba(255, 255, 255, 0.9)',
+            'bordercolor': event['color'],
+            'borderwidth': 1,
+            'borderpad': 3
+        }
+
+        # 左端のイベント（最初の1-2個）は左寄せにしてテキストが右側に表示されるようにする
+        if i < 2:
+            annotation['xanchor'] = 'left'
+        # 右端のイベント（最後の1-2個）は右寄せにしてテキストが左側に表示されるようにする
+        elif i >= len(life_events) - 2:
+            annotation['xanchor'] = 'right'
+
+        annotations.append(annotation)
+
+    return annotations, shapes
+
+
+def _calculate_event_positions(life_events: List[Dict]) -> List[tuple]:
+    """
+    ライフイベントの表示位置を計算（衝突回避アルゴリズム）。
+
+    Args:
+        life_events: イベントリスト（日付でソート済み）
+
+    Returns:
+        各イベントの (y_offset, x_offset_days) のリスト
+    """
+    event_positions = []
+    min_gap_days = 365  # 1年以内のイベントは近いとみなす
+
+    # 利用可能な垂直位置（上下に複数レベル）
+    levels_up = [70, 110, 150]
+    levels_down = [-70, -110, -150]
+
+    # 横方向のオフセット（日数）
+    x_offsets = [0, -45, 45, -90, 90]  # 中央、左、右、さらに左、さらに右
+
+    for i, event in enumerate(life_events):
+        event_date = event['date']
+
+        # 前のイベントとの時間差をチェック
+        if i == 0:
+            # 最初のイベントは上に配置
+            y_pos = levels_up[0]
+            x_offset = x_offsets[0]
+        else:
+            prev_date = life_events[i-1]['date']
+            days_diff = (event_date - prev_date).days
+
+            if days_diff < min_gap_days:
+                # 近いイベントは前のイベントと逆方向に配置
+                prev_y_pos, prev_x_offset = event_positions[-1]
+                if prev_y_pos > 0:
+                    # 前が上なら下に
+                    level_idx = 0
+                    if i >= 2:
+                        prev_prev_y_pos, _ = event_positions[-2]
+                        if prev_prev_y_pos < 0:
+                            # 前の前も下なら、より深いレベルを使用
+                            level_idx = min(1, len(levels_down) - 1)
+                    y_pos = levels_down[level_idx]
+                else:
+                    # 前が下なら上に
+                    level_idx = 0
+                    if i >= 2:
+                        prev_prev_y_pos, _ = event_positions[-2]
+                        if prev_prev_y_pos > 0:
+                            # 前の前も上なら、より高いレベルを使用
+                            level_idx = min(1, len(levels_up) - 1)
+                    y_pos = levels_up[level_idx]
+
+                # 横方向のオフセットも追加（非常に近い場合）
+                if days_diff < 180:  # 半年以内
+                    # 前回のx_offsetと異なる値を使用
+                    x_offset_idx = (x_offsets.index(prev_x_offset) + 1) % len(x_offsets)
+                    x_offset = x_offsets[x_offset_idx]
+                else:
+                    x_offset = x_offsets[0]
+            else:
+                # 離れているイベントは交互に配置
+                if i % 2 == 0:
+                    y_pos = levels_up[0]
+                else:
+                    y_pos = levels_down[0]
+                x_offset = x_offsets[0]
+
+        event_positions.append((y_pos, x_offset))
+
+    return event_positions
+
+
 def extract_life_events(config: Dict[str, Any], fire_achievement: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
     ライフイベントを抽出
@@ -299,248 +607,15 @@ def create_fire_timeline_chart(
                 '<b>株式</b><br>%{x|%Y年%m月}<br>¥%{y:,.0f}万円<extra></extra>',
             )
 
+    # 基準線・マーカー追加（現在位置、FIRE縦線、破綻ライン）
+    _add_reference_markers(fig, current_status, fire_target, fire_achievement, simulations)
 
-    # FIRE目標額（targetは後で使用するため計算のみ）
-    target = fire_target['recommended_target'] / 10000
-
-    # 現在位置のマーカー
-    current_assets = current_status['net_assets'] / 10000
-    now = pd.Timestamp.now()
-    fig.add_trace(go.Scatter(
-        x=[now],
-        y=[current_assets],
-        name='現在',
-        mode='markers+text',
-        marker=dict(size=12, color='#0d9488', symbol='circle'),
-        text=['現在'],
-        textposition='top center',
-        textfont=dict(size=11, color='#0d9488', weight='bold'),
-        hovertemplate=f'<b>現在</b><br>{current_assets:,.0f}万円<extra></extra>',
-        showlegend=False
-    ))
-
-    # FIRE達成時期の縦線（細線・直線）
-    if achievement_date:
-        y_max = max(
-            simulations['standard']['assets'].max() / 10000 if 'standard' in simulations else 0,
-            target
-        ) * 1.1
-
-        fig.add_trace(go.Scatter(
-            x=[achievement_date, achievement_date],
-            y=[0, y_max],
-            name='FIRE達成時期',
-            mode='lines',
-            line={'color': '#f59e0b', 'width': 1},
-            hovertemplate=f'<b>FIRE達成時期</b><br>{achievement_date.strftime("%Y年%m月")}<extra></extra>',
-            showlegend=True
-        ))
-
-    # 破綻ライン（500万円）- 細線・直線
-    if len(simulations) > 0 and achievement_date:
-        first_scenario = list(simulations.values())[0]
-        x_start = first_scenario['date'].iloc[0]
-        df_post = first_scenario[first_scenario['date'] >= achievement_date]
-        x_end = df_post['date'].iloc[-1] if len(df_post) > 0 else achievement_date
-
-        fig.add_trace(go.Scatter(
-            x=[x_start, x_end],
-            y=[500, 500],
-            name='破綻ライン',
-            mode='lines',
-            line={'color': '#dc2626', 'width': 1},
-            hovertemplate='<b>破綻ライン</b><br>¥500万<extra></extra>',
-            showlegend=True
-        ))
-
-    # ライフイベントタイムラインを追加
+    # ライフイベントタイムライン追加
     life_events = extract_life_events(config, fire_achievement)
+    annotations, shapes = _add_life_events_timeline(fig, life_events, simulations)
 
-    # イベントのアノテーションを追加
-    annotations = []
-    shapes = []
-
-    if len(life_events) > 0 and len(simulations) > 0:
-        # Y軸の最小値を計算（タイムライン用のスペース確保）
-        first_scenario = list(simulations.values())[0]
-        y_max = first_scenario['assets'].max() / 10000
-        y_timeline = -y_max * 0.15  # グラフの下部15%の位置
-
-        # タイムライン軸（水平線）を追加（シミュレーション全体の期間）
-        if len(simulations) > 0:
-            first_scenario = list(simulations.values())[0]
-            timeline_x0 = first_scenario['date'].iloc[0]
-            timeline_x1 = first_scenario['date'].iloc[-1]
-
-            # 時系列軸（水平線）
-            shapes.append({
-                'type': 'line',
-                'xref': 'x',
-                'yref': 'y',
-                'x0': timeline_x0,
-                'y0': y_timeline,
-                'x1': timeline_x1,
-                'y1': y_timeline,
-                'line': {
-                    'color': '#94a3b8',
-                    'width': 2,
-                    'dash': 'solid'
-                },
-                'opacity': 0.6
-            })
-
-        # イベントの配置位置を計算（重ならないように、縦横にオフセット）
-        event_positions = []  # (y_offset, x_offset_days) のタプルのリスト
-        min_gap_days = 365  # 1年以内のイベントは近いとみなす
-
-        # 利用可能な垂直位置（上下に複数レベル）
-        levels_up = [70, 110, 150]
-        levels_down = [-70, -110, -150]
-
-        # 横方向のオフセット（日数）
-        x_offsets = [0, -45, 45, -90, 90]  # 中央、左、右、さらに左、さらに右
-
-        for i, event in enumerate(life_events):
-            event_date = event['date']
-
-            # 前のイベントとの時間差をチェック
-            if i == 0:
-                # 最初のイベントは上に配置
-                y_pos = levels_up[0]
-                x_offset = x_offsets[0]
-            else:
-                prev_date = life_events[i-1]['date']
-                days_diff = (event_date - prev_date).days
-
-                if days_diff < min_gap_days:
-                    # 近いイベントは前のイベントと逆方向に配置
-                    prev_y_pos, prev_x_offset = event_positions[-1]
-                    if prev_y_pos > 0:
-                        # 前が上なら下に
-                        # 連続する場合は異なるレベルを使用
-                        level_idx = 0
-                        # 前の前もチェック
-                        if i >= 2:
-                            prev_prev_y_pos, _ = event_positions[-2]
-                            if prev_prev_y_pos < 0:
-                                # 前の前も下なら、より深いレベルを使用
-                                level_idx = min(1, len(levels_down) - 1)
-                        y_pos = levels_down[level_idx]
-                    else:
-                        # 前が下なら上に
-                        level_idx = 0
-                        if i >= 2:
-                            prev_prev_y_pos, _ = event_positions[-2]
-                            if prev_prev_y_pos > 0:
-                                # 前の前も上なら、より高いレベルを使用
-                                level_idx = min(1, len(levels_up) - 1)
-                        y_pos = levels_up[level_idx]
-
-                    # 横方向のオフセットも追加（非常に近い場合）
-                    if days_diff < 180:  # 半年以内
-                        # 前回のx_offsetと異なる値を使用
-                        x_offset_idx = (x_offsets.index(prev_x_offset) + 1) % len(x_offsets)
-                        x_offset = x_offsets[x_offset_idx]
-                    else:
-                        x_offset = x_offsets[0]
-                else:
-                    # 離れているイベントは交互に配置
-                    if i % 2 == 0:
-                        y_pos = levels_up[0]
-                    else:
-                        y_pos = levels_down[0]
-                    x_offset = x_offsets[0]
-
-            event_positions.append((y_pos, x_offset))
-
-        for i, event in enumerate(life_events):
-            # イベントの日付と位置
-            event_date = event['date']
-            y_offset, x_offset_days = event_positions[i]
-
-            # 横方向のオフセットを適用した表示位置
-            display_date = event_date + pd.Timedelta(days=x_offset_days)
-
-            # イベントから軸への縦線
-            shapes.append({
-                'type': 'line',
-                'xref': 'x',
-                'yref': 'y',
-                'x0': event_date,
-                'y0': y_timeline,
-                'x1': event_date,
-                'y1': y_timeline + y_offset,
-                'line': {
-                    'color': event['color'],
-                    'width': 1.5,
-                    'dash': 'dot'
-                },
-                'opacity': 0.5
-            })
-
-            # タイムライン上のマーカー
-            shapes.append({
-                'type': 'circle',
-                'xref': 'x',
-                'yref': 'y',
-                'x0': event_date - pd.Timedelta(days=15),
-                'y0': y_timeline - 20,
-                'x1': event_date + pd.Timedelta(days=15),
-                'y1': y_timeline + 20,
-                'fillcolor': event['color'],
-                'line': {'color': event['color'], 'width': 2},
-                'opacity': 0.9
-            })
-
-            # イベントラベル（横方向にもオフセット）
-            annotation = {
-                'x': display_date,  # 横方向にオフセットした位置
-                'y': y_timeline + y_offset,
-                'xref': 'x',
-                'yref': 'y',
-                'text': event['label'],
-                'showarrow': True,
-                'arrowhead': 2,
-                'arrowsize': 1,
-                'arrowwidth': 1.5,
-                'arrowcolor': event['color'],
-                'ax': 0,
-                'ay': -30 if y_offset > 0 else 30,  # 上にあるイベントは矢印を上向きに
-                'font': {'size': 12, 'color': event['color'], 'weight': 'bold'},
-                'bgcolor': 'rgba(255, 255, 255, 0.9)',
-                'bordercolor': event['color'],
-                'borderwidth': 1,
-                'borderpad': 3
-            }
-
-            # 左端のイベント（最初の1-2個）は左寄せにしてテキストが右側に表示されるようにする
-            if i < 2:
-                annotation['xanchor'] = 'left'
-            # 右端のイベント（最後の1-2個）は右寄せにしてテキストが左側に表示されるようにする
-            elif i >= len(life_events) - 2:
-                annotation['xanchor'] = 'right'
-
-            annotations.append(annotation)
-
-    # X軸の範囲を計算（全体を統一）
-    current_date = datetime.now()
-
-    # 左端のラベルが見切れないように、少し前から表示開始
-    x_min = current_date - relativedelta(months=6)  # 6ヶ月前から表示
-    x_max = current_date
-
-    # シミュレーションデータから最大日付を取得
-    if len(simulations) > 0:
-        first_scenario = list(simulations.values())[0]
-        x_max = max(x_max, first_scenario['date'].max())
-
-    # ライフイベントから最大日付を取得
-    if len(life_events) > 0:
-        last_event_date = life_events[-1]['date']
-        x_max = max(x_max, last_event_date)
-
-    # 右端のラベルが見切れないように、少し後まで表示
-    x_max = x_max + relativedelta(months=6)  # 6ヶ月後まで表示
+    # X軸範囲計算
+    x_min, x_max = _calculate_x_axis_range(simulations, life_events)
 
     # レイアウト
     layout = get_common_layout(config, '')
