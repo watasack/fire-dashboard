@@ -6,7 +6,7 @@
 import pandas as pd
 import numpy as np
 from datetime import datetime
-from typing import Dict, Any, List, NamedTuple
+from typing import Dict, Any, List, NamedTuple, Optional, Tuple
 from dateutil.relativedelta import relativedelta
 
 # 年金・資産計算用定数
@@ -1248,6 +1248,110 @@ def calculate_base_expense(year_offset: float, config: Dict[str, Any], fallback_
     return base_expense
 
 
+def _initialize_future_simulation(
+    current_cash: Optional[float],
+    current_stocks: Optional[float],
+    current_assets: Optional[float],
+    monthly_income: float,
+    monthly_expense: float,
+    config: Dict[str, Any],
+    scenario: str
+) -> Dict[str, Any]:
+    """
+    将来シミュレーションの初期状態を設定
+
+    Returns:
+        初期化済みの設定と状態変数を含む辞書
+    """
+    # 後方互換性: current_assetsが指定されている場合は全額株として扱う
+    if current_cash is None and current_stocks is None:
+        if current_assets is not None:
+            cash = 0.0
+            stocks = current_assets
+        else:
+            raise ValueError("Either (current_cash, current_stocks) or current_assets must be provided")
+    else:
+        cash = current_cash if current_cash is not None else 0.0
+        stocks = current_stocks if current_stocks is not None else 0.0
+
+    # シナリオ設定取得
+    scenario_config = config['simulation'][scenario]
+    annual_return_rate = scenario_config['annual_return_rate']
+    inflation_rate = scenario_config['inflation_rate']
+    income_growth_rate = scenario_config['income_growth_rate']
+    expense_growth_rate = scenario_config['expense_growth_rate']
+
+    # シミュレーション期間（寿命まで）
+    life_expectancy = config['simulation'].get('life_expectancy', 90)
+    start_age = config['simulation'].get('start_age', 35)
+    simulation_years = life_expectancy - start_age
+    simulation_months = simulation_years * 12
+
+    # 月次リターン率（複利計算）
+    monthly_return_rate = _get_monthly_return_rate(annual_return_rate)
+
+    # 資産配分設定
+    allocation_enabled = _is_enabled(config, 'asset_allocation')
+    if allocation_enabled:
+        cash_buffer_months = config['asset_allocation'].get('cash_buffer_months', 6)
+        auto_invest_threshold = config['asset_allocation'].get('auto_invest_threshold', 1.5)
+        nisa_enabled = config['asset_allocation'].get('nisa_enabled', True)
+        nisa_annual_limit = config['asset_allocation'].get('nisa_annual_limit', 3600000)
+        invest_beyond_nisa = config['asset_allocation'].get('invest_beyond_nisa', True)
+        min_cash_balance = config['asset_allocation'].get('min_cash_balance', 1000000)
+        capital_gains_tax_rate = config['asset_allocation'].get('capital_gains_tax_rate', 0.20315)
+    else:
+        cash_buffer_months = 0
+        auto_invest_threshold = 999
+        nisa_enabled = False
+        nisa_annual_limit = 0
+        invest_beyond_nisa = False
+        min_cash_balance = 0
+        capital_gains_tax_rate = 0.20315
+
+    # 夫婦別収入の比率を計算
+    shuhei_income_base = config['simulation'].get('shuhei_income', 0)
+    sakura_income_base = config['simulation'].get('sakura_income', 0)
+    if shuhei_income_base + sakura_income_base > 0:
+        shuhei_ratio = shuhei_income_base / (shuhei_income_base + sakura_income_base)
+    else:
+        shuhei_ratio = 1.0
+
+    return {
+        # 資産
+        'cash': cash,
+        'stocks': stocks,
+        'stocks_cost_basis': stocks,  # 初期の株は簿価=時価と仮定
+        'nisa_balance': 0.0,
+        'nisa_cost_basis': 0.0,
+
+        # 設定
+        'simulation_months': simulation_months,
+        'monthly_return_rate': monthly_return_rate,
+        'allocation_enabled': allocation_enabled,
+        'cash_buffer_months': cash_buffer_months,
+        'auto_invest_threshold': auto_invest_threshold,
+        'nisa_enabled': nisa_enabled,
+        'nisa_annual_limit': nisa_annual_limit,
+        'invest_beyond_nisa': invest_beyond_nisa,
+        'min_cash_balance': min_cash_balance,
+        'capital_gains_tax_rate': capital_gains_tax_rate,
+
+        # シナリオパラメータ
+        'annual_return_rate': annual_return_rate,
+        'inflation_rate': inflation_rate,
+        'income_growth_rate': income_growth_rate,
+        'expense_growth_rate': expense_growth_rate,
+
+        # その他
+        'shuhei_ratio': shuhei_ratio,
+        'shuhei_income_base': shuhei_income_base,
+        'sakura_income_base': sakura_income_base,
+        'income': monthly_income,
+        'expense': monthly_expense,
+    }
+
+
 def simulate_future_assets(
     current_cash: float = None,
     current_stocks: float = None,
@@ -1277,78 +1381,53 @@ def simulate_future_assets(
     """
     print(f"Simulating future assets ({scenario} scenario)...")
 
-    # 後方互換性: current_assetsが指定されている場合は全額株として扱う
-    if current_cash is None and current_stocks is None:
-        if current_assets is not None:
-            current_cash = 0
-            current_stocks = current_assets
-        else:
-            raise ValueError("Either (current_cash, current_stocks) or current_assets must be provided")
+    # 初期化処理
+    init = _initialize_future_simulation(
+        current_cash, current_stocks, current_assets,
+        monthly_income, monthly_expense, config, scenario
+    )
 
-    # シナリオ設定取得
-    scenario_config = config['simulation'][scenario]
-    annual_return_rate = scenario_config['annual_return_rate']
-    inflation_rate = scenario_config['inflation_rate']
-    income_growth_rate = scenario_config['income_growth_rate']
-    expense_growth_rate = scenario_config['expense_growth_rate']
+    # 初期化結果から変数を取得
+    cash = init['cash']
+    stocks = init['stocks']
+    stocks_cost_basis = init['stocks_cost_basis']
+    nisa_balance = init['nisa_balance']
+    nisa_cost_basis = init['nisa_cost_basis']
 
-    # シミュレーション期間（寿命まで）
-    life_expectancy = config['simulation'].get('life_expectancy', 90)
-    start_age = config['simulation'].get('start_age', 35)
-    simulation_years = life_expectancy - start_age  # 寿命まで計算
-    simulation_months = simulation_years * 12
+    simulation_months = init['simulation_months']
+    monthly_return_rate = init['monthly_return_rate']
+    allocation_enabled = init['allocation_enabled']
+    cash_buffer_months = init['cash_buffer_months']
+    auto_invest_threshold = init['auto_invest_threshold']
+    nisa_enabled = init['nisa_enabled']
+    nisa_annual_limit = init['nisa_annual_limit']
+    invest_beyond_nisa = init['invest_beyond_nisa']
+    min_cash_balance = init['min_cash_balance']
+    capital_gains_tax_rate = init['capital_gains_tax_rate']
 
-    # 月次リターン率（複利計算）
-    monthly_return_rate = _get_monthly_return_rate(annual_return_rate)
+    annual_return_rate = init['annual_return_rate']
+    income_growth_rate = init['income_growth_rate']
+    expense_growth_rate = init['expense_growth_rate']
 
-    # 資産配分設定
-    allocation_enabled = _is_enabled(config, 'asset_allocation')
-    if allocation_enabled:
-        cash_buffer_months = config['asset_allocation'].get('cash_buffer_months', 6)
-        auto_invest_threshold = config['asset_allocation'].get('auto_invest_threshold', 1.5)
-        nisa_enabled = config['asset_allocation'].get('nisa_enabled', True)
-        nisa_annual_limit = config['asset_allocation'].get('nisa_annual_limit', 3600000)
-        invest_beyond_nisa = config['asset_allocation'].get('invest_beyond_nisa', True)
-        min_cash_balance = config['asset_allocation'].get('min_cash_balance', 1000000)
-        capital_gains_tax_rate = config['asset_allocation'].get('capital_gains_tax_rate', 0.20315)
-    else:
-        # 資産配分が無効の場合はデフォルト値
-        cash_buffer_months = 0
-        auto_invest_threshold = 999  # 自動投資しない
-        nisa_enabled = False
-        nisa_annual_limit = 0
-        invest_beyond_nisa = False
-        min_cash_balance = 0
-        capital_gains_tax_rate = 0.20315
+    shuhei_ratio = init['shuhei_ratio']
+    shuhei_income_base = init['shuhei_income_base']
+    sakura_income_base = init['sakura_income_base']
+    income = init['income']
+    expense = init['expense']
 
     # シミュレーション結果を格納
     results = []
 
-    # 夫婦別収入の比率を計算（詳細表示用）
-    shuhei_income_base = config['simulation'].get('shuhei_income', 0)
-    sakura_income_base = config['simulation'].get('sakura_income', 0)
-    if shuhei_income_base + sakura_income_base > 0:
-        shuhei_ratio = shuhei_income_base / (shuhei_income_base + sakura_income_base)
-    else:
-        shuhei_ratio = 1.0  # 個別設定がない場合は全額を修平に割り当て
-
-    # 初期値
-    cash = current_cash
-    stocks = current_stocks
-    stocks_cost_basis = current_stocks  # 初期の株は簿価=時価と仮定
-    nisa_balance = 0  # NISA枠内の投資額
-    nisa_cost_basis = 0  # NISA枠内の簿価
-    income = monthly_income
-    expense = monthly_expense
-    fire_achieved = False  # FIRE達成フラグ
-    fire_month = None  # FIRE達成月を記録
+    # FIRE達成状態
+    fire_achieved = False
+    fire_month = None
 
     # 開始日
     current_date = datetime.now()
     current_year = current_date.year
-    nisa_used_this_year = 0  # 今年のNISA投資額
-    capital_gains_this_year = 0   # 今年の株式譲渡益（健康保険料計算用）
-    prev_year_capital_gains = 0   # 前年の株式譲渡益（来年の健康保険料計算用）
+    nisa_used_this_year = 0
+    capital_gains_this_year = 0
+    prev_year_capital_gains = 0
 
     # 月次シミュレーション
     for month in range(simulation_months + 1):
