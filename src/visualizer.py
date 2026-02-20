@@ -4,7 +4,6 @@ Plotlyでインタラクティブグラフを生成
 """
 
 import plotly.graph_objects as go
-import plotly.express as px
 from plotly.subplots import make_subplots
 import pandas as pd
 from typing import Dict, Any, List
@@ -20,7 +19,7 @@ _COLOR_POST_FIRE_STOCK = 'rgba(16, 185, 129, 0.7)'  # FIRE後 株式（グリー
 
 
 def _add_stacked_asset_traces(
-    fig,
+    fig: go.Figure,
     df,
     group_key: str,
     cash_name: str,

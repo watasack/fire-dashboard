@@ -32,6 +32,19 @@ class _StockSaleResult(NamedTuple):
     total_sold: float        # 総売却額（nisa_sold + 課税口座売却額）
 
 
+def _get_monthly_return_rate(annual_return_rate: float) -> float:
+    """
+    年率リターンから月次リターン率を計算（複利）。
+
+    Args:
+        annual_return_rate: 年率リターン（例: 0.05 = 5%）
+
+    Returns:
+        月次リターン率
+    """
+    return (1 + annual_return_rate) ** (1/12) - 1
+
+
 def _get_age_at_offset(birthdate_str: str, year_offset: float) -> float:
     """
     生年月日文字列とシミュレーション経過年数から、その時点での年齢を返す。
@@ -234,11 +247,11 @@ def _calculate_person_pension(
             work_end_age = min(person_age, 65)
         work_months = int(max(0, work_end_age - work_start_age) * 12)
         employees_pension = _calculate_employees_pension_amount(avg_monthly_salary, work_months)
-        national_pension = _calculate_national_pension_amount(min(40, 60 - 20))
+        national_pension = _calculate_national_pension_amount(_PENSION_MAX_CONTRIBUTION_YEARS)
         return employees_pension + national_pension
 
     elif pension_type == 'national':
-        return _calculate_national_pension_amount(min(40, 60 - 20))
+        return _calculate_national_pension_amount(_PENSION_MAX_CONTRIBUTION_YEARS)
 
     else:
         # 従来の固定値フォールバック（後方互換性）
@@ -946,8 +959,8 @@ def simulate_post_fire_assets(
     remaining_years = life_expectancy - current_age
     remaining_months = int(remaining_years * 12)
 
-    # 月次リターン率
-    monthly_return_rate = (1 + annual_return_rate) ** (1/12) - 1
+    # 月次リターン率（複利計算）
+    monthly_return_rate = _get_monthly_return_rate(annual_return_rate)
 
     # 資産配分設定
     allocation_enabled = _is_enabled(config, 'asset_allocation')
@@ -1286,7 +1299,7 @@ def simulate_future_assets(
     simulation_months = simulation_years * 12
 
     # 月次リターン率（複利計算）
-    monthly_return_rate = (1 + annual_return_rate) ** (1/12) - 1
+    monthly_return_rate = _get_monthly_return_rate(annual_return_rate)
 
     # 資産配分設定
     allocation_enabled = _is_enabled(config, 'asset_allocation')
