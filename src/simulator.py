@@ -1778,6 +1778,137 @@ def simulate_future_assets(
     return df
 
 
+def _initialize_withdrawal_simulation(
+    initial_assets: float,
+    annual_expense: float,
+    years: int,
+    return_rate: float,
+) -> Dict[str, Any]:
+    """
+    引き出しシミュレーションの初期状態を設定
+
+    Returns:
+        初期化済みの設定と状態変数を含む辞書
+    """
+    return {
+        'assets': initial_assets,
+        'monthly_base_expense': annual_expense / 12,
+        'monthly_return_rate': (1 + return_rate) ** (1/12) - 1,
+        'total_months': int(years * 12),
+    }
+
+
+def _process_withdrawal_monthly_cycle(
+    month: int,
+    assets: float,
+    start_year_offset: float,
+    annual_expense: float,
+    inflation_rate: float,
+    monthly_return_rate: float,
+    config: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """
+    1ヶ月分の引き出しシミュレーション処理
+
+    Returns:
+        {
+            'assets': 更新後の資産,
+            'should_break': ループを終了すべきか（破綻判定）
+        }
+    """
+    # 年数（開始オフセットを加算）
+    years_elapsed = start_year_offset + (month / 12)
+
+    # ライフステージ別の基本生活費を計算
+    fallback_annual_expense = annual_expense * (1 + inflation_rate) ** years_elapsed
+    if config is not None:
+        annual_base_expense = calculate_base_expense(years_elapsed, config, fallback_annual_expense)
+    else:
+        annual_base_expense = fallback_annual_expense
+    adjusted_base_expense = annual_base_expense / 12
+
+    # 教育費を追加（configが提供されている場合）
+    monthly_education_expense = 0
+    if config is not None:
+        annual_education_expense = calculate_education_expense(years_elapsed, config)
+        monthly_education_expense = annual_education_expense / 12
+
+    # 年金収入を追加（configが提供されている場合）
+    # この関数はFIRE後のシミュレーションなので、FIRE達成済みとして計算
+    monthly_pension_income = 0
+    if config is not None:
+        annual_pension_income = calculate_pension_income(
+            years_elapsed,
+            config,
+            fire_achieved=True,
+            fire_year_offset=start_year_offset  # FIRE達成時点の年数
+        )
+        monthly_pension_income = annual_pension_income / 12
+
+    # 児童手当を追加（configが提供されている場合）
+    monthly_child_allowance = 0
+    if config is not None:
+        annual_child_allowance = calculate_child_allowance(years_elapsed, config)
+        monthly_child_allowance = annual_child_allowance / 12
+
+    # 住宅ローン支払額を追加（configが提供されている場合）
+    monthly_mortgage_payment = 0
+    if config is not None:
+        monthly_mortgage_payment = calculate_mortgage_payment(years_elapsed, config)
+
+    # 住宅メンテナンス費用を追加（configが提供されている場合）
+    monthly_maintenance_cost = 0
+    if config is not None:
+        annual_maintenance_cost = calculate_house_maintenance(years_elapsed, config)
+        monthly_maintenance_cost = annual_maintenance_cost / 12
+
+    # ワーケーション費用を追加（configが提供されている場合）
+    monthly_workation_cost = 0
+    if config is not None:
+        annual_workation_cost = calculate_workation_cost(years_elapsed, config)
+        monthly_workation_cost = annual_workation_cost / 12
+
+    # FIRE後の収入（年金受給前のみ: 修平の副収入 + 桜の継続収入）
+    monthly_post_fire_income = 0
+    if config is not None and monthly_pension_income == 0:
+        monthly_post_fire_income = (
+            config['simulation'].get('shuhei_post_fire_income', 0)
+            + config['simulation'].get('sakura_post_fire_income', 0)
+        )
+
+    # 社会保険料を追加（FIRE後のみ、configが提供されている場合）
+    monthly_pension_premium = 0
+    monthly_health_insurance_premium = 0
+    if config is not None:
+        annual_pension_premium = calculate_national_pension_premium(years_elapsed, config, fire_achieved=True)
+        monthly_pension_premium = annual_pension_premium / 12
+        # simulate_with_withdrawalはFIREチェック用の簡易計算なので、
+        # 実際の譲渡益は不明のため0で近似（保守的な見積もり）
+        annual_health_insurance_premium = calculate_national_health_insurance_premium(
+            years_elapsed, config, fire_achieved=True, prev_year_capital_gains=0
+        )
+        monthly_health_insurance_premium = annual_health_insurance_premium / 12
+
+    # 総支出 = 基本支出 + 教育費 + 住宅ローン + メンテナンス費用 + ワーケーション費用 + 社会保険料
+    total_expense = (adjusted_base_expense + monthly_education_expense + monthly_mortgage_payment +
+                    monthly_maintenance_cost + monthly_workation_cost +
+                    monthly_pension_premium + monthly_health_insurance_premium)
+
+    # 運用リターン
+    investment_return = assets * monthly_return_rate
+
+    # 資産更新（年金収入、児童手当、FIRE後副収入も考慮）
+    assets = assets - total_expense + investment_return + monthly_pension_income + monthly_child_allowance + monthly_post_fire_income
+
+    # 資産が破綻ライン（500万円）以下になったら終了
+    should_break = assets <= _BANKRUPTCY_THRESHOLD
+
+    return {
+        'assets': assets,
+        'should_break': should_break,
+    }
+
+
 def simulate_with_withdrawal(
     initial_assets: float,
     annual_expense: float,
@@ -1802,95 +1933,24 @@ def simulate_with_withdrawal(
     Returns:
         最終資産額
     """
-    assets = initial_assets
-    monthly_base_expense = annual_expense / 12
-    monthly_return_rate = (1 + return_rate) ** (1/12) - 1
+    # 初期化
+    init = _initialize_withdrawal_simulation(initial_assets, annual_expense, years, return_rate)
+    assets = init['assets']
+    monthly_return_rate = init['monthly_return_rate']
+    total_months = init['total_months']
 
-    for month in range(int(years * 12)):
-        # 年数（開始オフセットを加算）
-        years_elapsed = start_year_offset + (month / 12)
+    # 月次シミュレーション
+    for month in range(total_months):
+        cycle_result = _process_withdrawal_monthly_cycle(
+            month, assets, start_year_offset, annual_expense,
+            inflation_rate, monthly_return_rate, config,
+        )
 
-        # ライフステージ別の基本生活費を計算
-        fallback_annual_expense = annual_expense * (1 + inflation_rate) ** years_elapsed
-        if config is not None:
-            annual_base_expense = calculate_base_expense(years_elapsed, config, fallback_annual_expense)
-        else:
-            annual_base_expense = fallback_annual_expense
-        adjusted_base_expense = annual_base_expense / 12
+        # 状態を更新
+        assets = cycle_result['assets']
 
-        # 教育費を追加（configが提供されている場合）
-        monthly_education_expense = 0
-        if config is not None:
-            annual_education_expense = calculate_education_expense(years_elapsed, config)
-            monthly_education_expense = annual_education_expense / 12
-
-        # 年金収入を追加（configが提供されている場合）
-        # この関数はFIRE後のシミュレーションなので、FIRE達成済みとして計算
-        monthly_pension_income = 0
-        if config is not None:
-            annual_pension_income = calculate_pension_income(
-                years_elapsed,
-                config,
-                fire_achieved=True,
-                fire_year_offset=start_year_offset  # FIRE達成時点の年数
-            )
-            monthly_pension_income = annual_pension_income / 12
-
-        # 児童手当を追加（configが提供されている場合）
-        monthly_child_allowance = 0
-        if config is not None:
-            annual_child_allowance = calculate_child_allowance(years_elapsed, config)
-            monthly_child_allowance = annual_child_allowance / 12
-
-        # 住宅ローン支払額を追加（configが提供されている場合）
-        monthly_mortgage_payment = 0
-        if config is not None:
-            monthly_mortgage_payment = calculate_mortgage_payment(years_elapsed, config)
-
-        # 住宅メンテナンス費用を追加（configが提供されている場合）
-        monthly_maintenance_cost = 0
-        if config is not None:
-            annual_maintenance_cost = calculate_house_maintenance(years_elapsed, config)
-            monthly_maintenance_cost = annual_maintenance_cost / 12
-
-        # ワーケーション費用を追加（configが提供されている場合）
-        monthly_workation_cost = 0
-        if config is not None:
-            annual_workation_cost = calculate_workation_cost(years_elapsed, config)
-            monthly_workation_cost = annual_workation_cost / 12
-
-        # FIRE後の収入（年金受給前のみ: 修平の副収入 + 桜の継続収入）
-        monthly_post_fire_income = 0
-        if config is not None and monthly_pension_income == 0:
-            monthly_post_fire_income = (
-                config['simulation'].get('shuhei_post_fire_income', 0)
-                + config['simulation'].get('sakura_post_fire_income', 0)
-            )
-
-        # 社会保険料を追加（FIRE後のみ、configが提供されている場合）
-        monthly_pension_premium = 0
-        monthly_health_insurance_premium = 0
-        if config is not None:
-            annual_pension_premium = calculate_national_pension_premium(years_elapsed, config, fire_achieved=True)
-            monthly_pension_premium = annual_pension_premium / 12
-            # simulate_with_withdrawalはFIREチェック用の簡易計算なので、
-            # 実際の譲渡益は不明のため0で近似（保守的な見積もり）
-            annual_health_insurance_premium = calculate_national_health_insurance_premium(
-                years_elapsed, config, fire_achieved=True, prev_year_capital_gains=0
-            )
-            monthly_health_insurance_premium = annual_health_insurance_premium / 12
-
-        # 総支出 = 基本支出 + 教育費 + 住宅ローン + メンテナンス費用 + ワーケーション費用 + 社会保険料
-        total_expense = adjusted_base_expense + monthly_education_expense + monthly_mortgage_payment + monthly_maintenance_cost + monthly_workation_cost + monthly_pension_premium + monthly_health_insurance_premium
-
-        # 運用リターン
-        investment_return = assets * monthly_return_rate
-
-        # 資産更新（年金収入、児童手当、FIRE後副収入も考慮）
-        assets = assets - total_expense + investment_return + monthly_pension_income + monthly_child_allowance + monthly_post_fire_income
-
-        # 資産が破綻ライン（500万円）以下になったら終了
-        if assets <= _BANKRUPTCY_THRESHOLD:
+        # 破綻判定
+        if cycle_result['should_break']:
             return 0
 
     # 最終資産も破綻ライン以下なら0を返す
