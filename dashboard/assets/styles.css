@@ -100,6 +100,7 @@ body {
   border-radius: 14px;
   box-shadow: 0 4px 12px rgba(13, 148, 136, 0.2);
   align-items: center;
+  max-height: 120px;
 }
 
 .kpi-primary {
