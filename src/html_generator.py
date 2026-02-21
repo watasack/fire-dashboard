@@ -134,7 +134,7 @@ def generate_dashboard_html(
           {fire_timeline_html}
         </div>
         <!-- クリック詳細情報 -->
-        <div id="click-details" style="display: none; margin-top: 20px; padding: 20px; background: #f0f9ff; border-radius: 8px; border-left: 4px solid #06b6d4; max-height: 400px; overflow-y: auto;">
+        <div id="click-details" style="display: none; margin-top: 20px; padding: 20px; background: #f0f9ff; border-radius: 8px; border-left: 4px solid #06b6d4; max-height: 80vh; overflow-y: auto;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
             <h3 style="margin: 0; font-size: 15px; color: #0c4a6e; font-weight: 600;">
               <span id="detail-date"></span>の詳細

@@ -171,7 +171,7 @@ body {
 
 /* メイングラフ（全幅） */
 .main-chart {
-  min-height: 0;
+  min-height: 600px;
 }
 
 .chart-panel {
@@ -181,7 +181,7 @@ body {
   padding: 12px;
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  min-height: 600px;
 }
 
 .chart-title {
