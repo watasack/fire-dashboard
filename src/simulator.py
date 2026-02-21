@@ -1958,9 +1958,10 @@ def _process_future_monthly_cycle(
         withdrawal_from_stocks = result.total_sold
         capital_gains_tax = result.capital_gain * capital_gains_tax_rate
 
-    # 3. 運用リターン（株のみ）
+    # 3. 運用リターン（株式とNISA両方に適用）
     investment_return = stocks * monthly_return_rate
     stocks += investment_return
+    nisa_balance *= (1 + monthly_return_rate)
 
     # 3.5. FIRE後は最低現金残高を維持
     if allocation_enabled and fire_achieved:
