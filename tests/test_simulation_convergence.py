@@ -44,9 +44,12 @@ def test_standard_vs_monte_carlo_convergence():
     """
     標準シミュレーションとMC中央値が近似することを検証
 
-    許容誤差: 5%以内
-    理由: MCは確率的な変動を含むため、厳密な一致は期待できないが、
-          中央値（50パーセンタイル）は標準シミュレーション（期待値）に近似すべき
+    許容誤差: 10%以内（中央値との比較）
+    理由:
+    - MCは「FIRE達成後のみ」ランダムリターンを使用（Option 1実装）
+    - 対数正規分布では median < mean となるのが自然（Jensen's inequality）
+    - 標準シミュレーション（固定リターン）はMC中央値に近似すべき
+    - 10%を超える乖離は実装の不整合を示唆
     """
     # データ読み込み
     config, current_status, trends = load_test_data()
@@ -87,34 +90,58 @@ def test_standard_vs_monte_carlo_convergence():
         iterations=1000
     )
 
-    # MC中央値を取得（最終年）
+    # MC統計値を取得
     mc_median = mc_result['median_final_assets']
-
-    # 許容誤差: 10%以内
-    # 注: MCシミュレーションは「FIRE達成後のみ」ランダムリターンを使用 (Option 1)
-    #     対数正規分布の中央値は期待値より小さいため、ある程度の乖離は許容
-    #     10%を超える乖離は実装の不整合を示唆
-    tolerance = 0.10
-    relative_diff = abs(mc_median - standard_final_assets) / standard_final_assets
+    mc_mean = mc_result['mean_final_assets']
+    mc_p10 = mc_result['percentile_10']
+    mc_p90 = mc_result['percentile_90']
 
     # 検証結果を出力
     print(f"\n=== シミュレーション整合性テスト ===")
     print(f"標準シミュレーション最終資産: {standard_final_assets:,.0f}円")
     print(f"  - 現金: {standard_final_cash:,.0f}円")
     print(f"  - 株式: {standard_final_stocks:,.0f}円")
-    print(f"MC中央値（50%ile）: {mc_median:,.0f}円")
-    print(f"相対誤差: {relative_diff:.2%}")
-    print(f"許容誤差: {tolerance:.2%}")
+    print(f"\nMCシミュレーション分布:")
+    print(f"  平均値:  {mc_mean:,.0f}円")
+    print(f"  中央値:  {mc_median:,.0f}円")
+    print(f"  10%ile:  {mc_p10:,.0f}円")
+    print(f"  90%ile:  {mc_p90:,.0f}円")
 
-    # アサーション
-    assert relative_diff < tolerance, (
+    # 乖離計算
+    diff_median = abs(mc_median - standard_final_assets) / standard_final_assets
+    diff_mean = abs(mc_mean - standard_final_assets) / standard_final_assets
+    median_mean_ratio = mc_median / mc_mean if mc_mean > 0 else 0
+
+    print(f"\n乖離分析:")
+    print(f"  標準 vs MC中央値: {diff_median:.2%}")
+    print(f"  標準 vs MC平均値: {diff_mean:.2%}")
+    print(f"  MC中央値/平均値: {median_mean_ratio:.3f} (対数正規分布では<1.0が正常)")
+
+    # 検証1: 標準 vs MC中央値（主要テスト）
+    tolerance_median = 0.10
+    assert diff_median < tolerance_median, (
         f"標準シミュレーションとMC中央値の乖離が大きすぎます。\n"
         f"標準: {standard_final_assets:,.0f}円, MC中央値: {mc_median:,.0f}円\n"
-        f"相対誤差: {relative_diff:.2%} (許容: {tolerance:.2%})\n"
+        f"相対誤差: {diff_median:.2%} (許容: {tolerance_median:.2%})\n"
         f"→ NISA運用リターン適用漏れなど、実装の不整合が疑われます。"
     )
 
-    print("[OK] テスト合格: 標準シミュレーションとMC中央値の整合性OK")
+    # 検証2: 標準がMC平均値より極端に低くないか
+    # 注: Jensen's inequalityにより MC平均値 > 標準 は自然だが、
+    #     標準が平均値の50%以下だと問題の可能性
+    if standard_final_assets < mc_mean * 0.5:
+        print(f"\n[!] 警告: 標準シミュレーションがMC平均値の50%未満です")
+        print(f"   標準: {standard_final_assets:,.0f}円")
+        print(f"   MC平均: {mc_mean:,.0f}円")
+        print(f"   → FIRE後の実装に違いがある可能性があります")
+
+    # 検証3: MC分布の妥当性
+    # 対数正規分布では median/mean が通常 0.4〜0.8 程度
+    if median_mean_ratio > 0.95:
+        print(f"\n[!] 警告: MC分布が対数正規分布の特性から外れています")
+        print(f"   中央値/平均値 = {median_mean_ratio:.3f} (正常範囲: 0.4-0.8)")
+
+    print("\n[OK] テスト合格: 標準シミュレーションとMC中央値の整合性OK")
 
 
 def test_nisa_balance_never_exceeds_stocks():
@@ -164,12 +191,90 @@ def test_nisa_balance_never_exceeds_stocks():
     print("[OK] テスト合格: NISA残高は常に株式残高以下")
 
 
+def test_nisa_annual_limit_compliance():
+    """
+    不変条件テスト: NISA年間投資枠（360万円）を超過していないことを検証
+
+    新NISA制度では年間投資枠が360万円に制限されています。
+    この制限を超える投資が行われている場合、NISA投資ロジックにバグがあります。
+    """
+    # データ読み込み
+    config, current_status, trends = load_test_data()
+
+    # 月次収入・支出
+    monthly_income = trends['monthly_avg_income_forecast']
+    monthly_expense = trends['monthly_avg_expense']
+
+    # 設定値による収入の上書き
+    initial_labor_income = config['simulation'].get('initial_labor_income')
+    if initial_labor_income is not None:
+        monthly_income = initial_labor_income
+
+    # 標準シミュレーション実行
+    result = simulate_future_assets(
+        current_assets=current_status['net_assets'],
+        monthly_income=monthly_income,
+        monthly_expense=monthly_expense,
+        config=config,
+        scenario='standard'
+    )
+
+    # NISA年間投資枠を取得
+    nisa_annual_limit = config.get('asset_allocation', {}).get('nisa_annual_limit', 3600000)
+
+    # 年ごとにNISA投資額を集計
+    # 注: nisa_balance の増分を年ごとに集計する
+    result['year'] = result['date'].dt.year
+    result['nisa_change'] = result['nisa_balance'].diff().fillna(0)
+
+    # 運用リターンによる増加は除外し、新規投資のみをカウント
+    # 運用リターン適用後にNISA残高が増えた分のみを投資とみなす
+    # ※ 簡易的に、プラスの変化のみを集計
+    result['nisa_investment'] = result['nisa_change'].apply(lambda x: max(0, x))
+
+    yearly_nisa_investment = result.groupby('year')['nisa_investment'].sum()
+
+    print(f"\n=== NISA年間投資枠チェック ===")
+    print(f"年間投資枠上限: {nisa_annual_limit:,.0f}円")
+
+    # 超過している年を検出
+    violations = yearly_nisa_investment[yearly_nisa_investment > nisa_annual_limit * 1.01]  # 1%のマージン
+
+    if len(violations) > 0:
+        print(f"\n年間投資枠超過: {len(violations)}年")
+        print("\n超過年:")
+        for year, amount in violations.items():
+            over_amount = amount - nisa_annual_limit
+            print(f"  {year}年: {amount:,.0f}円 (超過: {over_amount:,.0f}円)")
+
+        # アサーション
+        assert len(violations) == 0, (
+            f"NISA年間投資枠（{nisa_annual_limit:,.0f}円）を超過している年が{len(violations)}年あります。\n"
+            f"NISA投資ロジックにバグがある可能性があります。"
+        )
+    else:
+        print(f"超過年: 0年")
+        print("\n主要年のNISA投資額:")
+        for year, amount in yearly_nisa_investment.head(10).items():
+            usage_rate = amount / nisa_annual_limit if nisa_annual_limit > 0 else 0
+            print(f"  {year}年: {amount:,.0f}円 ({usage_rate:.1%})")
+
+    print("\n[OK] テスト合格: NISA年間投資枠を遵守しています")
+
+
 def test_assets_monotonic_growth_with_positive_returns():
     """
-    不変条件テスト: プラスのリターン適用後、資産が極端に減少しないことを検証
+    不変条件テスト: 株式資産の極端な減少を検知
 
-    運用リターンがプラスの場合、収入・支出を除いた純粋な運用部分では
-    資産が大きく減少することはない（5%以上の減少は異常）。
+    検証内容:
+    - 月次の株式資産変動率をチェック
+    - 50%以上の急激な減少は運用リターン計算のバグを示唆
+
+    注意:
+    - 株式売却により減少するのは正常動作
+    - FIRE達成後の大規模な売却は想定内
+    - 警告閾値: 全期間の2%以上で極端な減少がある場合
+      （661ヶ月中13件以上 = 異常な頻度）
     """
     # データ読み込み
     config, current_status, trends = load_test_data()
@@ -193,16 +298,19 @@ def test_assets_monotonic_growth_with_positive_returns():
     )
 
     # 前月比で株式資産の変化率を計算
-    # ※ 株式売却や購入があるため、単純な比較は困難だが、
-    #    極端な減少（>50%）は運用リターン計算のバグを示唆
     stocks_change = result['stocks'].pct_change()
     extreme_decreases = stocks_change[stocks_change < -0.5]
 
-    print(f"\n=== 資産推移異常検知テスト ===")
-    print(f"極端な株式減少（>50%）: {len(extreme_decreases)}件")
+    total_periods = len(result)
+    extreme_count = len(extreme_decreases)
+    extreme_rate = extreme_count / total_periods if total_periods > 0 else 0
 
-    if len(extreme_decreases) > 0:
-        print("\n極端な減少箇所:")
+    print(f"\n=== 資産推移異常検知テスト ===")
+    print(f"全期間: {total_periods}ヶ月")
+    print(f"極端な株式減少（>50%）: {extreme_count}件 ({extreme_rate:.1%})")
+
+    if extreme_count > 0:
+        print("\n極端な減少箇所（最大5件表示）:")
         for idx in extreme_decreases.index[:5]:
             if idx > 0:
                 prev_idx = idx - 1
@@ -211,11 +319,19 @@ def test_assets_monotonic_growth_with_positive_returns():
                       f"{result.loc[idx, 'stocks']:,.0f}円 "
                       f"({stocks_change[idx]:.1%})")
 
-    # 警告のみ（株式売却により大幅減少は正常なケースもある）
-    if len(extreme_decreases) > 10:
-        print("⚠ 警告: 極端な株式減少が多数検出されました。運用リターン計算を確認してください。")
+    # 警告閾値: 全期間の2%以上で極端減少がある場合
+    # 理由: FIRE後の売却等で数回は発生しうるが、頻繁な発生は異常
+    warning_threshold_rate = 0.02
+    warning_threshold_count = int(total_periods * warning_threshold_rate)
+
+    if extreme_count > warning_threshold_count:
+        print(f"\n[!] 警告: 極端な株式減少が多数検出されました")
+        print(f"   検出: {extreme_count}件, 閾値: {warning_threshold_count}件（全期間の{warning_threshold_rate:.0%}）")
+        print(f"   → 運用リターン計算を確認してください")
     else:
-        print("[OK] テスト合格: 異常な資産減少は検出されませんでした")
+        print(f"\n[OK] テスト合格: 異常な資産減少は検出されませんでした")
+        if extreme_count > 0:
+            print(f"   極端な減少は{extreme_count}件ありますが、許容範囲内です")
 
 
 if __name__ == '__main__':
@@ -230,7 +346,10 @@ if __name__ == '__main__':
         # テスト2: NISA残高不変条件
         test_nisa_balance_never_exceeds_stocks()
 
-        # テスト3: 資産推移異常検知
+        # テスト3: NISA年間投資枠遵守
+        test_nisa_annual_limit_compliance()
+
+        # テスト4: 資産推移異常検知
         test_assets_monotonic_growth_with_positive_returns()
 
         print("\n" + "=" * 60)
