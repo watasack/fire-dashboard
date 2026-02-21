@@ -27,19 +27,17 @@ body {
   background: linear-gradient(135deg, #f0fdfa 0%, #ecfeff 100%);
   color: var(--color-text);
   line-height: 1.6;
-  overflow: hidden;
 }
 
-/* コンテナ - 100vh で収める */
+/* コンテナ */
 .dashboard-container {
   max-width: 1600px;
   margin: 0 auto;
   padding: 12px;
-  height: 100vh;
+  min-height: 100vh;
   display: grid;
   grid-template-rows: auto auto auto 1fr auto auto;
   gap: 10px;
-  overflow: hidden;
 }
 
 /* ヘッダー */
@@ -367,13 +365,6 @@ body {
 }
 
 /* レスポンシブ */
-@media (max-width: 1400px) {
-  .dashboard-container {
-    overflow-y: auto;
-    height: auto;
-    min-height: 100vh;
-  }
-}
 
 @media (max-width: 1200px) {
   .supplementary {

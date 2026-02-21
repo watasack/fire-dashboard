@@ -30,7 +30,7 @@ simulation:
   shuhei_income: 465875  # 修平の手取り月額（円）: 年収7,507,388→社保・税引後
   sakura_income: 300000  # 桜の手取り月額（円）: 個人事業主の想定手取り
   initial_labor_income: 765875 # 世帯手取り合計（shuhei_income + sakura_income）
-  shuhei_post_fire_income: 20000    # FIRE後の修平の副収入（月額・円）開発業務など
+  shuhei_post_fire_income: 50000    # FIRE後の修平の副収入（月額・円）開発業務など
   sakura_post_fire_income: 200000   # FIRE後の桜の月収（個人事業主として継続）
 
   # 産休・育休による収入変動（個人事業主のため育休給付金なし → 期間中は0円）
@@ -65,7 +65,7 @@ simulation:
   monte_carlo:
     enabled: true              # モンテカルロシミュレーションを有効化
     iterations: 1000           # シミュレーション回数（1000回以上推奨）
-    return_std_dev: 0.06       # 年率リターンの標準偏差（6% = 長期平均回帰を考慮）
+    return_std_dev: 0.01       # 年率リターンの標準偏差（6% = 長期平均回帰を考慮）
     show_distribution: true    # 結果分布グラフを表示
 
 # FIRE設定
