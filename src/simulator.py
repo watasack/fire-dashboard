@@ -1334,6 +1334,65 @@ def simulate_post_fire_assets(
 
     return cash + stocks
 
+def _precompute_monthly_cashflows(
+    years_offset: float,
+    total_months: int,
+    config: Dict[str, Any],
+    post_fire_income: float
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    モンテカルロ用に月次支出・収入を事前計算
+
+    Args:
+        years_offset: FIRE達成時の経過年数
+        total_months: 計算する月数
+        config: 設定辞書
+        post_fire_income: FIRE後の労働収入
+
+    Returns:
+        (expenses_array, income_array): 各月の支出・収入の配列
+    """
+    expenses = np.zeros(total_months)
+    income = np.zeros(total_months)
+
+    for month_idx in range(total_months):
+        years = years_offset + month_idx / 12
+
+        # 支出計算
+        annual_base = calculate_base_expense(years, config, 0)
+        annual_education = calculate_education_expense(years, config)
+        monthly_mortgage = calculate_mortgage_payment(years, config)
+        annual_maintenance = calculate_house_maintenance(years, config)
+        annual_workation = calculate_workation_cost(years, config)
+        annual_pension_prem = calculate_national_pension_premium(years, config, fire_achieved=True)
+        # 健康保険は資産売却益に依存するため0とする（ループ内で計算）
+
+        expenses[month_idx] = (
+            annual_base / 12 +
+            annual_education / 12 +
+            monthly_mortgage +
+            annual_maintenance / 12 +
+            annual_workation / 12 +
+            annual_pension_prem / 12
+        )
+
+        # 収入計算
+        annual_pension = calculate_pension_income(
+            years, config, fire_achieved=True, fire_year_offset=years_offset
+        )
+        monthly_pension = annual_pension / 12
+
+        # 年金受給開始後は労働収入なし
+        effective_labor_income = 0 if monthly_pension > 0 else post_fire_income
+
+        annual_child_allow = calculate_child_allowance(years, config)
+        monthly_child_allow = annual_child_allow / 12
+
+        income[month_idx] = effective_labor_income + monthly_pension + monthly_child_allow
+
+    return expenses, income
+
+
 def _simulate_post_fire_with_random_returns(
     current_cash: float,
     current_stocks: float,
@@ -1344,7 +1403,9 @@ def _simulate_post_fire_with_random_returns(
     nisa_balance: float = 0,
     nisa_cost_basis: float = 0,
     stocks_cost_basis: float = None,
-    return_timeseries: bool = False
+    return_timeseries: bool = False,
+    precomputed_expenses: np.ndarray = None,
+    precomputed_income: np.ndarray = None
 ):
     """
     FIRE後の資産推移をランダムリターンでシミュレーション（モンテカルロ用）
@@ -1408,47 +1469,62 @@ def _simulate_post_fire_with_random_returns(
         if _year_advanced:
             prev_year_capital_gains_post = _prev_gains
 
-        # 支出計算
-        annual_base_expense = calculate_base_expense(years, config, 0)
-        base_expense = annual_base_expense / 12
+        # 支出・収入計算（事前計算済みの場合は配列から取得）
+        if precomputed_expenses is not None and precomputed_income is not None:
+            # 事前計算済み配列から取得（高速）
+            base_expense_total = precomputed_expenses[month]
 
-        annual_education_expense = calculate_education_expense(years, config)
-        monthly_education_expense = annual_education_expense / 12
+            # 健康保険料のみ資産売却益に依存するため毎回計算
+            annual_health_insurance_premium = calculate_national_health_insurance_premium(
+                years, config, fire_achieved=True,
+                prev_year_capital_gains=prev_year_capital_gains_post
+            )
+            monthly_health_insurance_premium = annual_health_insurance_premium / 12
 
-        monthly_mortgage_payment = calculate_mortgage_payment(years, config)
+            expense = base_expense_total + monthly_health_insurance_premium
+            total_income = precomputed_income[month]
+        else:
+            # 従来の方法（互換性のため残す）
+            annual_base_expense = calculate_base_expense(years, config, 0)
+            base_expense = annual_base_expense / 12
 
-        annual_maintenance_cost = calculate_house_maintenance(years, config)
-        monthly_maintenance_cost = annual_maintenance_cost / 12
+            annual_education_expense = calculate_education_expense(years, config)
+            monthly_education_expense = annual_education_expense / 12
 
-        annual_workation_cost = calculate_workation_cost(years, config)
-        monthly_workation_cost = annual_workation_cost / 12
+            monthly_mortgage_payment = calculate_mortgage_payment(years, config)
 
-        annual_pension_premium = calculate_national_pension_premium(years, config, fire_achieved=True)
-        monthly_pension_premium = annual_pension_premium / 12
+            annual_maintenance_cost = calculate_house_maintenance(years, config)
+            monthly_maintenance_cost = annual_maintenance_cost / 12
 
-        annual_health_insurance_premium = calculate_national_health_insurance_premium(
-            years, config, fire_achieved=True,
-            prev_year_capital_gains=prev_year_capital_gains_post
-        )
-        monthly_health_insurance_premium = annual_health_insurance_premium / 12
+            annual_workation_cost = calculate_workation_cost(years, config)
+            monthly_workation_cost = annual_workation_cost / 12
 
-        expense = (base_expense + monthly_education_expense + monthly_mortgage_payment +
-                  monthly_maintenance_cost + monthly_workation_cost +
-                  monthly_pension_premium + monthly_health_insurance_premium)
+            annual_pension_premium = calculate_national_pension_premium(years, config, fire_achieved=True)
+            monthly_pension_premium = annual_pension_premium / 12
 
-        # 収入計算
-        annual_pension_income = calculate_pension_income(
-            years, config, fire_achieved=True, fire_year_offset=years_offset
-        )
-        monthly_pension_income = annual_pension_income / 12
+            annual_health_insurance_premium = calculate_national_health_insurance_premium(
+                years, config, fire_achieved=True,
+                prev_year_capital_gains=prev_year_capital_gains_post
+            )
+            monthly_health_insurance_premium = annual_health_insurance_premium / 12
 
-        # 年金受給開始後は完全リタイア
-        effective_post_fire_income = 0 if monthly_pension_income > 0 else post_fire_income
+            expense = (base_expense + monthly_education_expense + monthly_mortgage_payment +
+                      monthly_maintenance_cost + monthly_workation_cost +
+                      monthly_pension_premium + monthly_health_insurance_premium)
 
-        annual_child_allowance = calculate_child_allowance(years, config)
-        monthly_child_allowance = annual_child_allowance / 12
+            # 収入計算
+            annual_pension_income = calculate_pension_income(
+                years, config, fire_achieved=True, fire_year_offset=years_offset
+            )
+            monthly_pension_income = annual_pension_income / 12
 
-        total_income = effective_post_fire_income + monthly_pension_income + monthly_child_allowance
+            # 年金受給開始後は完全リタイア
+            effective_post_fire_income = 0 if monthly_pension_income > 0 else post_fire_income
+
+            annual_child_allowance = calculate_child_allowance(years, config)
+            monthly_child_allowance = annual_child_allowance / 12
+
+            total_income = effective_post_fire_income + monthly_pension_income + monthly_child_allowance
 
         # 収入を現金に加算
         cash += total_income
@@ -2537,7 +2613,16 @@ def run_monte_carlo_simulation(
 
     print(f"  Simulating {remaining_months} months post-FIRE with random returns...")
 
-    # ステップ3: モンテカルロシミュレーション（FIRE後のみ）
+    # ステップ3: 支出・収入の事前計算（全イテレーションで共通）
+    post_fire_income = (
+        config['simulation'].get('shuhei_post_fire_income', 0)
+        + config['simulation'].get('sakura_post_fire_income', 0)
+    )
+    precomputed_expenses, precomputed_income = _precompute_monthly_cashflows(
+        years_offset, remaining_months, config, post_fire_income
+    )
+
+    # ステップ4: モンテカルロシミュレーション（FIRE後のみ）
     results = []
     all_timeseries = []  # 各イテレーションの月ごとデータ
     params = config['simulation'][scenario]
@@ -2568,7 +2653,9 @@ def run_monte_carlo_simulation(
             nisa_balance=fire_nisa,
             nisa_cost_basis=fire_nisa_cost,
             stocks_cost_basis=fire_stocks_cost,
-            return_timeseries=True
+            return_timeseries=True,
+            precomputed_expenses=precomputed_expenses,
+            precomputed_income=precomputed_income
         )
 
         final_assets = timeseries[-1] if len(timeseries) > 0 else 0
