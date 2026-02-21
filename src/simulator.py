@@ -618,8 +618,8 @@ def calculate_mortgage_payment(year_offset: float, config: Dict[str, Any]) -> fl
 
     current_date = datetime.now()
 
-    # 終了日をパース
-    end_date = datetime.strptime(end_date_str, '%Y/%m/%d')
+    # 終了日をパース（キャッシュされる）
+    end_date = _parse_birthdate(end_date_str)
 
     # シミュレーション中の日付を計算（year_offsetは浮動小数点なので月単位に変換）
     months_offset = int(year_offset * 12)
