@@ -3,8 +3,9 @@ data/*.csv
 data/*.xlsx
 data/paypay
 
-# 生成されたダッシュボード
-dashboard/
+# 生成されたダッシュボード（assetsは手動編集のため管理対象）
+dashboard/*
+!dashboard/assets/
 
 # Python
 __pycache__/
