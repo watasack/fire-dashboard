@@ -131,14 +131,19 @@ def generate_random_returns(
     random_seed: Optional[int] = None
 ) -> np.ndarray:
     """
-    月次リターンをランダム生成（正規分布）
+    月次リターンをランダム生成（対数正規分布）
 
     モンテカルロシミュレーション用に、市場変動を考慮した
     ランダムな月次リターン率を生成する。
 
+    対数正規分布モデルを採用することで：
+    - 資産価格が負にならない（理論的に正確）
+    - 幾何平均が自然に保存される
+    - 手動のVolatility Drag補正が不要
+
     Args:
         annual_return_mean: 年率リターン平均（例: 0.05 = 5%）
-        annual_return_std: 年率リターン標準偏差（例: 0.15 = 15%）
+        annual_return_std: 年率リターン標準偏差（例: 0.10 = 10%）
         total_months: シミュレーション月数
         random_seed: 乱数シード（再現性のため、オプション）
 
@@ -146,31 +151,33 @@ def generate_random_returns(
         月次リターン率の配列（長さ: total_months）
 
     Example:
-        >>> returns = generate_random_returns(0.05, 0.15, 12, random_seed=42)
+        >>> returns = generate_random_returns(0.05, 0.10, 12, random_seed=42)
         >>> len(returns)
         12
-        >>> -0.5 < returns[0] < 0.5  # 月次リターンが妥当な範囲内
+        >>> returns[0] > -1  # リターンは-100%未満にならない
         True
     """
     if random_seed is not None:
         np.random.seed(random_seed)
 
-    # 年率 → 月率に変換
-    monthly_return_mean = (1 + annual_return_mean) ** (1/12) - 1
-    monthly_return_std = annual_return_std / np.sqrt(12)
+    # 対数リターンのパラメータ計算
+    # 年率リターンを対数空間に変換
+    log_annual_mean = np.log(1 + annual_return_mean)
+    log_monthly_mean = log_annual_mean / 12
 
-    # 幾何平均の補正（Volatility Drag対策）
-    # ランダムリターンの幾何平均 = 算術平均 - (分散 / 2)
-    # したがって、幾何平均が目標値になるように算術平均を調整
-    variance = monthly_return_std ** 2
-    adjusted_mean = monthly_return_mean + (variance / 2)
+    # 標準偏差は√12で月次に変換
+    log_monthly_std = annual_return_std / np.sqrt(12)
 
-    # 正規分布からサンプリング（調整後の平均を使用）
-    returns = np.random.normal(
-        loc=adjusted_mean,
-        scale=monthly_return_std,
+    # 対数リターンを正規分布からサンプリング
+    log_returns = np.random.normal(
+        loc=log_monthly_mean,
+        scale=log_monthly_std,
         size=total_months
     )
+
+    # 算術リターンに変換
+    # r = exp(log_r) - 1
+    returns = np.exp(log_returns) - 1
 
     return returns
 
@@ -1330,8 +1337,9 @@ def _simulate_post_fire_with_random_returns(
     random_returns: np.ndarray,
     nisa_balance: float = 0,
     nisa_cost_basis: float = 0,
-    stocks_cost_basis: float = None
-) -> float:
+    stocks_cost_basis: float = None,
+    return_timeseries: bool = False
+):
     """
     FIRE後の資産推移をランダムリターンでシミュレーション（モンテカルロ用）
 
@@ -1345,9 +1353,11 @@ def _simulate_post_fire_with_random_returns(
         nisa_balance: NISA残高
         nisa_cost_basis: NISA簿価
         stocks_cost_basis: 株式全体の簿価
+        return_timeseries: Trueの場合、月ごとの資産リストを返す
 
     Returns:
-        90歳時点での資産額（破綻時は0）
+        return_timeseries=False: 90歳時点での資産額（破綻時は0）
+        return_timeseries=True: 月ごとの資産額のリスト
     """
     # 初期化
     init = _initialize_post_fire_simulation(
@@ -1375,6 +1385,9 @@ def _simulate_post_fire_with_random_returns(
     # ランダムリターンの長さチェック
     if len(random_returns) < remaining_months:
         raise ValueError(f"random_returns length ({len(random_returns)}) < remaining_months ({remaining_months})")
+
+    # 月ごとの資産を記録（return_timeseries=Trueの場合）
+    timeseries = [] if return_timeseries else None
 
     # 月次シミュレーション
     for month in range(remaining_months):
@@ -1471,12 +1484,24 @@ def _simulate_post_fire_with_random_returns(
                 cash += result.nisa_sold + result.cash_from_taxable
                 capital_gains_this_year_post += result.capital_gain
 
-        # 破綻判定（早期終了なし - ユーザー要求により全期間シミュレート）
-        # ただし、資産がマイナスの場合は0を返す
-        if cash + stocks < 0:
-            return 0
+        # 月ごとの資産を記録
+        if return_timeseries:
+            timeseries.append(cash + stocks)
 
-    return cash + stocks
+        # 破綻判定（早期終了なし - ユーザー要求により全期間シミュレート）
+        # ただし、資産がマイナスの場合
+        if cash + stocks < 0:
+            if return_timeseries:
+                # 残りの月も0で埋める
+                timeseries.extend([0] * (remaining_months - month - 1))
+                return timeseries
+            else:
+                return 0
+
+    if return_timeseries:
+        return timeseries
+    else:
+        return cash + stocks
 
 
 
@@ -2508,6 +2533,7 @@ def run_monte_carlo_simulation(
 
     # ステップ3: モンテカルロシミュレーション（FIRE後のみ）
     results = []
+    all_timeseries = []  # 各イテレーションの月ごとデータ
     params = config['simulation'][scenario]
     mc_config = config['simulation'].get('monte_carlo', {})
     return_std_dev = mc_config.get('return_std_dev', 0.15)
@@ -2525,8 +2551,8 @@ def run_monte_carlo_simulation(
             random_seed=i
         )
 
-        # FIRE後シミュレーション実行
-        final_assets = _simulate_post_fire_with_random_returns(
+        # FIRE後シミュレーション実行（月ごとデータを取得）
+        timeseries = _simulate_post_fire_with_random_returns(
             current_cash=fire_cash,
             current_stocks=fire_stocks,
             years_offset=years_offset,
@@ -2535,8 +2561,12 @@ def run_monte_carlo_simulation(
             random_returns=random_returns,
             nisa_balance=fire_nisa,
             nisa_cost_basis=fire_nisa_cost,
-            stocks_cost_basis=fire_stocks_cost
+            stocks_cost_basis=fire_stocks_cost,
+            return_timeseries=True
         )
+
+        final_assets = timeseries[-1] if len(timeseries) > 0 else 0
+        all_timeseries.append(timeseries)
 
         # 成功判定: 資産がゼロ以上なら成功
         success = final_assets > 0
@@ -2551,6 +2581,11 @@ def run_monte_carlo_simulation(
     success_rate = success_count / iterations
     final_assets_list = [r['final_assets'] for r in results]
 
+    # 月ごとの統計を計算（中央値、標準偏差）
+    all_timeseries_array = np.array(all_timeseries)  # shape: (iterations, months)
+    monthly_median = np.median(all_timeseries_array, axis=0)  # 各月の中央値
+    monthly_std = np.std(all_timeseries_array, axis=0)        # 各月の標準偏差
+
     print(f"[OK] Monte Carlo simulation complete!")
     print(f"  Success rate: {success_rate*100:.1f}%")
     print(f"  Median final assets: JPY{np.median(final_assets_list):,.0f}")
@@ -2561,7 +2596,10 @@ def run_monte_carlo_simulation(
         'mean_final_assets': np.mean(final_assets_list),
         'percentile_10': np.percentile(final_assets_list, 10),
         'percentile_90': np.percentile(final_assets_list, 90),
-        'all_results': results
+        'all_results': results,
+        'fire_month': fire_month,  # FIRE達成時の月数
+        'monthly_median': monthly_median,  # 月ごとの中央値資産
+        'monthly_std': monthly_std         # 月ごとの標準偏差
     }
 
 

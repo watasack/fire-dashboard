@@ -193,7 +193,7 @@ def _add_reference_markers(
             showlegend=True
         ))
 
-    # 破綻ライン（500万円）- 細線・直線
+    # 安全マージン（500万円）- 細線・直線
     if len(simulations) > 0 and achievement_date:
         first_scenario = list(simulations.values())[0]
         x_start = first_scenario['date'].iloc[0]
@@ -203,10 +203,10 @@ def _add_reference_markers(
         fig.add_trace(go.Scatter(
             x=[x_start, x_end],
             y=[500, 500],
-            name='破綻ライン',
+            name='安全マージン',
             mode='lines',
             line={'color': '#dc2626', 'width': 1},
-            hovertemplate='<b>破綻ライン</b><br>¥500万<extra></extra>',
+            hovertemplate='<b>安全マージン</b><br>¥500万<extra></extra>',
             showlegend=True
         ))
 
@@ -532,13 +532,106 @@ def extract_life_events(config: Dict[str, Any], fire_achievement: Dict[str, Any]
 
     return events
 
+def _add_monte_carlo_ranges(
+    fig: go.Figure,
+    df_post: pd.DataFrame,
+    monte_carlo_results: Dict[str, Any],
+    achievement_date
+) -> None:
+    """
+    モンテカルロシミュレーションの1σ、2σ範囲をグラフに追加
+
+    Args:
+        fig: Plotlyグラフオブジェクト
+        df_post: FIRE達成後のデータ
+        monte_carlo_results: モンテカルロシミュレーション結果
+        achievement_date: FIRE達成日
+    """
+    import numpy as np
+    from dateutil.relativedelta import relativedelta
+
+    monthly_median = monte_carlo_results['monthly_median']  # FIRE後の各月の中央値資産
+    monthly_std = monte_carlo_results['monthly_std']        # FIRE後の各月の標準偏差
+
+    # FIRE達成後の日付配列を作成
+    dates_post = pd.date_range(
+        start=achievement_date,
+        periods=len(monthly_median),
+        freq='MS'  # Month Start
+    )
+
+    # 万円単位に変換
+    monthly_median_man = monthly_median / 10000
+    monthly_std_man = monthly_std / 10000
+
+    # 2σ範囲（約95%）
+    upper_2sigma = monthly_median_man + 2 * monthly_std_man
+    lower_2sigma = np.maximum(0, monthly_median_man - 2 * monthly_std_man)  # 0未満にならないように
+
+    # 1σ範囲（約68%）
+    upper_1sigma = monthly_median_man + monthly_std_man
+    lower_1sigma = np.maximum(0, monthly_median_man - monthly_std_man)
+
+    # 2σ範囲（薄いオレンジ）
+    fig.add_trace(go.Scatter(
+        x=dates_post,
+        y=upper_2sigma,
+        mode='lines',
+        line=dict(width=0),
+        showlegend=False,
+        hoverinfo='skip'
+    ))
+    fig.add_trace(go.Scatter(
+        x=dates_post,
+        y=lower_2sigma,
+        mode='lines',
+        fill='tonexty',
+        fillcolor='rgba(251, 146, 60, 0.1)',  # オレンジ、10%透明度
+        line=dict(width=0),
+        name='2σ範囲（95%）',
+        hovertemplate='<b>2σ範囲</b><br>%{x|%Y年%m月}<br>%{y:,.0f}万円<extra></extra>'
+    ))
+
+    # 1σ範囲（濃いオレンジ）
+    fig.add_trace(go.Scatter(
+        x=dates_post,
+        y=upper_1sigma,
+        mode='lines',
+        line=dict(width=0),
+        showlegend=False,
+        hoverinfo='skip'
+    ))
+    fig.add_trace(go.Scatter(
+        x=dates_post,
+        y=lower_1sigma,
+        mode='lines',
+        fill='tonexty',
+        fillcolor='rgba(251, 146, 60, 0.2)',  # オレンジ、20%透明度
+        line=dict(width=0),
+        name='1σ範囲（68%）',
+        hovertemplate='<b>1σ範囲</b><br>%{x|%Y年%m月}<br>%{y:,.0f}万円<extra></extra>'
+    ))
+
+    # 中央値線（オレンジの点線）
+    fig.add_trace(go.Scatter(
+        x=dates_post,
+        y=monthly_median_man,
+        mode='lines',
+        line=dict(color='rgb(251, 146, 60)', width=2, dash='dot'),  # オレンジ、点線
+        name='中央値（MC）',
+        hovertemplate='<b>中央値</b><br>%{x|%Y年%m月}<br>%{y:,.0f}万円<extra></extra>'
+    ))
+
+
+
 
 def create_fire_timeline_chart(
     current_status: Dict[str, Any],
     fire_target: Dict[str, Any],
     fire_achievement: Dict[str, Any],
     simulations: Dict[str, pd.DataFrame],
-    config: Dict[str, Any]
+    config: Dict[str, Any],
+    monte_carlo_results: Dict[str, Any] = None
 ) -> go.Figure:
     """
     FIRE達成までの道のりと達成後の持続性を統合したチャートを作成
@@ -546,6 +639,7 @@ def create_fire_timeline_chart(
     FIRE達成前後で色を変えて視覚的に分かりやすく表示
     - FIRE前（労働期間）: シアン系
     - FIRE後（リタイア期間）: グリーン系
+    - モンテカルロ範囲（FIRE後のみ）: 1σ、2σの範囲を半透明で表示
 
     Args:
         current_status: 現状分析結果
@@ -553,6 +647,7 @@ def create_fire_timeline_chart(
         fire_achievement: FIRE達成予想情報
         simulations: シナリオ別シミュレーション結果
         config: 設定辞書
+        monte_carlo_results: モンテカルロシミュレーション結果（オプション）
 
     Returns:
         Plotlyグラフオブジェクト
@@ -594,6 +689,12 @@ def create_fire_timeline_chart(
                     '<b>FIRE後</b><br><b>%{x|%Y年%m月}</b><br>現金: <b>¥%{y:,.0f}万</b><extra></extra>',
                     '<b>FIRE後</b><br><b>%{x|%Y年%m月}</b><br>株式: <b>¥%{y:,.0f}万</b><extra></extra>',
                 )
+
+                # モンテカルロの1σ、2σ範囲を追加（FIRE後のみ）
+                if monte_carlo_results and 'monthly_median' in monte_carlo_results:
+                    _add_monte_carlo_ranges(
+                        fig, df_post, monte_carlo_results, achievement_date
+                    )
         else:
             # すでに達成済みの場合は全てグリーン系の積み上げエリア
             df_all = df.head(480).copy()
@@ -617,8 +718,28 @@ def create_fire_timeline_chart(
     # X軸範囲計算
     x_min, x_max = _calculate_x_axis_range(simulations, life_events)
 
+    # Y軸範囲計算（ベースシミュレーションを基準に）
+    y_max = None
+    if 'standard' in simulations:
+        df = simulations['standard']
+        # ベースシミュレーションの最大資産額に20%のマージンを追加
+        max_assets = df['assets'].max()
+        y_max = max_assets * 1.2
+
     # レイアウト
     layout = get_common_layout(config, '')
+    yaxis_config = {
+        'title': '万円',
+        'showgrid': True,
+        'gridcolor': '#e0f2fe',
+        'tickformat': ',.0f',
+        'zeroline': False,
+        'side': 'right'
+    }
+    # Y軸の上限を設定（モンテカルロの2σ範囲でベースシミュレーションが隠れないように）
+    if y_max is not None:
+        yaxis_config['range'] = [0, y_max]
+
     layout.update({
         'xaxis': {
             'title': '',
@@ -626,14 +747,7 @@ def create_fire_timeline_chart(
             'zeroline': False,
             'range': [x_min, x_max]  # X軸の範囲を明示的に指定
         },
-        'yaxis': {
-            'title': '万円',
-            'showgrid': True,
-            'gridcolor': '#e0f2fe',
-            'tickformat': ',.0f',
-            'zeroline': False,
-            'side': 'right'
-        },
+        'yaxis': yaxis_config,
         'height': 500,  # タイムライン用に高さを増やす
         'showlegend': True,
         'legend': {

@@ -32,8 +32,7 @@ from src.analyzer import (
 )
 from src.simulator import simulate_future_assets, run_monte_carlo_simulation
 from src.visualizer import (
-    create_fire_timeline_chart,
-    create_monte_carlo_distribution_chart
+    create_fire_timeline_chart
 )
 from src.html_generator import generate_dashboard_html
 
@@ -179,13 +178,10 @@ def main():
         print("[8/10] Creating visualizations...")
         charts = {
             'fire_timeline': create_fire_timeline_chart(
-                current_status, fire_target, fire_achievement, simulations, config
+                current_status, fire_target, fire_achievement, simulations, config,
+                monte_carlo_results=mc_results  # モンテカルロデータを渡す
             )
         }
-
-        # モンテカルログラフを追加（有効な場合のみ）
-        if mc_results is not None:
-            charts['monte_carlo'] = create_monte_carlo_distribution_chart(mc_results, config)
 
         print("[OK] Visualizations created\n")
 
