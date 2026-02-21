@@ -65,7 +65,7 @@ simulation:
   monte_carlo:
     enabled: true              # モンテカルロシミュレーションを有効化
     iterations: 1000           # シミュレーション回数（1000回以上推奨）
-    return_std_dev: 0.10       # 年率リターンの標準偏差（10% = バランス型ポートフォリオ）
+    return_std_dev: 0.06       # 年率リターンの標準偏差（6% = 長期平均回帰を考慮）
     show_distribution: true    # 結果分布グラフを表示
 
 # FIRE設定
