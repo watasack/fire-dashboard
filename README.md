@@ -357,3 +357,9 @@ FIRE達成月を起点に、3シナリオ × 複数の仮想初期資産で `can
 | `_BANKRUPTCY_THRESHOLD` | 5,000,000円 | 破綻ライン |
 | `_HEALTH_INS_BASIC_DEDUCTION` | 430,000円 | 健康保険料 基礎控除（2024年度） |
 | `_HEALTH_INS_DEFAULT_INCOME_RATE` | 0.11 | 健康保険料 所得割率（40歳以上全国平均） |
+
+---
+
+## 開発者向け情報
+
+開発者向けガイド（テスト実行方法、トラブルシューティング等）は [DEVELOPMENT.md](DEVELOPMENT.md) を参照してください。
