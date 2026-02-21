@@ -2581,10 +2581,14 @@ def run_monte_carlo_simulation(
     success_rate = success_count / iterations
     final_assets_list = [r['final_assets'] for r in results]
 
-    # 月ごとの統計を計算（中央値、標準偏差）
+    # 月ごとの統計を計算（パーセンタイルを使用）
+    # 対数正規分布は非対称なので、median±σ ではなくパーセンタイルを使う
     all_timeseries_array = np.array(all_timeseries)  # shape: (iterations, months)
-    monthly_median = np.median(all_timeseries_array, axis=0)  # 各月の中央値
-    monthly_std = np.std(all_timeseries_array, axis=0)        # 各月の標準偏差
+    monthly_p50 = np.percentile(all_timeseries_array, 50, axis=0)   # 中央値
+    monthly_p025 = np.percentile(all_timeseries_array, 2.5, axis=0) # 2σ下限（約95%信頼区間）
+    monthly_p16 = np.percentile(all_timeseries_array, 16, axis=0)   # 1σ下限（約68%信頼区間）
+    monthly_p84 = np.percentile(all_timeseries_array, 84, axis=0)   # 1σ上限
+    monthly_p975 = np.percentile(all_timeseries_array, 97.5, axis=0) # 2σ上限
 
     print(f"[OK] Monte Carlo simulation complete!")
     print(f"  Success rate: {success_rate*100:.1f}%")
@@ -2598,8 +2602,11 @@ def run_monte_carlo_simulation(
         'percentile_90': np.percentile(final_assets_list, 90),
         'all_results': results,
         'fire_month': fire_month,  # FIRE達成時の月数
-        'monthly_median': monthly_median,  # 月ごとの中央値資産
-        'monthly_std': monthly_std         # 月ごとの標準偏差
+        'monthly_p50': monthly_p50,     # 月ごとの中央値
+        'monthly_p025': monthly_p025,   # 月ごとの2.5パーセンタイル（2σ下限相当）
+        'monthly_p16': monthly_p16,     # 月ごとの16パーセンタイル（1σ下限相当）
+        'monthly_p84': monthly_p84,     # 月ごとの84パーセンタイル（1σ上限相当）
+        'monthly_p975': monthly_p975    # 月ごとの97.5パーセンタイル（2σ上限相当）
     }
 
 

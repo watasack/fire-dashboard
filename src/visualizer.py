@@ -550,27 +550,32 @@ def _add_monte_carlo_ranges(
     import numpy as np
     from dateutil.relativedelta import relativedelta
 
-    monthly_median = monte_carlo_results['monthly_median']  # FIRE後の各月の中央値資産
-    monthly_std = monte_carlo_results['monthly_std']        # FIRE後の各月の標準偏差
+    # パーセンタイルデータを取得（対数正規分布は非対称なのでパーセンタイルを使用）
+    monthly_p50 = monte_carlo_results['monthly_p50']     # 中央値
+    monthly_p025 = monte_carlo_results['monthly_p025']   # 2σ下限相当（2.5パーセンタイル）
+    monthly_p16 = monte_carlo_results['monthly_p16']     # 1σ下限相当（16パーセンタイル）
+    monthly_p84 = monte_carlo_results['monthly_p84']     # 1σ上限相当（84パーセンタイル）
+    monthly_p975 = monte_carlo_results['monthly_p975']   # 2σ上限相当（97.5パーセンタイル）
 
     # FIRE達成後の日付配列を作成
     dates_post = pd.date_range(
         start=achievement_date,
-        periods=len(monthly_median),
+        periods=len(monthly_p50),
         freq='MS'  # Month Start
     )
 
     # 万円単位に変換
-    monthly_median_man = monthly_median / 10000
-    monthly_std_man = monthly_std / 10000
+    p50_man = monthly_p50 / 10000
+    p025_man = monthly_p025 / 10000
+    p16_man = monthly_p16 / 10000
+    p84_man = monthly_p84 / 10000
+    p975_man = monthly_p975 / 10000
 
-    # 2σ範囲（約95%）
-    upper_2sigma = monthly_median_man + 2 * monthly_std_man
-    lower_2sigma = np.maximum(0, monthly_median_man - 2 * monthly_std_man)  # 0未満にならないように
-
-    # 1σ範囲（約68%）
-    upper_1sigma = monthly_median_man + monthly_std_man
-    lower_1sigma = np.maximum(0, monthly_median_man - monthly_std_man)
+    # 範囲を設定（パーセンタイルを直接使用）
+    upper_2sigma = p975_man  # 97.5パーセンタイル
+    lower_2sigma = p025_man  # 2.5パーセンタイル
+    upper_1sigma = p84_man   # 84パーセンタイル
+    lower_1sigma = p16_man   # 16パーセンタイル
 
     # 2σ範囲（薄いオレンジ）
     fig.add_trace(go.Scatter(
@@ -615,7 +620,7 @@ def _add_monte_carlo_ranges(
     # 中央値線（オレンジの点線）
     fig.add_trace(go.Scatter(
         x=dates_post,
-        y=monthly_median_man,
+        y=p50_man,
         mode='lines',
         line=dict(color='rgb(251, 146, 60)', width=2, dash='dot'),  # オレンジ、点線
         name='中央値（MC）',
@@ -629,7 +634,7 @@ def create_fire_timeline_chart(
     current_status: Dict[str, Any],
     fire_target: Dict[str, Any],
     fire_achievement: Dict[str, Any],
-    simulations: Dict[str, pd.DataFrame],
+    simulations: Dict[str, Any],
     config: Dict[str, Any],
     monte_carlo_results: Dict[str, Any] = None
 ) -> go.Figure:
@@ -691,7 +696,7 @@ def create_fire_timeline_chart(
                 )
 
                 # モンテカルロの1σ、2σ範囲を追加（FIRE後のみ）
-                if monte_carlo_results and 'monthly_median' in monte_carlo_results:
+                if monte_carlo_results and 'monthly_p50' in monte_carlo_results:
                     _add_monte_carlo_ranges(
                         fig, df_post, monte_carlo_results, achievement_date
                     )
@@ -722,9 +727,10 @@ def create_fire_timeline_chart(
     y_max = None
     if 'standard' in simulations:
         df = simulations['standard']
-        # ベースシミュレーションの最大資産額に20%のマージンを追加
-        max_assets = df['assets'].max()
-        y_max = max_assets * 1.2
+        # DataFrameの'assets'は円単位なので、万円に変換
+        max_assets_yen = df['assets'].max()
+        max_assets_man = max_assets_yen / 10000  # 万円に変換
+        y_max = max_assets_man * 1.2
 
     # レイアウト
     layout = get_common_layout(config, '')
