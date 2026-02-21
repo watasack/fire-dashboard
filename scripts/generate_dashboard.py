@@ -217,11 +217,7 @@ def main():
             print(f"  Achievement Date: {fire_achievement['achievement_date'].strftime('%Y-%m')}")
             print(f"  Time to FIRE: {fire_achievement['years_to_fire']} years {fire_achievement['remaining_months']} months")
         print(f"  Annual Expense: JPY{trends['annual_expense']:,.0f}")
-        print(f"  Savings Rate: {trends['savings_rate']:.1%}")
-        print("\nNext steps:")
-        print("  1. Open docs/index.html in your browser")
-        print("  2. Commit and push to GitHub to update GitHub Pages")
-        print("  3. Configure GitHub Pages: Settings → Pages → main/docs\n")
+        print(f"  Savings Rate: {trends['savings_rate']:.1%}\n")
 
         return 0
 
