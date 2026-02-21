@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Dict, Any, List, NamedTuple, Optional, Tuple
 from dataclasses import dataclass, field
 from dateutil.relativedelta import relativedelta
+from functools import lru_cache
 
 # 年金・資産計算用定数
 _NATIONAL_PENSION_FULL_AMOUNT = 816_000       # 国民年金満額（2024年度, 円/年）
@@ -182,6 +183,11 @@ def generate_random_returns(
     return returns
 
 
+@lru_cache(maxsize=32)
+def _parse_birthdate(birthdate_str: str) -> datetime:
+    """生年月日文字列をパース（キャッシュ付き）"""
+    return datetime.strptime(birthdate_str, '%Y/%m/%d')
+
 def _get_age_at_offset(birthdate_str: str, year_offset: float) -> float:
     """
     生年月日文字列とシミュレーション経過年数から、その時点での年齢を返す。
@@ -193,7 +199,7 @@ def _get_age_at_offset(birthdate_str: str, year_offset: float) -> float:
     Returns:
         シミュレーション時点での年齢（歳）
     """
-    birthdate = datetime.strptime(birthdate_str, '%Y/%m/%d')
+    birthdate = _parse_birthdate(birthdate_str)  # キャッシュされたパース結果を使用
     current_age = (datetime.now() - birthdate).days / 365.25
     return current_age + year_offset
 
