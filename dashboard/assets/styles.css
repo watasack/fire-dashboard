@@ -1,7 +1,5 @@
 /* FIRE Dashboard - Single Page Layout */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-
 :root {
   --color-brand: #0e7490;
   --color-accent: #06b6d4;
@@ -23,7 +21,7 @@
 }
 
 body {
-  font-family: 'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Meiryo', sans-serif;
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Meiryo', sans-serif;
   background: linear-gradient(135deg, #f0fdfa 0%, #ecfeff 100%);
   color: var(--color-text);
   line-height: 1.6;
@@ -36,7 +34,7 @@ body {
   padding: 12px;
   min-height: 100vh;
   display: grid;
-  grid-template-rows: auto auto auto auto auto auto;
+  grid-template-rows: auto auto auto 1fr auto auto;
   gap: 10px;
 }
 
@@ -100,7 +98,6 @@ body {
   border-radius: 14px;
   box-shadow: 0 4px 12px rgba(13, 148, 136, 0.2);
   align-items: center;
-  max-height: 120px;
 }
 
 .kpi-primary {
