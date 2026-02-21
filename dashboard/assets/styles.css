@@ -172,7 +172,6 @@ body {
 /* メイングラフ（全幅） */
 .main-chart {
   min-height: 0;
-  overflow: hidden;
 }
 
 .chart-panel {
@@ -182,7 +181,6 @@ body {
   padding: 12px;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
   min-height: 0;
 }
 
@@ -199,7 +197,6 @@ body {
 .chart-content {
   flex: 1;
   min-height: 0;
-  overflow: hidden;
 }
 
 .chart-content > div {
