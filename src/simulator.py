@@ -1227,6 +1227,12 @@ def _process_post_fire_monthly_cycle(
     stocks += investment_return
     nisa_balance *= (1 + monthly_return_rate)
 
+    # 不変条件チェック: NISA残高は株式残高を超えてはならない
+    assert nisa_balance <= stocks + 1e-6, (
+        f"NISA balance ({nisa_balance:,.0f}) cannot exceed total stocks ({stocks:,.0f}). "
+        "This indicates a bug in NISA calculation logic."
+    )
+
     # 最低現金残高維持
     if allocation_enabled:
         if cash < min_cash_balance and stocks > 0:
@@ -1963,6 +1969,12 @@ def _process_future_monthly_cycle(
     stocks += investment_return
     nisa_balance *= (1 + monthly_return_rate)
 
+    # 不変条件チェック: NISA残高は株式残高を超えてはならない
+    assert nisa_balance <= stocks + 1e-6, (
+        f"NISA balance ({nisa_balance:,.0f}) cannot exceed total stocks ({stocks:,.0f}). "
+        "This indicates a bug in NISA calculation logic."
+    )
+
     # 3.5. FIRE後は最低現金残高を維持
     if allocation_enabled and fire_achieved:
         if cash < min_cash_balance and stocks > 0:
@@ -1993,6 +2005,11 @@ def _process_future_monthly_cycle(
         nisa_cost_basis = _inv['nisa_cost_basis']
         nisa_used_this_year = _inv['nisa_used_this_year']
         auto_invested = _inv['auto_invested']
+
+        # 不変条件チェック: 自動投資後もNISA残高は株式残高以下
+        assert nisa_balance <= stocks + 1e-6, (
+            f"After auto-invest: NISA balance ({nisa_balance:,.0f}) cannot exceed stocks ({stocks:,.0f})"
+        )
 
     # FIRE達成チェック
     total_assets = cash + stocks
