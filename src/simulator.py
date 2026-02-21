@@ -1222,9 +1222,10 @@ def _process_post_fire_monthly_cycle(
         cash += result.cash_from_taxable
         capital_gains_this_year_post += result.capital_gain
 
-    # 運用リターン
+    # 運用リターン（株式とNISA両方に適用）
     investment_return = stocks * monthly_return_rate
     stocks += investment_return
+    nisa_balance *= (1 + monthly_return_rate)
 
     # 最低現金残高維持
     if allocation_enabled:
