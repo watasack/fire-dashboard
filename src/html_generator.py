@@ -597,6 +597,14 @@ def generate_dashboard_html(
         }});
       }}, 500); // 500ms待機
     }});
+
+    // Plotlyグラフ読み込み後にレイアウトを再計算
+    window.addEventListener('load', function() {
+      // レイアウトの再計算を強制
+      document.body.style.display = 'none';
+      document.body.offsetHeight; // トリガー
+      document.body.style.display = '';
+    });
   </script>
 </body>
 </html>
