@@ -159,9 +159,15 @@ def generate_random_returns(
     monthly_return_mean = (1 + annual_return_mean) ** (1/12) - 1
     monthly_return_std = annual_return_std / np.sqrt(12)
 
-    # 正規分布からサンプリング
+    # 幾何平均の補正（Volatility Drag対策）
+    # ランダムリターンの幾何平均 = 算術平均 - (分散 / 2)
+    # したがって、幾何平均が目標値になるように算術平均を調整
+    variance = monthly_return_std ** 2
+    adjusted_mean = monthly_return_mean + (variance / 2)
+
+    # 正規分布からサンプリング（調整後の平均を使用）
     returns = np.random.normal(
-        loc=monthly_return_mean,
+        loc=adjusted_mean,
         scale=monthly_return_std,
         size=total_months
     )
@@ -1315,6 +1321,164 @@ def simulate_post_fire_assets(
 
     return cash + stocks
 
+def _simulate_post_fire_with_random_returns(
+    current_cash: float,
+    current_stocks: float,
+    years_offset: float,
+    config: Dict[str, Any],
+    scenario: str,
+    random_returns: np.ndarray,
+    nisa_balance: float = 0,
+    nisa_cost_basis: float = 0,
+    stocks_cost_basis: float = None
+) -> float:
+    """
+    FIRE後の資産推移をランダムリターンでシミュレーション（モンテカルロ用）
+
+    Args:
+        current_cash: FIRE達成時の現金残高
+        current_stocks: FIRE達成時の株式残高
+        years_offset: FIRE達成時のシミュレーション開始からの経過年数
+        config: 設定辞書
+        scenario: シナリオ名
+        random_returns: 月次リターン率の配列
+        nisa_balance: NISA残高
+        nisa_cost_basis: NISA簿価
+        stocks_cost_basis: 株式全体の簿価
+
+    Returns:
+        90歳時点での資産額（破綻時は0）
+    """
+    # 初期化
+    init = _initialize_post_fire_simulation(
+        current_cash, current_stocks, years_offset, config, scenario,
+        nisa_balance, nisa_cost_basis, stocks_cost_basis
+    )
+
+    cash = init['cash']
+    stocks = init['stocks']
+    stocks_cost_basis = init['stocks_cost_basis']
+    nisa_balance = init['nisa_balance']
+    nisa_cost_basis = init['nisa_cost_basis']
+    remaining_months = init['remaining_months']
+    allocation_enabled = init['allocation_enabled']
+    capital_gains_tax_rate = init['capital_gains_tax_rate']
+    min_cash_balance = init['min_cash_balance']
+    post_fire_income = init['post_fire_income']
+
+    # 健康保険料の動的計算用
+    current_date_post = datetime.now()
+    current_year_post = (current_date_post + relativedelta(months=int(years_offset * 12))).year
+    capital_gains_this_year_post = 0
+    prev_year_capital_gains_post = 0
+
+    # ランダムリターンの長さチェック
+    if len(random_returns) < remaining_months:
+        raise ValueError(f"random_returns length ({len(random_returns)}) < remaining_months ({remaining_months})")
+
+    # 月次シミュレーション
+    for month in range(remaining_months):
+        years = years_offset + month / 12
+        date_post = current_date_post + relativedelta(months=int(years * 12))
+
+        # 年度管理
+        _prev_gains = capital_gains_this_year_post
+        current_year_post, capital_gains_this_year_post, _year_advanced = _advance_year(
+            date_post.year, current_year_post, capital_gains_this_year_post
+        )
+        if _year_advanced:
+            prev_year_capital_gains_post = _prev_gains
+
+        # 支出計算
+        annual_base_expense = calculate_base_expense(years, config, 0)
+        base_expense = annual_base_expense / 12
+
+        annual_education_expense = calculate_education_expense(years, config)
+        monthly_education_expense = annual_education_expense / 12
+
+        monthly_mortgage_payment = calculate_mortgage_payment(years, config)
+
+        annual_maintenance_cost = calculate_house_maintenance(years, config)
+        monthly_maintenance_cost = annual_maintenance_cost / 12
+
+        annual_workation_cost = calculate_workation_cost(years, config)
+        monthly_workation_cost = annual_workation_cost / 12
+
+        annual_pension_premium = calculate_national_pension_premium(years, config, fire_achieved=True)
+        monthly_pension_premium = annual_pension_premium / 12
+
+        annual_health_insurance_premium = calculate_national_health_insurance_premium(
+            years, config, fire_achieved=True,
+            prev_year_capital_gains=prev_year_capital_gains_post
+        )
+        monthly_health_insurance_premium = annual_health_insurance_premium / 12
+
+        expense = (base_expense + monthly_education_expense + monthly_mortgage_payment +
+                  monthly_maintenance_cost + monthly_workation_cost +
+                  monthly_pension_premium + monthly_health_insurance_premium)
+
+        # 収入計算
+        annual_pension_income = calculate_pension_income(
+            years, config, fire_achieved=True, fire_year_offset=years_offset
+        )
+        monthly_pension_income = annual_pension_income / 12
+
+        # 年金受給開始後は完全リタイア
+        effective_post_fire_income = 0 if monthly_pension_income > 0 else post_fire_income
+
+        annual_child_allowance = calculate_child_allowance(years, config)
+        monthly_child_allowance = annual_child_allowance / 12
+
+        total_income = effective_post_fire_income + monthly_pension_income + monthly_child_allowance
+
+        # 収入を現金に加算
+        cash += total_income
+
+        # 支出を現金から引き出し
+        if cash >= expense:
+            cash -= expense
+        else:
+            shortage = expense - cash
+            cash = 0
+            result = _sell_stocks_with_tax(
+                shortage, stocks, nisa_balance, nisa_cost_basis,
+                stocks_cost_basis, capital_gains_tax_rate, allocation_enabled,
+            )
+            stocks = result.stocks
+            nisa_balance = result.nisa_balance
+            nisa_cost_basis = result.nisa_cost_basis
+            stocks_cost_basis = result.stocks_cost_basis
+            cash += result.cash_from_taxable
+            capital_gains_this_year_post += result.capital_gain
+
+        # ランダムリターン適用（NISA含む）
+        monthly_return = random_returns[month]
+        stocks *= (1 + monthly_return)
+        nisa_balance *= (1 + monthly_return)
+
+        # 最低現金残高維持
+        if allocation_enabled:
+            if cash < min_cash_balance and stocks > 0:
+                shortage = min_cash_balance - cash
+                result = _sell_stocks_with_tax(
+                    shortage, stocks, nisa_balance, nisa_cost_basis,
+                    stocks_cost_basis, capital_gains_tax_rate, allocation_enabled,
+                )
+                stocks = result.stocks
+                nisa_balance = result.nisa_balance
+                nisa_cost_basis = result.nisa_cost_basis
+                stocks_cost_basis = result.stocks_cost_basis
+                cash += result.nisa_sold + result.cash_from_taxable
+                capital_gains_this_year_post += result.capital_gain
+
+        # 破綻判定（早期終了なし - ユーザー要求により全期間シミュレート）
+        # ただし、資産がマイナスの場合は0を返す
+        if cash + stocks < 0:
+            return 0
+
+    return cash + stocks
+
+
 
 def can_retire_now(
     current_assets: float,
@@ -2089,13 +2253,18 @@ def simulate_with_random_returns(
     current_stocks: float,
     config: Dict[str, Any],
     random_returns: np.ndarray,
-    scenario: str = 'standard'
+    scenario: str = 'standard',
+    monthly_income: float = 0,
+    monthly_expense: float = 0
 ) -> pd.DataFrame:
     """
-    ランダムリターンを使った資産推移シミュレーション（モンテカルロ用）
+    ランダムリターンを使った全期間資産推移シミュレーション（モンテカルロ用）
 
-    シミュレーションは期間内（90歳まで）すべて実行され、早期終了しない。
-    資産がマイナスになっても計算を続け、最終的な資産額で成功/失敗を判定する。
+    現在から90歳までの全期間をシミュレート：
+    - FIRE前: 労働収入あり、自動投資あり、FIREチェックあり
+    - FIRE後: 労働収入なし（副収入のみ）、年金収入あり
+
+    シミュレーションは早期終了せず、資産がマイナスになっても90歳まで計算継続。
 
     Args:
         current_cash: 現在の現金
@@ -2103,45 +2272,161 @@ def simulate_with_random_returns(
         config: 設定辞書
         random_returns: 月次リターン率の配列（generate_random_returns()で生成）
         scenario: シナリオ名
+        monthly_income: 月次労働収入
+        monthly_expense: 月次支出
 
     Returns:
         資産推移のDataFrame（全期間分）
     """
-    # 初期化（simulate_with_withdrawalと同様）
-    init = _initialize_withdrawal_simulation(
-        current_cash + current_stocks,  # 簡易化: 初期資産を全額株として扱う
-        config['simulation'].get('annual_base_expense', 2400000),  # デフォルト年間支出
-        len(random_returns) // 12,  # 年数
-        0.05  # リターン率はダミー（ランダムリターンを使うため）
+    # 初期化（simulate_future_assets と同様）
+    init = _initialize_future_simulation(
+        current_cash=current_cash,
+        current_stocks=current_stocks,
+        current_assets=None,
+        monthly_income=monthly_income,
+        monthly_expense=monthly_expense,
+        config=config,
+        scenario=scenario
     )
 
-    assets = init['assets']
+    # 状態変数
+    cash = init['cash']
+    stocks = init['stocks']
+    stocks_cost_basis = init['stocks_cost_basis']
+    nisa_balance = init['nisa_balance']
+    nisa_cost_basis = init['nisa_cost_basis']
+
+    fire_achieved = False
+    fire_month = None
+    current_date = datetime.now()
+    current_year = current_date.year
+    nisa_used_this_year = 0
+    capital_gains_this_year = 0
+    prev_year_capital_gains = 0
+
+    # パラメータ
+    shuhei_ratio = init['shuhei_ratio']
+    shuhei_income_base = init['shuhei_income_base']
+    sakura_income_base = init['sakura_income_base']
+    income_growth_rate = init['income_growth_rate']
+    expense_growth_rate = init['expense_growth_rate']
+
+    allocation_enabled = init['allocation_enabled']
+    cash_buffer_months = init.get('cash_buffer_months', 6)
+    min_cash_balance = init.get('min_cash_balance', 1000000)
+    auto_invest_threshold = init.get('auto_invest_threshold', 1.5)
+    nisa_enabled = init.get('nisa_enabled', True)
+    nisa_annual_limit = init.get('nisa_annual_limit', 3600000)
+    invest_beyond_nisa = init.get('invest_beyond_nisa', True)
+    capital_gains_tax_rate = init.get('capital_gains_tax_rate', 0.20315)
+
     total_months = len(random_returns)
     results = []
 
-    for month in range(total_months):
-        year_offset = month / 12
+    for month_index in range(total_months):
+        # 日付・年数更新
+        years = month_index / 12
+        date = current_date + relativedelta(months=month_index)
 
-        # 支出計算（簡易版）
-        annual_expense = config['simulation'].get('annual_base_expense', 2400000)
-        monthly_expense = annual_expense / 12
+        # 年度管理
+        _prev_gains = capital_gains_this_year
+        current_year, capital_gains_this_year, year_advanced = _advance_year(
+            date.year, current_year, capital_gains_this_year
+        )
+        if year_advanced:
+            prev_year_capital_gains = _prev_gains
+            nisa_used_this_year = 0
 
-        # ランダムリターンを適用
-        monthly_return = random_returns[month]
-        investment_return = assets * monthly_return
+        # 収入計算
+        income_result = _calculate_monthly_income(
+            years, date, fire_achieved, fire_month,
+            shuhei_income_base, sakura_income_base,
+            monthly_income, shuhei_ratio, income_growth_rate, config
+        )
+        total_income = income_result['total_income']
 
-        # 資産更新（マイナスになっても計算継続）
-        assets = assets - monthly_expense + investment_return
+        # 支出計算
+        expense_result = _calculate_monthly_expenses(
+            years, config, monthly_expense, expense_growth_rate,
+            fire_achieved, prev_year_capital_gains
+        )
+        total_expense = expense_result['total']
+
+        # 現金に収入加算
+        cash += total_income
+
+        # 支出処理
+        if cash >= total_expense:
+            cash -= total_expense
+        else:
+            shortage = total_expense - cash
+            cash = 0
+            # 株売却（税金計算あり）
+            sell_result = _sell_stocks_with_tax(
+                shortage, stocks, nisa_balance, nisa_cost_basis,
+                stocks_cost_basis, capital_gains_tax_rate, allocation_enabled
+            )
+            stocks = sell_result.stocks
+            nisa_balance = sell_result.nisa_balance
+            nisa_cost_basis = sell_result.nisa_cost_basis
+            stocks_cost_basis = sell_result.stocks_cost_basis
+            cash += sell_result.cash_from_taxable
+            capital_gains_this_year += sell_result.capital_gain
+
+        # ランダムリターン適用
+        monthly_return = random_returns[month_index]
+        stocks *= (1 + monthly_return)
+        nisa_balance *= (1 + monthly_return)
+
+        # 最低現金残高確保
+        if allocation_enabled and cash < min_cash_balance and stocks > 0:
+            shortage = min_cash_balance - cash
+            sell_result = _sell_stocks_with_tax(
+                shortage, stocks, nisa_balance, nisa_cost_basis,
+                stocks_cost_basis, capital_gains_tax_rate, allocation_enabled
+            )
+            stocks = sell_result.stocks
+            nisa_balance = sell_result.nisa_balance
+            nisa_cost_basis = sell_result.nisa_cost_basis
+            stocks_cost_basis = sell_result.stocks_cost_basis
+            cash += sell_result.nisa_sold + sell_result.cash_from_taxable
+            capital_gains_this_year += sell_result.capital_gain
+
+        # FIRE前の自動投資
+        if not fire_achieved and allocation_enabled:
+            invest_result = _auto_invest_surplus(
+                cash, stocks, stocks_cost_basis, nisa_balance, nisa_cost_basis,
+                nisa_used_this_year, total_expense, cash_buffer_months, min_cash_balance,
+                auto_invest_threshold, nisa_enabled, nisa_annual_limit, invest_beyond_nisa
+            )
+            cash = invest_result['cash']
+            stocks = invest_result['stocks']
+            nisa_balance = invest_result['nisa_balance']
+            stocks_cost_basis = invest_result['stocks_cost_basis']
+            nisa_cost_basis = invest_result['nisa_cost_basis']
+            nisa_used_this_year = invest_result['nisa_used_this_year']
 
         # 結果記録
+        total_assets = cash + stocks
         results.append({
-            'month': month,
-            'year_offset': year_offset,
-            'assets': assets,
+            'month': month_index,
+            'year_offset': years,
+            'date': date,
+            'assets': total_assets,
+            'cash': cash,
+            'stocks': stocks,
+            'nisa_balance': nisa_balance,
+            'fire_achieved': fire_achieved,
             'monthly_return': monthly_return
         })
 
-        # 早期終了なし: 期間内すべて計算する
+        # FIRE判定（まだ達成していない場合のみ）
+        if not fire_achieved and month_index > 0:
+            # FIRE判定（4%ルール + 安全マージン500万円）
+            fire_target = total_expense * 12 * 25 + _BANKRUPTCY_THRESHOLD
+            if total_assets >= fire_target:
+                fire_achieved = True
+                fire_month = month_index
 
     return pd.DataFrame(results)
 
@@ -2151,10 +2436,17 @@ def run_monte_carlo_simulation(
     current_stocks: float,
     config: Dict[str, Any],
     scenario: str = 'standard',
-    iterations: int = 1000
+    iterations: int = 1000,
+    monthly_income: float = 0,
+    monthly_expense: float = 0
 ) -> Dict[str, Any]:
     """
     モンテカルロシミュレーションを実行し、FIRE成功確率を計算
+
+    Option 1実装: FIRE達成まで固定リターン、FIRE後のみランダムリターン
+    - ベースシミュレーションでFIRE達成時点の状態を取得
+    - その時点からFIRE後の期間のみランダムリターンでシミュレート
+    - 「計画通りFIRE達成後の成功確率」を評価
 
     Args:
         current_cash: 現在の現金
@@ -2162,6 +2454,8 @@ def run_monte_carlo_simulation(
         config: 設定辞書
         scenario: シナリオ名
         iterations: シミュレーション回数
+        monthly_income: 月次労働収入
+        monthly_expense: 月次支出
 
     Returns:
         {
@@ -2175,46 +2469,81 @@ def run_monte_carlo_simulation(
     """
     print(f"Running Monte Carlo simulation ({iterations} iterations)...")
 
+    # ステップ1: ベースシミュレーション（固定リターン）でFIRE達成時点を取得
+    print("  Step 1: Running base simulation to find FIRE achievement point...")
+    base_df = simulate_future_assets(
+        current_cash=current_cash,
+        current_stocks=current_stocks,
+        config=config,
+        scenario=scenario,
+        monthly_income=monthly_income,
+        monthly_expense=monthly_expense
+    )
+
+    # FIRE達成時点の状態を取得
+    fire_rows = base_df[base_df['fire_achieved'] == True]
+    if len(fire_rows) == 0:
+        raise ValueError("FIRE not achieved in base simulation. Cannot run Monte Carlo.")
+
+    fire_row = fire_rows.iloc[0]
+    fire_month = int(fire_row['fire_month'])
+    fire_cash = fire_row['cash']
+    fire_stocks = fire_row['stocks']
+    fire_nisa = fire_row['nisa_balance']
+    fire_nisa_cost = fire_row.get('nisa_cost_basis', fire_nisa)  # デフォルトは簿価=時価
+    fire_stocks_cost = fire_row['stocks_cost_basis']
+    years_offset = fire_month / 12
+
+    print(f"  FIRE achieved at month {fire_month} (age {config['simulation'].get('start_age', 35) + years_offset:.1f})")
+    print(f"  Assets at FIRE: JPY{fire_cash + fire_stocks:,.0f}")
+
+    # ステップ2: FIRE後の期間を計算
+    life_expectancy = config['simulation'].get('life_expectancy', 90)
+    start_age = config['simulation'].get('start_age', 35)
+    fire_age = start_age + years_offset
+    remaining_years = life_expectancy - fire_age
+    remaining_months = int(remaining_years * 12)
+
+    print(f"  Simulating {remaining_months} months post-FIRE with random returns...")
+
+    # ステップ3: モンテカルロシミュレーション（FIRE後のみ）
     results = []
     params = config['simulation'][scenario]
-
-    # モンテカルロ設定を取得
     mc_config = config['simulation'].get('monte_carlo', {})
-    return_std_dev = mc_config.get('return_std_dev', 0.15)  # デフォルト15%
-    simulation_years = config['simulation'].get('life_expectancy', 90) - config['simulation'].get('start_age', 35)
-    total_months = simulation_years * 12
+    return_std_dev = mc_config.get('return_std_dev', 0.15)
 
     for i in range(iterations):
         # 進捗表示
         if (i + 1) % 100 == 0:
             print(f"  Progress: {i + 1}/{iterations} iterations completed")
 
-        # ランダムリターンを生成
+        # FIRE後の期間分のランダムリターンを生成
         random_returns = generate_random_returns(
             params['annual_return_rate'],
             return_std_dev,
-            total_months,
-            random_seed=i  # 再現性のため
+            remaining_months,
+            random_seed=i
         )
 
-        # シミュレーション実行
-        df = simulate_with_random_returns(
-            current_cash, current_stocks, config, random_returns, scenario
+        # FIRE後シミュレーション実行
+        final_assets = _simulate_post_fire_with_random_returns(
+            current_cash=fire_cash,
+            current_stocks=fire_stocks,
+            years_offset=years_offset,
+            config=config,
+            scenario=scenario,
+            random_returns=random_returns,
+            nisa_balance=fire_nisa,
+            nisa_cost_basis=fire_nisa_cost,
+            stocks_cost_basis=fire_stocks_cost
         )
 
-        # 最終資産を記録
-        if len(df) > 0:
-            final_assets = df['assets'].iloc[-1]
-        else:
-            final_assets = 0
-
-        # 成功判定: 資産がゼロ以上（マイナスにならなかった）なら成功
+        # 成功判定: 資産がゼロ以上なら成功
         success = final_assets > 0
 
         results.append({
             'final_assets': final_assets,
-            'success': success,
-            'months_survived': len(df)
+            'success': success
         })
 
     # 統計情報を計算

@@ -169,7 +169,9 @@ def main():
                 current_stocks=current_status['investment_trusts'],
                 config=config,
                 scenario='standard',
-                iterations=mc_iterations
+                iterations=mc_iterations,
+                monthly_income=monthly_income,
+                monthly_expense=trends['monthly_avg_expense']
             )
             print("[OK] Monte Carlo simulation complete\n")
 
