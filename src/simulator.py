@@ -129,10 +129,11 @@ def generate_random_returns(
     annual_return_mean: float,
     annual_return_std: float,
     total_months: int,
+    mean_reversion_speed: float = 0.0,
     random_seed: Optional[int] = None
 ) -> np.ndarray:
     """
-    月次リターンをランダム生成（対数正規分布）
+    月次リターンをランダム生成（対数正規分布 + 平均回帰）
 
     モンテカルロシミュレーション用に、市場変動を考慮した
     ランダムな月次リターン率を生成する。
@@ -142,19 +143,34 @@ def generate_random_returns(
     - 幾何平均が自然に保存される
     - 手動のVolatility Drag補正が不要
 
+    平均回帰モデル（AR型）を追加することで：
+    - 大幅な下落後は反発しやすくなる（現実的）
+    - 大幅な上昇後は調整が入りやすくなる
+    - 連続的な暴落シナリオを抑制
+    - 実際の市場データと整合的な挙動
+
     Args:
         annual_return_mean: 年率リターン平均（例: 0.05 = 5%）
-        annual_return_std: 年率リターン標準偏差（例: 0.10 = 10%）
+        annual_return_std: 年率リターン標準偏差（例: 0.06 = 6%）
         total_months: シミュレーション月数
+        mean_reversion_speed: 平均回帰の速度（0.0-1.0）
+            0.0 = 回帰なし（独立な乱数）
+            0.3 = 緩やかな回帰（推奨、現実的な市場）
+            0.5 = 中程度の回帰
+            1.0 = 完全回帰（非現実的）
         random_seed: 乱数シード（再現性のため、オプション）
 
     Returns:
         月次リターン率の配列（長さ: total_months）
 
     Example:
-        >>> returns = generate_random_returns(0.05, 0.10, 12, random_seed=42)
+        >>> # 平均回帰なし（従来の挙動）
+        >>> returns = generate_random_returns(0.05, 0.06, 12, mean_reversion_speed=0.0)
         >>> len(returns)
         12
+        
+        >>> # 平均回帰あり（推奨）
+        >>> returns = generate_random_returns(0.05, 0.06, 12, mean_reversion_speed=0.3, random_seed=42)
         >>> returns[0] > -1  # リターンは-100%未満にならない
         True
     """
@@ -169,18 +185,328 @@ def generate_random_returns(
     # 標準偏差は√12で月次に変換
     log_monthly_std = annual_return_std / np.sqrt(12)
 
-    # 対数リターンを正規分布からサンプリング
-    log_returns = np.random.normal(
-        loc=log_monthly_mean,
-        scale=log_monthly_std,
-        size=total_months
-    )
+    # 平均回帰モデル（AR型）
+    if mean_reversion_speed > 0:
+        returns = np.zeros(total_months)
+        prev_log_return = log_monthly_mean  # 初期値は平均
 
-    # 算術リターンに変換
-    # r = exp(log_r) - 1
-    returns = np.exp(log_returns) - 1
+        for t in range(total_months):
+            # 平均回帰項: 前月が平均を下回った→次月は上振れしやすい
+            deviation = prev_log_return - log_monthly_mean
+            mean_reversion_adjustment = -mean_reversion_speed * deviation
+
+            # 今月のリターンを生成（平均回帰バイアス付き）
+            log_return = np.random.normal(
+                loc=log_monthly_mean + mean_reversion_adjustment,
+                scale=log_monthly_std
+            )
+
+            # 算術リターンに変換
+            returns[t] = np.exp(log_return) - 1
+            prev_log_return = log_return
+
+        return returns
+    else:
+        # 平均回帰なし（従来の独立な乱数生成）
+        log_returns = np.random.normal(
+            loc=log_monthly_mean,
+            scale=log_monthly_std,
+            size=total_months
+        )
+
+        # 算術リターンに変換
+        # r = exp(log_r) - 1
+        returns = np.exp(log_returns) - 1
+
+        return returns
+
+def generate_returns_enhanced(
+    annual_return_mean: float,
+    annual_return_std: float,
+    total_months: int,
+    config: Dict[str, Any],
+    random_seed: Optional[int] = None
+) -> np.ndarray:
+    """
+    拡張リターン生成（GARCH + 非対称多期間平均回帰）
+
+    現実的な市場ダイナミクスをモデル化:
+    - ボラティリティ・クラスタリング（暴落後の高ボラティリティ持続）
+    - 暴落後の遅い回復（重度の弱気相場は5年以上かけて回復）
+    - バブル後の速い収縮（非対称）
+    - レジーム持続性（弱気相場は18-24ヶ月持続）
+
+    数学モデル:
+        ステップ1: GARCH(1,1)ボラティリティ
+            σ_t² = ω + α·ε_{t-1}² + β·σ_{t-1}²
+
+        ステップ2: 多期間平均回帰
+            R_cum = 過去12ヶ月の累積リターン
+            deviation = R_cum - 期待累積リターン
+            
+            λ = {
+                λ_crash  if deviation < -15% (暴落からの回復)
+                λ_bubble if deviation > +15% (バブルの収縮)
+                λ_normal otherwise          (通常の回帰)
+            }
+            
+            adjustment = -λ × deviation / window
+
+        ステップ3: リターン生成
+            log(r_t) = μ + adjustment + σ_t × ε_t
+            r_t = exp(log(r_t)) - 1
+
+    Args:
+        annual_return_mean: 年率期待リターン（例: 0.05 = 5%）
+        annual_return_std: 年率ボラティリティ（例: 0.06 = 6%）
+        total_months: シミュレーション期間（月）
+        config: 設定辞書（monte_carlo.enhanced_model）
+        random_seed: 乱数シード（再現性のため）
+
+    Returns:
+        月次リターン率の配列（長さ: total_months）
+
+    Example:
+        >>> config = {'simulation': {'monte_carlo': {'enhanced_model': {...}}}}
+        >>> returns = generate_returns_enhanced(0.05, 0.06, 120, config, seed=42)
+        >>> len(returns)
+        120
+        >>> # ボラティリティ・クラスタリングを確認
+        >>> abs_returns = np.abs(returns)
+        >>> autocorr = np.corrcoef(abs_returns[:-1], abs_returns[1:])[0, 1]
+        >>> autocorr > 0.05  # ボラティリティは正の自己相関を持つ
+        True
+    """
+    if random_seed is not None:
+        np.random.seed(random_seed)
+
+    # 設定の取得
+    mc_config = config['simulation'].get('monte_carlo', {})
+    enhanced = mc_config.get('enhanced_model', {})
+
+    # GARCHパラメータ
+    ω = enhanced.get('garch_omega', 0.00001)
+    α = enhanced.get('garch_alpha', 0.15)
+    β = enhanced.get('garch_beta', 0.80)
+    σ_floor = enhanced.get('volatility_floor', 0.008)
+    σ_ceil = enhanced.get('volatility_ceiling', 0.035)
+
+    # 平均回帰パラメータ
+    mr_window = enhanced.get('mean_reversion_window', 12)
+    λ_crash = enhanced.get('mr_speed_crash', 0.15)
+    λ_normal = enhanced.get('mr_speed_normal', 0.30)
+    λ_bubble = enhanced.get('mr_speed_bubble', 0.10)
+    crash_thresh = enhanced.get('crash_threshold', -0.15)
+    bubble_thresh = enhanced.get('bubble_threshold', 0.15)
+
+    # 年率から月次へ変換（対数空間）
+    μ_monthly = np.log(1 + annual_return_mean) / 12
+    σ_long = annual_return_std / np.sqrt(12)
+
+    # 初期化
+    returns = np.zeros(total_months)
+    log_returns = np.zeros(total_months)
+    σ_t = σ_long  # 初期ボラティリティ = 長期平均
+
+    for t in range(total_months):
+        # 平均回帰調整（多期間ルックバック）
+        if t >= mr_window:
+            # 過去mr_window月の累積リターンを計算
+            R_cum = np.prod(1 + returns[t-mr_window:t]) - 1
+            # 期待累積リターン
+            R_expected = (1 + annual_return_mean) ** (mr_window/12) - 1
+            # 偏差
+            R_deviation = R_cum - R_expected
+
+            # 非対称平均回帰速度の選択
+            if R_deviation < crash_thresh:
+                # 暴落からの回復: 遅い（現実的な5年回復）
+                λ = λ_crash
+            elif R_deviation > bubble_thresh:
+                # バブル崩壊: 最も遅い（バブルは持続する）
+                λ = λ_bubble
+            else:
+                # 通常: 現在の実装
+                λ = λ_normal
+
+            # 月次への調整量
+            mr_adjustment = -λ * R_deviation / mr_window
+        else:
+            mr_adjustment = 0.0
+
+        # ショックの生成
+        ε_t = np.random.standard_normal()
+
+        # 平均回帰を適用した対数リターン
+        log_ret = μ_monthly + mr_adjustment + σ_t * ε_t
+        log_returns[t] = log_ret
+        returns[t] = np.exp(log_ret) - 1
+
+        # GARCHボラティリティ更新
+        # σ_t² = ω + α·(σ_t·ε_t)² + β·σ_t²
+        realized_shock_squared = (σ_t * ε_t) ** 2
+        σ_t_squared = ω + α * realized_shock_squared + β * σ_t ** 2
+
+        # ボラティリティのクリッピング（暴走防止 / 非現実的な静穏防止）
+        σ_t = np.sqrt(np.clip(σ_t_squared, σ_floor**2, σ_ceil**2))
 
     return returns
+
+
+def calculate_drawdown_level(
+    current_assets: float,
+    peak_assets_history: List[float],
+    config: Dict[str, Any]
+) -> Tuple[float, int]:
+    """
+    ドローダウンレベルを計算
+
+    ピークからの資産下落率を算出し、設定された閾値に基づいて
+    警戒レベル（0-3）を判定します。
+
+    Args:
+        current_assets: 現在の総資産（円）
+        peak_assets_history: 過去の資産履歴（最大12ヶ月分のリスト）
+        config: 設定辞書
+
+    Returns:
+        (drawdown, level):
+            - drawdown: ドローダウン率（-1.0〜0.0、例: -0.15は-15%下落）
+            - level: 警戒レベル（0=正常、1=警戒、2=深刻、3=危機）
+
+    例:
+        peak_history = [10000000, 9500000, 9800000, 10200000]
+        current = 8500000
+        drawdown, level = calculate_drawdown_level(current, peak_history, config)
+        # drawdown = -0.167 (-16.7%)
+        # level = 1 (警戒レベル)
+    """
+    # 過去12ヶ月（またはそれ以下）の最高資産を取得
+    # 履歴が空の場合は現在の資産をピークとする
+    peak_assets = max(peak_assets_history) if peak_assets_history else current_assets
+
+    # ドローダウン計算（ピークからの下落率）
+    # 例: peak=100万円、current=85万円 → drawdown = -0.15 (-15%)
+    if peak_assets > 0:
+        drawdown = (current_assets / peak_assets) - 1.0
+    else:
+        drawdown = 0.0
+
+    # 設定から閾値を取得（デフォルト値あり）
+    dynamic_config = config.get('fire', {}).get('dynamic_expense_reduction', {})
+    thresholds = dynamic_config.get('drawdown_thresholds', {})
+
+    level_1_threshold = thresholds.get('level_1_warning', -0.15)
+    level_2_threshold = thresholds.get('level_2_concern', -0.30)
+    level_3_threshold = thresholds.get('level_3_crisis', -0.50)
+
+    # レベル判定（閾値以下で次のレベルに移行）
+    if drawdown >= level_1_threshold:
+        # ドローダウンが-15%より小さい（-10%など）
+        level = 0  # 正常
+    elif drawdown >= level_2_threshold:
+        # -15% 〜 -30%
+        level = 1  # 警戒
+    elif drawdown >= level_3_threshold:
+        # -30% 〜 -50%
+        level = 2  # 深刻
+    else:
+        # -50%以下
+        level = 3  # 危機
+
+    return drawdown, level
+
+
+def apply_dynamic_expense_reduction(
+    base_expense: float,
+    stage: str,
+    drawdown_level: int,
+    config: Dict[str, Any]
+) -> Tuple[float, Dict[str, float]]:
+    """
+    動的支出削減を適用
+
+    ライフステージの基本生活費を、基礎生活費と裁量的支出に分離し、
+    ドローダウンレベルに応じて裁量的支出を削減します。
+
+    Args:
+        base_expense: ライフステージの基本生活費（年額・円）
+        stage: ライフステージ（'young_child', 'elementary', etc.）
+        drawdown_level: 警戒レベル（0-3）
+        config: 設定辞書
+
+    Returns:
+        (actual_expense, breakdown):
+            - actual_expense: 削減後の実際の年間支出（円）
+            - breakdown: 内訳辞書
+                - 'essential': 基礎生活費（円）
+                - 'discretionary': 削減後の裁量的支出（円）
+                - 'discretionary_original': 削減前の裁量的支出（円）
+                - 'reduction_rate': 適用された削減率（0.0-1.0）
+                - 'amount_saved': 削減額（円）
+
+    例:
+        base_expense = 2800000  # 280万円/年
+        stage = 'young_child'
+        drawdown_level = 1  # 警戒レベル
+
+        actual, breakdown = apply_dynamic_expense_reduction(
+            base_expense, stage, drawdown_level, config
+        )
+        # 裁量的25% = 70万円 → 30%削減 = 49万円
+        # actual = 210万円（基礎） + 49万円（裁量） = 259万円
+        # breakdown = {
+        #     'essential': 2100000,
+        #     'discretionary': 490000,
+        #     'discretionary_original': 700000,
+        #     'reduction_rate': 0.30,
+        #     'amount_saved': 210000
+        # }
+    """
+    dynamic_config = config.get('fire', {}).get('dynamic_expense_reduction', {})
+
+    # 動的削減が無効の場合、元の支出をそのまま返す
+    if not dynamic_config.get('enabled', False):
+        return base_expense, {
+            'essential': base_expense,
+            'discretionary': 0.0,
+            'discretionary_original': 0.0,
+            'reduction_rate': 0.0,
+            'amount_saved': 0.0
+        }
+
+    # 裁量的支出の比率を取得（ライフステージ別）
+    discretionary_ratios = config['fire'].get('discretionary_ratio_by_stage', {})
+    discretionary_ratio = discretionary_ratios.get(stage, 0.30)  # デフォルト30%
+
+    # 基礎生活費と裁量的支出を分離
+    essential_expense = base_expense * (1.0 - discretionary_ratio)
+    discretionary_expense = base_expense * discretionary_ratio
+
+    # 削減率を取得（ドローダウンレベルに応じて）
+    reduction_rates = dynamic_config.get('reduction_rates', {})
+    rate_keys = ['level_0_normal', 'level_1_warning', 'level_2_concern', 'level_3_crisis']
+
+    # レベルに対応する削減率を取得（範囲外の場合はデフォルト0.0）
+    if 0 <= drawdown_level < len(rate_keys):
+        reduction_rate = reduction_rates.get(rate_keys[drawdown_level], 0.0)
+    else:
+        reduction_rate = 0.0
+
+    # 削減を適用（裁量的支出のみ削減）
+    actual_discretionary = discretionary_expense * (1.0 - reduction_rate)
+    actual_expense = essential_expense + actual_discretionary
+
+    # 内訳を返す
+    breakdown = {
+        'essential': essential_expense,
+        'discretionary': actual_discretionary,
+        'discretionary_original': discretionary_expense,
+        'reduction_rate': reduction_rate,
+        'amount_saved': discretionary_expense - actual_discretionary
+    }
+
+    return actual_expense, breakdown
 
 
 @lru_cache(maxsize=32)
@@ -1511,7 +1837,7 @@ def _precompute_monthly_cashflows(
     total_months: int,
     config: Dict[str, Any],
     post_fire_income: float
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     モンテカルロ用に月次支出・収入を事前計算
 
@@ -1522,10 +1848,16 @@ def _precompute_monthly_cashflows(
         post_fire_income: FIRE後の労働収入
 
     Returns:
-        (expenses_array, income_array): 各月の支出・収入の配列
+        (expenses_array, income_array, base_expenses_array, life_stages_array):
+            - expenses_array: 各月の総支出（基本生活費+教育費+住宅ローン等）
+            - income_array: 各月の収入
+            - base_expenses_array: 各月の基本生活費（年額）※動的削減の対象
+            - life_stages_array: 各月のライフステージ（文字列）
     """
     expenses = np.zeros(total_months)
     income = np.zeros(total_months)
+    base_expenses = np.zeros(total_months)  # 基本生活費（年額）を記録
+    life_stages = np.empty(total_months, dtype=object)  # ライフステージを記録
 
     for month_idx in range(total_months):
         years = years_offset + month_idx / 12
@@ -1538,6 +1870,18 @@ def _precompute_monthly_cashflows(
         annual_workation = calculate_workation_cost(years, config)
         annual_pension_prem = calculate_national_pension_premium(years, config, fire_achieved=True)
         # 健康保険は資産売却益に依存するため0とする（ループ内で計算）
+
+        # 基本生活費を記録（動的削減の対象）
+        base_expenses[month_idx] = annual_base
+
+        # ライフステージを取得して記録
+        children = config.get('education', {}).get('children', [])
+        if children:
+            first_child = children[0]
+            child_age = _get_age_at_offset(first_child['birthdate'], years)
+            life_stages[month_idx] = _get_life_stage(child_age)
+        else:
+            life_stages[month_idx] = 'empty_nest'
 
         expenses[month_idx] = (
             annual_base / 12 +
@@ -1562,7 +1906,7 @@ def _precompute_monthly_cashflows(
 
         income[month_idx] = effective_labor_income + monthly_pension + monthly_child_allow
 
-    return expenses, income
+    return expenses, income, base_expenses, life_stages
 
 
 def _simulate_post_fire_with_random_returns(
@@ -1577,7 +1921,9 @@ def _simulate_post_fire_with_random_returns(
     stocks_cost_basis: float = None,
     return_timeseries: bool = False,
     precomputed_expenses: np.ndarray = None,
-    precomputed_income: np.ndarray = None
+    precomputed_income: np.ndarray = None,
+    precomputed_base_expenses: np.ndarray = None,
+    precomputed_life_stages: np.ndarray = None
 ):
     """
     FIRE後の資産推移をランダムリターンでシミュレーション（モンテカルロ用）
@@ -1628,6 +1974,9 @@ def _simulate_post_fire_with_random_returns(
     # 月ごとの資産を記録（return_timeseries=Trueの場合）
     timeseries = [] if return_timeseries else None
 
+    # 動的削減用の資産履歴（過去12ヶ月のピーク計算用）
+    peak_assets_history = []
+
     # 月次シミュレーション
     for month in range(remaining_months):
         years = years_offset + month / 12
@@ -1641,10 +1990,45 @@ def _simulate_post_fire_with_random_returns(
         if _year_advanced:
             prev_year_capital_gains_post = _prev_gains
 
+        # 動的支出削減: 資産履歴を更新（ドローダウン計算用）
+        current_total_assets = cash + stocks
+        peak_assets_history.append(current_total_assets)
+        if len(peak_assets_history) > 12:
+            peak_assets_history.pop(0)  # 最大12ヶ月分を保持
+
         # 支出・収入計算（事前計算済みの場合は配列から取得）
         if precomputed_expenses is not None and precomputed_income is not None:
             # 事前計算済み配列から取得（高速）
-            base_expense_total = precomputed_expenses[month]
+            base_expense_total_original = precomputed_expenses[month]
+
+            # 動的支出削減: ドローダウンレベルを計算
+            drawdown, drawdown_level = calculate_drawdown_level(
+                current_assets=current_total_assets,
+                peak_assets_history=peak_assets_history,
+                config=config
+            )
+
+            # 動的支出削減: 基本生活費に削減を適用
+            if precomputed_base_expenses is not None and precomputed_life_stages is not None:
+                annual_base_expense = precomputed_base_expenses[month]
+                life_stage = precomputed_life_stages[month]
+
+                # 削減を適用
+                adjusted_annual_base, breakdown = apply_dynamic_expense_reduction(
+                    base_expense=annual_base_expense,
+                    stage=life_stage,
+                    drawdown_level=drawdown_level,
+                    config=config
+                )
+
+                # 削減額を計算
+                base_reduction = annual_base_expense - adjusted_annual_base
+
+                # 総支出から削減額を差し引く
+                base_expense_total = base_expense_total_original - (base_reduction / 12)
+            else:
+                # precomputedデータがない場合はそのまま使用
+                base_expense_total = base_expense_total_original
 
             # 健康保険料のみ資産売却益に依存するため毎回計算
             annual_health_insurance_premium = calculate_national_health_insurance_premium(
@@ -2553,7 +2937,7 @@ def run_monte_carlo_simulation(
         config['simulation'].get('shuhei_post_fire_income', 0)
         + config['simulation'].get('sakura_post_fire_income', 0)
     )
-    precomputed_expenses, precomputed_income = _precompute_monthly_cashflows(
+    precomputed_expenses, precomputed_income, precomputed_base_expenses, precomputed_life_stages = _precompute_monthly_cashflows(
         years_offset, remaining_months, config, post_fire_income
     )
 
@@ -2563,6 +2947,7 @@ def run_monte_carlo_simulation(
     params = config['simulation'][scenario]
     mc_config = config['simulation'].get('monte_carlo', {})
     return_std_dev = mc_config.get('return_std_dev', 0.15)
+    mean_reversion_speed = mc_config.get('mean_reversion_speed', 0.0)
 
     for i in range(iterations):
         # 進捗表示
@@ -2570,12 +2955,27 @@ def run_monte_carlo_simulation(
             print(f"  Progress: {i + 1}/{iterations} iterations completed")
 
         # FIRE後の期間分のランダムリターンを生成
-        random_returns = generate_random_returns(
-            params['annual_return_rate'],
-            return_std_dev,
-            remaining_months,
-            random_seed=i
-        )
+        # 拡張モデル（GARCH + 非対称多期間平均回帰）が有効か確認
+        enhanced_enabled = mc_config.get('enhanced_model', {}).get('enabled', False)
+
+        if enhanced_enabled:
+            # 拡張モデル: GARCH(1,1) + 非対称多期間平均回帰
+            random_returns = generate_returns_enhanced(
+                annual_return_mean=params['annual_return_rate'],
+                annual_return_std=return_std_dev,
+                total_months=remaining_months,
+                config=config,
+                random_seed=i
+            )
+        else:
+            # 標準モデル: AR(1)平均回帰（後方互換性）
+            random_returns = generate_random_returns(
+                params['annual_return_rate'],
+                return_std_dev,
+                remaining_months,
+                mean_reversion_speed=mean_reversion_speed,
+                random_seed=i
+            )
 
         # FIRE後シミュレーション実行（月ごとデータを取得）
         timeseries = _simulate_post_fire_with_random_returns(
@@ -2590,7 +2990,9 @@ def run_monte_carlo_simulation(
             stocks_cost_basis=fire_stocks_cost,
             return_timeseries=True,
             precomputed_expenses=precomputed_expenses,
-            precomputed_income=precomputed_income
+            precomputed_income=precomputed_income,
+            precomputed_base_expenses=precomputed_base_expenses,
+            precomputed_life_stages=precomputed_life_stages
         )
 
         final_assets = timeseries[-1] if len(timeseries) > 0 else 0
