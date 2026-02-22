@@ -51,6 +51,24 @@ python tests/test_simulation_convergence.py
 python tests/test_mc_standard_comparison.py
 ```
 
+### FIRE達成時期の感度分析
+
+各パラメータ変更時のFIRE達成時期への影響を分析：
+
+```bash
+python scripts/sensitivity_analysis.py
+```
+
+**分析内容:**
+- 収入増加、支出削減、運用リターン向上などの効果を定量測定
+- 費用対効果ランキングを自動生成
+- 複合施策の効果も分析
+
+**主要な発見:**
+- 運用リターン向上が最も効果的（ただしリスクあり）
+- 複合的改善（収入+支出+リターン）が現実的で効果的
+- 収入増加や支出削減の単独効果は限定的（既に高い貯蓄率のため）
+
 ---
 
 ## テストの実行
