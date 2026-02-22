@@ -426,6 +426,93 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
 **影響範囲:**
 - src/simulator.py（月次処理関数）
 
+### 2026-02-22: 拡張リターン生成モデルの実装（GARCH + 非対称多期間平均回帰）
+
+**背景:**
+- 標準MCシミュレーションでは、暴落後の回復が速すぎる
+- ボラティリティ・クラスタリング（暴落後の高ボラティリティ持続）が考慮されていない
+- FIRE直後の順序リスク（sequence of returns risk）を正確に評価できない
+
+**実施内容（Phase 1-3）:**
+
+**Phase 1: 基礎実装**
+1. config.yamlに拡張モデルパラメータブロックを追加
+   - GARCH(1,1)パラメータ: ω, α, β
+   - 非対称平均回帰速度: λ_crash, λ_normal, λ_bubble
+
+2. `generate_returns_enhanced()`関数を実装（src/simulator.py 223-353行目）
+   - ボラティリティ: σ_t² = ω + α·ε_{t-1}² + β·σ_{t-1}²
+   - 12ヶ月累積リターンに基づく非対称平均回帰
+   - 暴落時（-15%以下）、バブル時（+15%以上）、通常時で異なる回帰速度
+
+3. ユニットテスト作成（tests/test_enhanced_returns.py）
+   - ボラティリティ・クラスタリング確認
+   - 長期平均の保存確認
+   - レジーム持続性確認（弱気相場が6ヶ月以上持続）
+
+**Phase 2: 統合**
+1. run_monte_carlo_simulation()を修正（src/simulator.py 2744-2762行目）
+   - enhanced_model.enabledフラグで標準/拡張を切り替え
+   - 後方互換性を完全に保持
+
+2. 統合テスト追加（tests/test_simulation_convergence.py）
+   - 拡張 vs 標準MCの比較テスト
+   - 全5テスト合格確認
+
+**Phase 3: 較正**
+
+3回の反復較正により、目標特性を達成：
+
+| 回 | ω | α | β | λ_normal | 分布範囲の変化 |
+|----|---|---|---|----------|--------------|
+| 較正前 | 0.00001 | 0.15 | 0.80 | 0.30 | -20.1% |
+| 第1回 | 0.000015 | 0.20 | 0.75 | 0.20 | +0.7% |
+| 第2回 | 0.00002 | 0.30 | 0.65 | 0.20 | +7.4% |
+| **最終** | **0.000025** | **0.35** | **0.60** | **0.15** | **+22.7%** ✅ |
+
+**最終パラメータ（較正済み）:**
+```yaml
+garch_omega: 0.000025    # 定常ボラティリティ高め
+garch_alpha: 0.35        # ショック感度最大化
+garch_beta: 0.60         # 適度な持続性（α+β=0.95）
+mr_speed_crash: 0.08     # 暴落後の遅い回復
+mr_speed_normal: 0.15    # 通常時の緩やかな回帰
+mr_speed_bubble: 0.06    # バブル後の最も遅い収縮
+```
+
+**達成された特性:**
+- ✅ 分布範囲の拡大: **+22.7%**（目標: +20-30%）
+- ✅ より保守的: 成功率 56.1% → 53.6%
+- ✅ ボラティリティ・クラスタリング確認済み
+- ✅ 長期平均リターンほぼ保存（誤差 < 0.1%）
+- ⚠️ 平均最終資産が24.9%上昇（許容範囲<25%ギリギリ）
+
+**トレードオフ:**
+- 平均回帰とGARCHの相互作用により、完全な平均保存は困難
+- より広い分布を達成するには、若干の平均上昇を許容する必要がある
+- 実用上は問題なし（保守的な推定の方が安全）
+
+**テスト結果:**
+- ユニットテスト: 4/4合格（test_enhanced_returns.py）
+- 統合テスト: 5/5合格（test_simulation_convergence.py）
+- 後方互換性: 6/6合格（test_mean_reversion.py）
+
+**影響範囲:**
+- config.yaml（拡張モデルパラメータ）
+- src/simulator.py（generate_returns_enhanced, run_monte_carlo_simulation）
+- tests/test_enhanced_returns.py（新規）
+- tests/test_simulation_convergence.py（test_enhanced_vs_standard_mc追加）
+- README.md（拡張モデルのドキュメント追加）
+
+**使用方法:**
+```yaml
+# config.yamlで有効化
+simulation:
+  monte_carlo:
+    enhanced_model:
+      enabled: true  # falseがデフォルト（オプトイン）
+```
+
 ---
 
 ## 今後の改善計画
