@@ -509,6 +509,61 @@ def apply_dynamic_expense_reduction(
     return actual_expense, breakdown
 
 
+def apply_dynamic_income_boost(
+    drawdown_level: int,
+    config: Dict[str, Any]
+) -> Tuple[float, Dict[str, float]]:
+    """
+    動的副収入増加を適用
+
+    ドローダウンレベルに応じて、副収入を増やします。
+    暴落時にパートタイム復帰やビジネス拡大により収入を補填。
+
+    Args:
+        drawdown_level: 警戒レベル（0-3）
+        config: 設定辞書
+
+    Returns:
+        (monthly_boost, breakdown):
+            - monthly_boost: 月次収入増加額（円）
+            - breakdown: 内訳辞書
+                - 'boost_amount': 増加額（円）
+                - 'boost_level': 適用されたレベル
+
+    例:
+        drawdown_level = 1  # 警戒レベル
+
+        boost, breakdown = apply_dynamic_income_boost(drawdown_level, config)
+        # boost = 50000円（月5万円増）
+        # breakdown = {'boost_amount': 50000, 'boost_level': 1}
+    """
+    dynamic_config = config.get('fire', {}).get('dynamic_expense_reduction', {})
+    income_boost_config = dynamic_config.get('income_boost', {})
+
+    # 副収入増加が無効の場合、0を返す
+    if not income_boost_config.get('enabled', False):
+        return 0.0, {
+            'boost_amount': 0.0,
+            'boost_level': drawdown_level
+        }
+
+    # レベルに応じた増加額を取得
+    boost_keys = ['level_0_normal', 'level_1_warning', 'level_2_concern', 'level_3_crisis']
+
+    # レベルに対応する増加額を取得（範囲外の場合はデフォルト0.0）
+    if 0 <= drawdown_level < len(boost_keys):
+        monthly_boost = income_boost_config.get(boost_keys[drawdown_level], 0.0)
+    else:
+        monthly_boost = 0.0
+
+    breakdown = {
+        'boost_amount': monthly_boost,
+        'boost_level': drawdown_level
+    }
+
+    return monthly_boost, breakdown
+
+
 @lru_cache(maxsize=32)
 def _parse_birthdate(birthdate_str: str) -> datetime:
     """生年月日文字列をパース（キャッシュ付き）"""
@@ -2039,6 +2094,13 @@ def _simulate_post_fire_with_random_returns(
 
             expense = base_expense_total + monthly_health_insurance_premium
             total_income = precomputed_income[month]
+
+            # 動的副収入増加: ドローダウンレベルに応じて収入を増やす
+            monthly_income_boost, income_boost_breakdown = apply_dynamic_income_boost(
+                drawdown_level=drawdown_level,
+                config=config
+            )
+            total_income += monthly_income_boost
         else:
             # 従来の方法（互換性のため残す）
             annual_base_expense = calculate_base_expense(years, config, 0)

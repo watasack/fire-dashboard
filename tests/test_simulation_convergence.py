@@ -80,10 +80,12 @@ def test_standard_vs_monte_carlo_convergence():
     # モンテカルロシミュレーション実行
     # 注: run_monte_carlo_simulationはcurrent_cash/current_stocksを要求するため、
     #     current_assetsと同等にするため cash=0, stocks=全資産として渡す
-    # 動的削減を無効化（既存機能のテストのため）
+    # 動的削減と副収入増加を無効化（既存機能のテストのため）
     import copy
     config_no_reduction = copy.deepcopy(config)
     config_no_reduction['fire']['dynamic_expense_reduction']['enabled'] = False
+    if 'income_boost' in config_no_reduction['fire'].get('dynamic_expense_reduction', {}):
+        config_no_reduction['fire']['dynamic_expense_reduction']['income_boost']['enabled'] = False
 
     mc_result = run_monte_carlo_simulation(
         current_cash=0.0,
@@ -296,8 +298,10 @@ def test_enhanced_vs_standard_mc():
     if 'enhanced_model' not in config_standard['simulation']['monte_carlo']:
         config_standard['simulation']['monte_carlo']['enhanced_model'] = {}
     config_standard['simulation']['monte_carlo']['enhanced_model']['enabled'] = False
-    # 動的削減も無効化（既存機能のテストのため）
+    # 動的削減と副収入増加も無効化（既存機能のテストのため）
     config_standard['fire']['dynamic_expense_reduction']['enabled'] = False
+    if 'income_boost' in config_standard['fire'].get('dynamic_expense_reduction', {}):
+        config_standard['fire']['dynamic_expense_reduction']['income_boost']['enabled'] = False
 
     mc_standard = run_monte_carlo_simulation(
         current_cash=0.0,
@@ -316,8 +320,10 @@ def test_enhanced_vs_standard_mc():
     if 'enhanced_model' not in config_enhanced['simulation']['monte_carlo']:
         config_enhanced['simulation']['monte_carlo']['enhanced_model'] = {}
     config_enhanced['simulation']['monte_carlo']['enhanced_model']['enabled'] = True
-    # 動的削減も無効化（既存機能のテストのため）
+    # 動的削減と副収入増加も無効化（既存機能のテストのため）
     config_enhanced['fire']['dynamic_expense_reduction']['enabled'] = False
+    if 'income_boost' in config_enhanced['fire'].get('dynamic_expense_reduction', {}):
+        config_enhanced['fire']['dynamic_expense_reduction']['income_boost']['enabled'] = False
 
     mc_enhanced = run_monte_carlo_simulation(
         current_cash=0.0,
