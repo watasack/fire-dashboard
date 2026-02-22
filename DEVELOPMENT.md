@@ -65,9 +65,12 @@ python scripts/sensitivity_analysis.py
 - 複合施策の効果も分析
 
 **主要な発見:**
-- 運用リターン向上が最も効果的（ただしリスクあり）
+- 運用リターン向上が最も効果的（ただし**市場次第でコントロール不可**）
 - 複合的改善（収入+支出+リターン）が現実的で効果的
 - 収入増加や支出削減の単独効果は限定的（既に高い貯蓄率のため）
+
+**重要:** パラメータの分類（コントロール可能 vs 外部要因）を理解してから実行することを推奨。
+詳細は [.plans/fire-optimization-parameters.md](.plans/fire-optimization-parameters.md) を参照。
 
 ---
 
