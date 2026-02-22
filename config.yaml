@@ -92,6 +92,302 @@ simulation:
 
 # FIRE設定
 fire:
+  # ==========================================
+  # カテゴリ別予算管理（詳細版）
+  # ==========================================
+  # 基本生活費を23カテゴリに細分化して管理
+  # 各カテゴリは基礎生活費/裁量的支出に分類され、暴落時の削減ロジックに使用されます
+  expense_categories:
+    enabled: true  # true: カテゴリ別予算を使用、false: 従来の総額方式を使用
+
+    # カテゴリ定義（23カテゴリ）
+    definitions:
+      # ========== 基礎生活費（削減対象外） ==========
+      - id: food_home
+        name: '食費（自炊）'
+        discretionary: false
+        description: '家での食事、食材費、調味料'
+
+      - id: utilities_electricity
+        name: '光熱費（電気）'
+        discretionary: false
+        description: '電気代'
+
+      - id: utilities_gas
+        name: '光熱費（ガス）'
+        discretionary: false
+        description: 'ガス代（都市ガス/プロパン）'
+
+      - id: utilities_water
+        name: '光熱費（水道）'
+        discretionary: false
+        description: '上下水道代'
+
+      - id: communication_mobile
+        name: '通信費（携帯）'
+        discretionary: false
+        description: '携帯電話・スマートフォン'
+
+      - id: communication_internet
+        name: '通信費（インターネット）'
+        discretionary: false
+        description: '光回線・Wi-Fi'
+
+      - id: transport_commute
+        name: '交通費（定期券）'
+        discretionary: false
+        description: '通勤・通学定期券（FIRE後は基本0円）'
+
+      - id: insurance_life
+        name: '保険（生命）'
+        discretionary: false
+        description: '生命保険・医療保険・がん保険'
+
+      - id: insurance_casualty
+        name: '保険（損害）'
+        discretionary: false
+        description: '火災保険・地震保険・自動車保険'
+
+      - id: medical
+        name: '医療費'
+        discretionary: false
+        description: '病院・薬代・健康診断'
+
+      - id: household_goods
+        name: '日用品'
+        discretionary: false
+        description: 'トイレットペーパー・洗剤・おむつ等'
+
+      # ========== 裁量的支出（削減対象） ==========
+      - id: food_out
+        name: '食費（外食）'
+        discretionary: true
+        description: '外食・デリバリー・テイクアウト'
+
+      - id: transport_other
+        name: '交通費（その他）'
+        discretionary: true
+        description: 'レジャー時の交通費・タクシー等'
+
+      - id: clothing
+        name: '被服費'
+        discretionary: true
+        description: '衣類・靴・バッグ等'
+
+      - id: entertainment_movies
+        name: '娯楽（映画/コンサート）'
+        discretionary: true
+        description: '映画・コンサート・演劇・スポーツ観戦'
+
+      - id: entertainment_other
+        name: '娯楽（その他）'
+        discretionary: true
+        description: 'カラオケ・ゲーム・アミューズメント施設'
+
+      - id: travel_domestic
+        name: '旅行（国内）'
+        discretionary: true
+        description: '国内旅行・温泉・帰省'
+
+      - id: travel_international
+        name: '旅行（海外）'
+        discretionary: true
+        description: '海外旅行・ワーケーション'
+
+      - id: hobby
+        name: '趣味'
+        discretionary: true
+        description: '趣味用品・写真・音楽・スポーツ用品'
+
+      - id: education_books
+        name: '教養（書籍）'
+        discretionary: true
+        description: '書籍・雑誌・新聞'
+
+      - id: education_courses
+        name: '教養（講座）'
+        discretionary: true
+        description: 'オンライン講座・資格取得・習い事'
+
+      - id: beauty
+        name: '美容・理容'
+        discretionary: true
+        description: '美容院・理容院・化粧品・エステ'
+
+      - id: other
+        name: 'その他'
+        discretionary: true
+        description: '上記に分類されない支出'
+
+    # ライフステージ別の予算配分（年額・円）
+    # 各ステージの合計は base_expense_by_stage と一致するよう設計
+    budgets_by_stage:
+      # 子供が0-5歳（未就学）: 合計 2,800,000円
+      # 基礎生活費 2,100,000円 (75%) / 裁量的支出 700,000円 (25%)
+      young_child:
+        food_home: 600000              # 食費（自炊）: 月5万円
+        utilities_electricity: 120000   # 電気: 月1万円
+        utilities_gas: 60000            # ガス: 月5千円
+        utilities_water: 60000          # 水道: 月5千円
+        communication_mobile: 120000    # 携帯: 月1万円（2人分）
+        communication_internet: 60000   # ネット: 月5千円
+        transport_commute: 0            # 定期券: FIRE後は0円
+        insurance_life: 240000          # 生命保険: 月2万円
+        insurance_casualty: 120000      # 損害保険: 月1万円
+        medical: 120000                 # 医療費: 月1万円
+        household_goods: 600000         # 日用品: 月5万円（おむつ・育児用品含む）
+        food_out: 240000                # 外食: 月2万円
+        transport_other: 60000          # 交通費（その他）: 月5千円
+        clothing: 120000                # 被服費: 月1万円
+        entertainment_movies: 36000     # 映画等: 月3千円
+        entertainment_other: 60000      # 娯楽（その他）: 月5千円
+        travel_domestic: 60000          # 国内旅行: 年6万円
+        travel_international: 0         # 海外旅行: 0円（幼児がいるため）
+        hobby: 48000                    # 趣味: 月4千円
+        education_books: 24000          # 書籍: 月2千円
+        education_courses: 24000        # 講座: 月2千円
+        beauty: 24000                   # 美容: 月2千円
+        other: 4000                     # その他: バッファ
+
+      # 子供が6-11歳（小学生）: 合計 3,000,000円
+      # 基礎生活費 2,100,000円 (70%) / 裁量的支出 900,000円 (30%)
+      elementary:
+        food_home: 660000              # 食費増（成長期）
+        utilities_electricity: 132000   # 電気増（在宅時間増）
+        utilities_gas: 66000
+        utilities_water: 66000
+        communication_mobile: 120000
+        communication_internet: 60000
+        transport_commute: 0
+        insurance_life: 240000
+        insurance_casualty: 120000
+        medical: 120000
+        household_goods: 516000         # 日用品減（おむつ卒業）
+        food_out: 270000                # 外食増
+        transport_other: 72000          # 習い事送迎等
+        clothing: 120000                # 被服費増（成長で買い替え）
+        entertainment_movies: 48000
+        entertainment_other: 72000
+        travel_domestic: 100000         # 旅行増
+        travel_international: 40000     # 海外旅行開始
+        hobby: 60000
+        education_books: 36000
+        education_courses: 36000        # オンライン学習等
+        beauty: 36000
+        other: 10000
+
+      # 子供が12-14歳（中学生）: 合計 3,200,000円
+      # 基礎生活費 2,240,000円 (70%) / 裁量的支出 960,000円 (30%)
+      junior_high:
+        food_home: 720000              # 食費増（成長期ピーク）
+        utilities_electricity: 144000
+        utilities_gas: 72000
+        utilities_water: 72000
+        communication_mobile: 144000    # 子供にスマホ支給
+        communication_internet: 60000
+        transport_commute: 0
+        insurance_life: 240000
+        insurance_casualty: 120000
+        medical: 120000
+        household_goods: 548000
+        food_out: 288000                # 外食増
+        transport_other: 84000          # 部活遠征等
+        clothing: 120000                # 制服・部活用品
+        entertainment_movies: 60000
+        entertainment_other: 84000
+        travel_domestic: 96000
+        travel_international: 36000
+        hobby: 72000                    # 部活・趣味増
+        education_books: 36000
+        education_courses: 36000
+        beauty: 36000
+        other: 12000
+
+      # 子供が15-17歳（高校生）: 合計 3,300,000円
+      # 基礎生活費 2,145,000円 (65%) / 裁量的支出 1,155,000円 (35%)
+      high_school:
+        food_home: 720000
+        utilities_electricity: 144000
+        utilities_gas: 72000
+        utilities_water: 72000
+        communication_mobile: 144000
+        communication_internet: 60000
+        transport_commute: 120000       # 高校通学定期（遠距離想定）
+        insurance_life: 240000
+        insurance_casualty: 120000
+        medical: 120000
+        household_goods: 333000         # 日用品減
+        food_out: 330000                # 外食増（友人と外食増加）
+        transport_other: 132000         # 部活遠征・受験見学等
+        clothing: 143000                # 私服増加
+        entertainment_movies: 66000
+        entertainment_other: 99000
+        travel_domestic: 110000
+        travel_international: 60000     # 修学旅行等
+        hobby: 99000
+        education_books: 33000
+        education_courses: 33000
+        beauty: 33000
+        other: 17000
+
+      # 子供が18-21歳（大学生）: 合計 3,400,000円
+      # 基礎生活費 2,210,000円 (65%) / 裁量的支出 1,190,000円 (35%)
+      university:
+        food_home: 720000
+        utilities_electricity: 144000
+        utilities_gas: 72000
+        utilities_water: 72000
+        communication_mobile: 144000
+        communication_internet: 60000
+        transport_commute: 240000       # 大学通学定期（遠距離想定）
+        insurance_life: 240000
+        insurance_casualty: 120000
+        medical: 120000
+        household_goods: 278000
+        food_out: 340000                # 外食増（大学生活）
+        transport_other: 136000
+        clothing: 150000
+        entertainment_movies: 68000
+        entertainment_other: 102000
+        travel_domestic: 114000
+        travel_international: 60000     # ゼミ旅行・卒業旅行等
+        hobby: 102000
+        education_books: 34000
+        education_courses: 34000
+        beauty: 34000
+        other: 16000
+
+      # 子供独立後（22歳以降）: 合計 2,500,000円
+      # 基礎生活費 1,500,000円 (60%) / 裁量的支出 1,000,000円 (40%)
+      empty_nest:
+        food_home: 480000              # 食費減（二人世帯）
+        utilities_electricity: 96000    # 光熱費減
+        utilities_gas: 48000
+        utilities_water: 48000
+        communication_mobile: 96000     # 携帯減（2人分）
+        communication_internet: 60000
+        transport_commute: 0            # 定期券不要
+        insurance_life: 180000          # 保険見直し
+        insurance_casualty: 120000
+        medical: 144000                 # 医療費増（加齢）
+        household_goods: 228000         # 日用品減
+        food_out: 240000                # 外食増（時間的余裕）
+        transport_other: 100000         # 趣味の移動増
+        clothing: 120000
+        entertainment_movies: 60000
+        entertainment_other: 80000
+        travel_domestic: 120000         # 旅行大幅増
+        travel_international: 60000     # 海外旅行増
+        hobby: 80000                    # 趣味充実
+        education_books: 40000
+        education_courses: 40000        # 生涯学習
+        beauty: 40000
+        other: 20000
+
+  # ==========================================
+  # 従来方式（後方互換性のため保持）
+  # ==========================================
+  # expense_categories.enabled: false の場合、以下の総額方式を使用
   # ライフステージ別の基本生活費（教育費・住宅ローン・住宅メンテナンスを除く）
   # 子供の年齢に応じて自動的に切り替わります
   # 家計調査2024年平均（二人以上世帯）から住居費・教育費を除き、

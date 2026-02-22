@@ -417,11 +417,68 @@ def calculate_drawdown_level(
     return drawdown, level
 
 
+def _apply_category_based_reduction(
+    category_breakdown: Dict[str, Any],
+    reduction_rate: float,
+    config: Dict[str, Any]
+) -> Tuple[float, Dict[str, Any]]:
+    """
+    カテゴリ別内訳に基づいて削減を適用（内部関数）
+
+    Args:
+        category_breakdown: カテゴリ別内訳辞書（calculate_base_expense_by_category()の結果）
+        reduction_rate: 削減率（0.0-1.0）
+        config: 設定辞書
+
+    Returns:
+        (actual_expense, breakdown):
+            - actual_expense: 削減後の実際の年間支出（円）
+            - breakdown: 内訳辞書
+    """
+    # カテゴリ定義を取得
+    definitions = config.get('fire', {}).get('expense_categories', {}).get('definitions', [])
+    discretionary_map = {cat['id']: cat['discretionary'] for cat in definitions}
+
+    # カテゴリごとに削減を適用
+    categories_after = {}
+    essential_total = 0.0
+    discretionary_original_total = 0.0
+    discretionary_after_total = 0.0
+
+    for cat_id, amount in category_breakdown['categories'].items():
+        if discretionary_map.get(cat_id, False):
+            # 裁量的支出: 削減を適用
+            discretionary_original_total += amount
+            amount_after = amount * (1.0 - reduction_rate)
+            discretionary_after_total += amount_after
+            categories_after[cat_id] = amount_after
+        else:
+            # 基礎生活費: 削減なし
+            essential_total += amount
+            categories_after[cat_id] = amount
+
+    actual_expense = essential_total + discretionary_after_total
+    amount_saved = discretionary_original_total - discretionary_after_total
+
+    breakdown = {
+        'essential': essential_total,
+        'discretionary': discretionary_after_total,
+        'discretionary_original': discretionary_original_total,
+        'reduction_rate': reduction_rate,
+        'amount_saved': amount_saved,
+        'categories_after': categories_after,  # カテゴリ別削減後の金額
+        'stage': category_breakdown.get('stage', 'unknown')
+    }
+
+    return actual_expense, breakdown
+
+
 def apply_dynamic_expense_reduction(
     base_expense: float,
     stage: str,
     drawdown_level: int,
-    config: Dict[str, Any]
+    config: Dict[str, Any],
+    category_breakdown: Optional[Dict[str, Any]] = None
 ) -> Tuple[float, Dict[str, float]]:
     """
     動的支出削減を適用
@@ -429,11 +486,14 @@ def apply_dynamic_expense_reduction(
     ライフステージの基本生活費を、基礎生活費と裁量的支出に分離し、
     ドローダウンレベルに応じて裁量的支出を削減します。
 
+    カテゴリ別内訳が提供された場合は、カテゴリごとに削減を適用します。
+
     Args:
         base_expense: ライフステージの基本生活費（年額・円）
         stage: ライフステージ（'young_child', 'elementary', etc.）
         drawdown_level: 警戒レベル（0-3）
         config: 設定辞書
+        category_breakdown: カテゴリ別内訳辞書（オプション）
 
     Returns:
         (actual_expense, breakdown):
@@ -444,6 +504,7 @@ def apply_dynamic_expense_reduction(
                 - 'discretionary_original': 削減前の裁量的支出（円）
                 - 'reduction_rate': 適用された削減率（0.0-1.0）
                 - 'amount_saved': 削減額（円）
+                - 'categories_after': カテゴリ別削減後の金額（カテゴリ別の場合のみ）
 
     例:
         base_expense = 2800000  # 280万円/年
@@ -453,14 +514,14 @@ def apply_dynamic_expense_reduction(
         actual, breakdown = apply_dynamic_expense_reduction(
             base_expense, stage, drawdown_level, config
         )
-        # 裁量的25% = 70万円 → 30%削減 = 49万円
-        # actual = 210万円（基礎） + 49万円（裁量） = 259万円
+        # 裁量的25% = 70万円 → 50%削減 = 35万円
+        # actual = 210万円（基礎） + 35万円（裁量） = 245万円
         # breakdown = {
         #     'essential': 2100000,
-        #     'discretionary': 490000,
+        #     'discretionary': 350000,
         #     'discretionary_original': 700000,
-        #     'reduction_rate': 0.30,
-        #     'amount_saved': 210000
+        #     'reduction_rate': 0.50,
+        #     'amount_saved': 350000
         # }
     """
     dynamic_config = config.get('fire', {}).get('dynamic_expense_reduction', {})
@@ -475,14 +536,6 @@ def apply_dynamic_expense_reduction(
             'amount_saved': 0.0
         }
 
-    # 裁量的支出の比率を取得（ライフステージ別）
-    discretionary_ratios = config['fire'].get('discretionary_ratio_by_stage', {})
-    discretionary_ratio = discretionary_ratios.get(stage, 0.30)  # デフォルト30%
-
-    # 基礎生活費と裁量的支出を分離
-    essential_expense = base_expense * (1.0 - discretionary_ratio)
-    discretionary_expense = base_expense * discretionary_ratio
-
     # 削減率を取得（ドローダウンレベルに応じて）
     reduction_rates = dynamic_config.get('reduction_rates', {})
     rate_keys = ['level_0_normal', 'level_1_warning', 'level_2_concern', 'level_3_crisis']
@@ -492,6 +545,19 @@ def apply_dynamic_expense_reduction(
         reduction_rate = reduction_rates.get(rate_keys[drawdown_level], 0.0)
     else:
         reduction_rate = 0.0
+
+    # カテゴリ別内訳が提供された場合、カテゴリベースの削減を適用
+    if category_breakdown is not None and category_breakdown:
+        return _apply_category_based_reduction(category_breakdown, reduction_rate, config)
+
+    # 従来方式: 比率ベースの削減
+    # 裁量的支出の比率を取得（ライフステージ別）
+    discretionary_ratios = config['fire'].get('discretionary_ratio_by_stage', {})
+    discretionary_ratio = discretionary_ratios.get(stage, 0.30)  # デフォルト30%
+
+    # 基礎生活費と裁量的支出を分離
+    essential_expense = base_expense * (1.0 - discretionary_ratio)
+    discretionary_expense = base_expense * discretionary_ratio
 
     # 削減を適用（裁量的支出のみ削減）
     actual_discretionary = discretionary_expense * (1.0 - reduction_rate)
@@ -2279,9 +2345,123 @@ def can_retire_now(
     return final_assets > _BANKRUPTCY_THRESHOLD
 
 
+def calculate_base_expense_by_category(
+    year_offset: float,
+    config: Dict[str, Any],
+    fallback_expense: float
+) -> Tuple[Optional[float], Dict[str, Any]]:
+    """
+    カテゴリ別予算に基づく基本生活費を計算
+
+    Args:
+        year_offset: シミュレーション開始からの経過年数
+        config: 設定辞書
+        fallback_expense: フォールバック年間支出（使用しないが互換性のため保持）
+
+    Returns:
+        (total_expense, breakdown):
+            - total_expense: 年間基本生活費合計（円）、無効の場合はNone
+            - breakdown: カテゴリ別内訳辞書 {
+                'categories': {cat_id: amount, ...},
+                'essential_total': 基礎生活費合計,
+                'discretionary_total': 裁量的支出合計,
+                'stage': ライフステージ,
+                'total': 合計
+              }
+    """
+    # カテゴリ別予算が無効の場合はNoneを返す
+    expense_categories = config.get('fire', {}).get('expense_categories', {})
+    if not expense_categories.get('enabled', False):
+        return None, {}
+
+    # カテゴリ定義と予算を取得
+    definitions = expense_categories.get('definitions', [])
+    budgets_by_stage = expense_categories.get('budgets_by_stage', {})
+
+    if not definitions or not budgets_by_stage:
+        return None, {}
+
+    # カテゴリIDと裁量フラグのマップを作成
+    discretionary_map = {cat['id']: cat['discretionary'] for cat in definitions}
+
+    # 子供の情報を取得（最初の子供を基準にライフステージを決定）
+    children = config.get('education', {}).get('children', [])
+    if not children:
+        # 子供がいない場合はempty_nestの支出を使用
+        stage = 'empty_nest'
+    else:
+        # 最初の子供の年齢を計算してライフステージを決定
+        child = children[0]
+        birthdate_str = child.get('birthdate')
+        if not birthdate_str:
+            return None, {}
+
+        child_age = _get_age_at_offset(birthdate_str, year_offset)
+        stage = _get_life_stage(child_age)
+
+    # 該当ステージの予算を取得
+    if stage not in budgets_by_stage:
+        return None, {}
+
+    stage_budget = budgets_by_stage[stage]
+
+    # カテゴリごとの金額を集計
+    categories = {}
+    essential_total = 0.0
+    discretionary_total = 0.0
+
+    for cat_id, amount in stage_budget.items():
+        categories[cat_id] = amount
+        if discretionary_map.get(cat_id, False):
+            discretionary_total += amount
+        else:
+            essential_total += amount
+
+    base_expense = essential_total + discretionary_total
+
+    # 第二子以降：各子供の年齢（ステージ）に応じた追加費用を加算
+    additional_by_stage = config.get('fire', {}).get('additional_child_expense_by_stage', {})
+
+    if additional_by_stage and len(children) > 1:
+        current_date = datetime.now()
+        simulation_date = current_date + pd.Timedelta(days=year_offset * 365.25)
+
+        for additional_child in children[1:]:
+            child_birthdate_str = additional_child.get('birthdate')
+            if not child_birthdate_str:
+                continue
+
+            child_birthdate = datetime.strptime(child_birthdate_str, '%Y/%m/%d')
+
+            # まだ生まれていない場合はスキップ
+            if child_birthdate > simulation_date:
+                continue
+
+            # 各子供の年齢からステージを判定
+            child_age = _get_age_at_offset(child_birthdate_str, year_offset)
+            child_stage = _get_life_stage(child_age)
+
+            additional_expense = additional_by_stage.get(child_stage, 0)
+            base_expense += additional_expense
+            essential_total += additional_expense  # 追加費用は基礎生活費とみなす
+
+    # 内訳辞書を作成
+    breakdown = {
+        'categories': categories,
+        'essential_total': essential_total,
+        'discretionary_total': discretionary_total,
+        'stage': stage,
+        'total': base_expense
+    }
+
+    return base_expense, breakdown
+
+
 def calculate_base_expense(year_offset: float, config: Dict[str, Any], fallback_expense: float) -> float:
     """
     指定年における基本生活費を計算（ライフステージ別 + 家族人数調整）
+
+    カテゴリ別予算が有効な場合はそちらを優先、無効の場合は従来方式を使用
 
     Args:
         year_offset: シミュレーション開始からの経過年数
@@ -2291,6 +2471,15 @@ def calculate_base_expense(year_offset: float, config: Dict[str, Any], fallback_
     Returns:
         年間基本生活費（円）
     """
+    # カテゴリ別予算を試す
+    category_expense, breakdown = calculate_base_expense_by_category(
+        year_offset, config, fallback_expense
+    )
+    if category_expense is not None:
+        return category_expense
+
+    # 従来方式（既存ロジック）
+    # ============================
     # 手動設定の年間支出があればそれを使用
     manual_expense = config.get('fire', {}).get('manual_annual_expense')
     if manual_expense is not None:
