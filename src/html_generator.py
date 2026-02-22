@@ -51,6 +51,25 @@ def generate_dashboard_html(
         achievement_text = '計算中'
         achievement_detail = ''
 
+    # モンテカルロ成功率の文字列生成
+    if monte_carlo and 'success_rate' in monte_carlo:
+        success_rate = monte_carlo['success_rate']
+        success_text = f"{success_rate*100:.1f}%"
+        # 成功率に応じた評価コメント
+        if success_rate >= 0.95:
+            success_detail = '非常に高い安全性'
+        elif success_rate >= 0.85:
+            success_detail = '高い安全性'
+        elif success_rate >= 0.70:
+            success_detail = '中程度の安全性'
+        elif success_rate >= 0.50:
+            success_detail = 'やや不安定'
+        else:
+            success_detail = '要改善'
+    else:
+        success_text = '―'
+        success_detail = '計算中'
+
     # カスタムデータスキーマをJSON化（JavaScriptで使用）
     customdata_schema = {col: idx for idx, col in enumerate(CUSTOMDATA_COLUMNS)}
     customdata_schema_json = json.dumps(customdata_schema)
@@ -123,6 +142,12 @@ def generate_dashboard_html(
         <div class="kpi-label">達成予想</div>
         <div class="kpi-value kpi-value--large">{achievement_text}</div>
         <div class="kpi-detail">{achievement_detail}</div>
+      </div>
+      <div class="kpi-divider"></div>
+      <div class="kpi-primary">
+        <div class="kpi-label">FIRE成功確率</div>
+        <div class="kpi-value kpi-value--large">{success_text}</div>
+        <div class="kpi-detail">{success_detail}</div>
       </div>
     </section>
 

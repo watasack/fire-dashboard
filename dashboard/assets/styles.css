@@ -91,7 +91,7 @@ body {
 /* メインKPI */
 .hero-kpi {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: 1fr auto 1fr auto 1fr;
   gap: 20px;
   padding: 16px 24px;
   background: linear-gradient(135deg, var(--color-success) 0%, var(--color-accent) 100%);
