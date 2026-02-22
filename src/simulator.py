@@ -905,6 +905,108 @@ def _auto_invest_surplus(
     }
 
 
+def _apply_monthly_investment_returns(
+    stocks: float,
+    nisa_balance: float,
+    monthly_return_rate: float
+) -> Dict[str, float]:
+    """
+    月次運用リターンを適用（株式とNISA両方）
+    
+    重要: この関数は3つの月次処理関数から呼び出される共通ロジック。
+    NISA残高への運用リターン適用漏れは過去のバグの原因だったため、
+    この関数で一元管理する。
+    
+    Args:
+        stocks: 現在の株式残高
+        nisa_balance: 現在のNISA残高
+        monthly_return_rate: 月次リターン率
+    
+    Returns:
+        {
+            'stocks': 更新後の株式残高,
+            'nisa_balance': 更新後のNISA残高,
+            'investment_return': 株式の運用リターン額
+        }
+    
+    Raises:
+        AssertionError: NISA残高が株式残高を超えた場合
+    """
+    investment_return = stocks * monthly_return_rate
+    stocks += investment_return
+    nisa_balance *= (1 + monthly_return_rate)
+    
+    # 不変条件チェック: NISA残高は株式残高を超えてはならない
+    assert nisa_balance <= stocks + 1e-6, (
+        f"NISA balance ({nisa_balance:,.0f}) cannot exceed total stocks ({stocks:,.0f}). "
+        "This indicates a bug in NISA calculation logic."
+    )
+    
+    return {
+        'stocks': stocks,
+        'nisa_balance': nisa_balance,
+        'investment_return': investment_return
+    }
+
+
+def _maintain_minimum_cash_balance(
+    cash: float,
+    stocks: float,
+    nisa_balance: float,
+    nisa_cost_basis: float,
+    stocks_cost_basis: float,
+    min_cash_balance: float,
+    capital_gains_tax_rate: float,
+    allocation_enabled: bool
+) -> Dict[str, Any]:
+    """
+    最低現金残高を維持（不足時に株式を売却）
+    
+    Args:
+        cash: 現在の現金残高
+        stocks: 現在の株式残高
+        nisa_balance: 現在のNISA残高
+        nisa_cost_basis: NISA簿価
+        stocks_cost_basis: 株式簿価
+        min_cash_balance: 最低現金残高
+        capital_gains_tax_rate: 譲渡益税率
+        allocation_enabled: 資産配分が有効か
+    
+    Returns:
+        {
+            'cash': 更新後の現金,
+            'stocks': 更新後の株式,
+            'nisa_balance': 更新後のNISA残高,
+            'nisa_cost_basis': 更新後のNISA簿価,
+            'stocks_cost_basis': 更新後の株式簿価,
+            'capital_gain': 譲渡益
+        }
+    """
+    capital_gain = 0
+    
+    if allocation_enabled and cash < min_cash_balance and stocks > 0:
+        shortage = min_cash_balance - cash
+        result = _sell_stocks_with_tax(
+            shortage, stocks, nisa_balance, nisa_cost_basis,
+            stocks_cost_basis, capital_gains_tax_rate, allocation_enabled,
+        )
+        stocks = result.stocks
+        nisa_balance = result.nisa_balance
+        nisa_cost_basis = result.nisa_cost_basis
+        stocks_cost_basis = result.stocks_cost_basis
+        cash += result.nisa_sold + result.cash_from_taxable
+        capital_gain = result.capital_gain
+    
+    return {
+        'cash': cash,
+        'stocks': stocks,
+        'nisa_balance': nisa_balance,
+        'nisa_cost_basis': nisa_cost_basis,
+        'stocks_cost_basis': stocks_cost_basis,
+        'capital_gain': capital_gain
+    }
+
+
 def _build_monthly_result(
     date, month: int,
     cash: float, stocks: float, stocks_cost_basis: float, nisa_balance: float,
@@ -1223,30 +1325,24 @@ def _process_post_fire_monthly_cycle(
         capital_gains_this_year_post += result.capital_gain
 
     # 運用リターン（株式とNISA両方に適用）
-    investment_return = stocks * monthly_return_rate
-    stocks += investment_return
-    nisa_balance *= (1 + monthly_return_rate)
-
-    # 不変条件チェック: NISA残高は株式残高を超えてはならない
-    assert nisa_balance <= stocks + 1e-6, (
-        f"NISA balance ({nisa_balance:,.0f}) cannot exceed total stocks ({stocks:,.0f}). "
-        "This indicates a bug in NISA calculation logic."
+    returns_result = _apply_monthly_investment_returns(
+        stocks, nisa_balance, monthly_return_rate
     )
+    stocks = returns_result['stocks']
+    nisa_balance = returns_result['nisa_balance']
+    investment_return = returns_result['investment_return']
 
     # 最低現金残高維持
-    if allocation_enabled:
-        if cash < min_cash_balance and stocks > 0:
-            shortage = min_cash_balance - cash
-            result = _sell_stocks_with_tax(
-                shortage, stocks, nisa_balance, nisa_cost_basis,
-                stocks_cost_basis, capital_gains_tax_rate, allocation_enabled,
-            )
-            stocks = result.stocks
-            nisa_balance = result.nisa_balance
-            nisa_cost_basis = result.nisa_cost_basis
-            stocks_cost_basis = result.stocks_cost_basis
-            cash += result.nisa_sold + result.cash_from_taxable
-            capital_gains_this_year_post += result.capital_gain
+    balance_result = _maintain_minimum_cash_balance(
+        cash, stocks, nisa_balance, nisa_cost_basis, stocks_cost_basis,
+        min_cash_balance, capital_gains_tax_rate, allocation_enabled
+    )
+    cash = balance_result['cash']
+    stocks = balance_result['stocks']
+    nisa_balance = balance_result['nisa_balance']
+    nisa_cost_basis = balance_result['nisa_cost_basis']
+    stocks_cost_basis = balance_result['stocks_cost_basis']
+    capital_gains_this_year_post += balance_result['capital_gain']
 
     # 破綻判定
     should_break = (cash + stocks <= _BANKRUPTCY_THRESHOLD)
@@ -1965,30 +2061,25 @@ def _process_future_monthly_cycle(
         capital_gains_tax = result.capital_gain * capital_gains_tax_rate
 
     # 3. 運用リターン（株式とNISA両方に適用）
-    investment_return = stocks * monthly_return_rate
-    stocks += investment_return
-    nisa_balance *= (1 + monthly_return_rate)
-
-    # 不変条件チェック: NISA残高は株式残高を超えてはならない
-    assert nisa_balance <= stocks + 1e-6, (
-        f"NISA balance ({nisa_balance:,.0f}) cannot exceed total stocks ({stocks:,.0f}). "
-        "This indicates a bug in NISA calculation logic."
+    returns_result = _apply_monthly_investment_returns(
+        stocks, nisa_balance, monthly_return_rate
     )
+    stocks = returns_result['stocks']
+    nisa_balance = returns_result['nisa_balance']
+    investment_return = returns_result['investment_return']
 
     # 3.5. FIRE後は最低現金残高を維持
-    if allocation_enabled and fire_achieved:
-        if cash < min_cash_balance and stocks > 0:
-            shortage = min_cash_balance - cash
-            result = _sell_stocks_with_tax(
-                shortage, stocks, nisa_balance, nisa_cost_basis,
-                stocks_cost_basis, capital_gains_tax_rate, allocation_enabled,
-            )
-            stocks = result.stocks
-            nisa_balance = result.nisa_balance
-            nisa_cost_basis = result.nisa_cost_basis
-            stocks_cost_basis = result.stocks_cost_basis
-            cash += result.nisa_sold + result.cash_from_taxable
-            capital_gains_this_year += result.capital_gain
+    if fire_achieved:
+        balance_result = _maintain_minimum_cash_balance(
+            cash, stocks, nisa_balance, nisa_cost_basis, stocks_cost_basis,
+            min_cash_balance, capital_gains_tax_rate, allocation_enabled
+        )
+        cash = balance_result['cash']
+        stocks = balance_result['stocks']
+        nisa_balance = balance_result['nisa_balance']
+        nisa_cost_basis = balance_result['nisa_cost_basis']
+        stocks_cost_basis = balance_result['stocks_cost_basis']
+        capital_gains_this_year += balance_result['capital_gain']
 
     # 4. 余剰現金がある場合は自動投資（FIRE前のみ）
     auto_invested = 0
