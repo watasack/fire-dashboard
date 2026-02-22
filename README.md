@@ -80,9 +80,9 @@ leave_start ≤ 当月 ≤ leave_end の間 → 桜の月収 = 0円
 ### FIRE後・年金受給前（65歳まで）
 
 ```
-修平の月収 = shuhei_post_fire_income = 20,000円
-桜の月収   = sakura_post_fire_income = 200,000円
-労働収入合計 = 220,000円/月
+修平の月収 = shuhei_post_fire_income = 50,000円（開発業務など）
+桜の月収   = sakura_post_fire_income = 200,000円（個人事業主として継続）
+労働収入合計 = 250,000円/月
 ```
 
 ### 年金受給開始後（65歳以降）
@@ -252,6 +252,26 @@ monthly_return_rate = (1 + annual_return_rate) ^ (1/12) − 1
 | 標準 | 5% | 2% | 2% | 2% |
 | 悲観 | 3% | 3% | 0% | 4% |
 
+### モンテカルロシミュレーション
+
+不確実性を考慮した確率的シミュレーション。
+
+```
+iterations        = 1000回（シミュレーション回数）
+return_std_dev    = 0.06（年率リターンの標準偏差 6%）
+show_distribution = true（結果分布グラフを表示）
+
+各回のシミュレーションで、年率リターンは正規分布に従ってランダムに変動:
+  annual_return ~ N(期待リターン, 標準偏差^2)
+
+→ 1000回の試行結果から、FIRE達成確率や資産残高の分布を推定
+```
+
+**標準偏差 6% の根拠:**
+- 株式市場の長期リターンは平均回帰する傾向がある
+- S&P500の年率リターン標準偏差（約18-20%）より低めに設定
+- 長期投資（数十年）では短期的なボラティリティが平準化される
+
 ### 自動投資ロジック（FIRE前のみ）
 
 ```
@@ -260,7 +280,7 @@ threshold     = max(required_cash × auto_invest_threshold（1.5倍）, min_cash
 
 cash > threshold → 投資可能額 = cash − required_cash を投資
 
-① NISA残枠あり（nisa_annual_limit − 今年の累計投資額 > 0）
+① NISA残枠あり（nisa_annual_limit（360万円/年） − 今年の累計投資額 > 0）
    → 投資可能額と残枠の小さい方をNISAに投資
      nisa_balance    += 投資額
      nisa_cost_basis += 投資額（簿価 = 投資額）
