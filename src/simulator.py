@@ -1007,6 +1007,80 @@ def _maintain_minimum_cash_balance(
     }
 
 
+def _process_monthly_expense(
+    cash: float,
+    expense: float,
+    stocks: float,
+    nisa_balance: float,
+    nisa_cost_basis: float,
+    stocks_cost_basis: float,
+    capital_gains_tax_rate: float,
+    allocation_enabled: bool
+) -> Dict[str, Any]:
+    """
+    月次支出を処理（現金不足時は株式取り崩し）
+    
+    重要: この関数は2つの月次処理関数から呼び出される共通ロジック。
+    支出処理の一貫性を保ち、修正漏れを防ぐために一元管理する。
+    
+    Args:
+        cash: 現在の現金残高
+        expense: 月次支出額
+        stocks: 現在の株式残高
+        nisa_balance: 現在のNISA残高
+        nisa_cost_basis: NISA簿価
+        stocks_cost_basis: 株式簿価
+        capital_gains_tax_rate: 譲渡益税率
+        allocation_enabled: 資産配分が有効か
+    
+    Returns:
+        {
+            'cash': 更新後の現金,
+            'stocks': 更新後の株式,
+            'nisa_balance': 更新後のNISA残高,
+            'nisa_cost_basis': 更新後のNISA簿価,
+            'stocks_cost_basis': 更新後の株式簿価,
+            'capital_gain': 譲渡益,
+            'withdrawal_from_stocks': 株式からの取り崩し額,
+            'capital_gains_tax': 譲渡益税
+        }
+    """
+    withdrawal_from_stocks = 0
+    capital_gains_tax = 0
+    capital_gain = 0
+    
+    if cash >= expense:
+        cash -= expense
+    else:
+        # 現金が足りない場合は株から取り崩し
+        shortage = expense - cash
+        cash = 0
+        
+        result = _sell_stocks_with_tax(
+            shortage, stocks, nisa_balance, nisa_cost_basis,
+            stocks_cost_basis, capital_gains_tax_rate, allocation_enabled,
+        )
+        stocks = result.stocks
+        nisa_balance = result.nisa_balance
+        nisa_cost_basis = result.nisa_cost_basis
+        stocks_cost_basis = result.stocks_cost_basis
+        cash += result.cash_from_taxable
+        capital_gain = result.capital_gain
+        withdrawal_from_stocks = result.total_sold
+        capital_gains_tax = result.capital_gain * capital_gains_tax_rate
+    
+    return {
+        'cash': cash,
+        'stocks': stocks,
+        'nisa_balance': nisa_balance,
+        'nisa_cost_basis': nisa_cost_basis,
+        'stocks_cost_basis': stocks_cost_basis,
+        'capital_gain': capital_gain,
+        'withdrawal_from_stocks': withdrawal_from_stocks,
+        'capital_gains_tax': capital_gains_tax
+    }
+
+
 def _build_monthly_result(
     date, month: int,
     cash: float, stocks: float, stocks_cost_basis: float, nisa_balance: float,
@@ -1308,21 +1382,16 @@ def _process_post_fire_monthly_cycle(
     cash += total_income
 
     # 支出を現金から引き出し
-    if cash >= expense:
-        cash -= expense
-    else:
-        shortage = expense - cash
-        cash = 0
-        result = _sell_stocks_with_tax(
-            shortage, stocks, nisa_balance, nisa_cost_basis,
-            stocks_cost_basis, capital_gains_tax_rate, allocation_enabled,
-        )
-        stocks = result.stocks
-        nisa_balance = result.nisa_balance
-        nisa_cost_basis = result.nisa_cost_basis
-        stocks_cost_basis = result.stocks_cost_basis
-        cash += result.cash_from_taxable
-        capital_gains_this_year_post += result.capital_gain
+    expense_result = _process_monthly_expense(
+        cash, expense, stocks, nisa_balance, nisa_cost_basis,
+        stocks_cost_basis, capital_gains_tax_rate, allocation_enabled
+    )
+    cash = expense_result['cash']
+    stocks = expense_result['stocks']
+    nisa_balance = expense_result['nisa_balance']
+    nisa_cost_basis = expense_result['nisa_cost_basis']
+    stocks_cost_basis = expense_result['stocks_cost_basis']
+    capital_gains_this_year_post += expense_result['capital_gain']
 
     # 運用リターン（株式とNISA両方に適用）
     returns_result = _apply_monthly_investment_returns(
@@ -2037,28 +2106,18 @@ def _process_future_monthly_cycle(
     cash += total_income
 
     # 2. 支出を現金から引き出し
-    if cash >= expense:
-        cash -= expense
-        withdrawal_from_stocks = 0
-        capital_gains_tax = 0
-    else:
-        # 現金が足りない場合は株から取り崩し
-        shortage = expense - cash
-        cash = 0
-
-        # 支出不足型: NISAはshorageを直接削減、課税分のみcashへ
-        result = _sell_stocks_with_tax(
-            shortage, stocks, nisa_balance, nisa_cost_basis,
-            stocks_cost_basis, capital_gains_tax_rate, allocation_enabled,
-        )
-        stocks = result.stocks
-        nisa_balance = result.nisa_balance
-        nisa_cost_basis = result.nisa_cost_basis
-        stocks_cost_basis = result.stocks_cost_basis
-        cash += result.cash_from_taxable
-        capital_gains_this_year += result.capital_gain
-        withdrawal_from_stocks = result.total_sold
-        capital_gains_tax = result.capital_gain * capital_gains_tax_rate
+    expense_result = _process_monthly_expense(
+        cash, expense, stocks, nisa_balance, nisa_cost_basis,
+        stocks_cost_basis, capital_gains_tax_rate, allocation_enabled
+    )
+    cash = expense_result['cash']
+    stocks = expense_result['stocks']
+    nisa_balance = expense_result['nisa_balance']
+    nisa_cost_basis = expense_result['nisa_cost_basis']
+    stocks_cost_basis = expense_result['stocks_cost_basis']
+    capital_gains_this_year += expense_result['capital_gain']
+    withdrawal_from_stocks = expense_result['withdrawal_from_stocks']
+    capital_gains_tax = expense_result['capital_gains_tax']
 
     # 3. 運用リターン（株式とNISA両方に適用）
     returns_result = _apply_monthly_investment_returns(
