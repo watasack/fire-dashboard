@@ -3003,7 +3003,7 @@ def simulate_future_assets(
         monthly_income: 月次収入
         monthly_expense: 月次支出
         config: 設定辞書
-        scenario: シナリオ名 ('standard', 'optimistic', 'pessimistic')
+        scenario: シナリオ名（デフォルト: 'standard'）
 
     Returns:
         シミュレーション結果のデータフレーム

@@ -40,26 +40,12 @@ simulation:
       months_after: 12         # 産後12ヶ月まで（計14ヶ月）
       monthly_income: 0        # 期間中の桜の月収（給付金がある場合は金額を入力）
 
-  # 標準シナリオ（バランス型）
+  # 標準シナリオ
   standard:
     annual_return_rate: 0.05   # 年率リターン 5%
     inflation_rate: 0.02       # インフレ率 2%
     income_growth_rate: 0.02   # 収入成長率 2%
     expense_growth_rate: 0.02  # 支出成長率 2%（インフレ連動）
-
-  # 楽観シナリオ（積極運用）
-  optimistic:
-    annual_return_rate: 0.07   # 年率リターン 7%
-    inflation_rate: 0.01       # インフレ率 1%
-    income_growth_rate: 0.03   # 収入成長率 3%
-    expense_growth_rate: 0.01  # 支出成長率 1%
-
-  # 悲観シナリオ（保守運用）
-  pessimistic:
-    annual_return_rate: 0.03   # 年率リターン 3%
-    inflation_rate: 0.03       # インフレ率 3%
-    income_growth_rate: 0.00   # 収入成長率 0%
-    expense_growth_rate: 0.04  # 支出成長率 4%
 
   # モンテカルロシミュレーション設定
   monte_carlo:
@@ -413,35 +399,9 @@ fire:
     empty_nest: 0.40       # 40%（教育費なし、旅行・趣味増）
 
   # 動的支出削減設定（暴落時の自動対応）
+  # 資産がベースラインを下回った場合、ワーケーション費用を削減して対応
   dynamic_expense_reduction:
     enabled: true          # 動的削減を有効化（ワーケーション費用のみ削減）
-
-    # ドローダウン閾値（ピークからの資産下落率）
-    # 過去12ヶ月の最高資産と比較して判定
-    # [調整済み] より早期に警戒開始（-15% → -10%）
-    drawdown_thresholds:
-      level_1_warning: -0.10   # -10%で警戒レベル（レベル1）[早期警戒]
-      level_2_concern: -0.20   # -20%で深刻レベル（レベル2）[早期対応]
-      level_3_crisis: -0.35    # -35%で危機レベル（レベル3）[早期介入]
-
-    # 各レベルでの裁量的支出削減率
-    # 基礎生活費は削減せず、裁量的支出のみを削減
-    # [調整済み] より積極的な削減（30%/60%/90% → 50%/80%/100%）
-    reduction_rates:
-      level_0_normal: 0.00     # 通常時: 削減なし
-      level_1_warning: 0.50    # レベル1: 50%削減（旅行・外食を大幅削減）
-      level_2_concern: 0.80    # レベル2: 80%削減（娯楽をほぼ停止）
-      level_3_crisis: 1.00     # レベル3: 100%削減（裁量的支出を全停止）
-
-    # 副収入増加設定（レベル別、月額・円）
-    # 暴落時に副収入を増やすことで収入を補填
-    # 例: スキルアップ、パートタイム復帰、ビジネス拡大
-    income_boost:
-      enabled: false           # 副収入増加を無効化（支出削減のみ）
-      level_0_normal: 0        # 通常時: 増加なし
-      level_1_warning: 50000   # レベル1: 月5万円増（修平: スキルアップ）
-      level_2_concern: 100000  # レベル2: 月10万円増（修平: パートタイム）
-      level_3_crisis: 150000   # レベル3: 月15万円増（修平: フルタイム級）
 
   # 追加子供1人あたりの生活費増加（ステージ別・年額・円）
   # 第二子以降、各子供の年齢（ステージ）に応じた追加費用を加算

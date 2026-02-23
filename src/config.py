@@ -61,17 +61,17 @@ def _validate_config(config: Dict[str, Any]) -> None:
 
     # シミュレーション設定の確認
     sim_config = config['simulation']
-    required_scenarios = ['standard', 'optimistic', 'pessimistic']
-    for scenario in required_scenarios:
-        if scenario not in sim_config:
-            raise ValueError(f"Missing required scenario: simulation.{scenario}")
 
-        scenario_config = sim_config[scenario]
-        required_params = ['annual_return_rate', 'inflation_rate',
-                          'income_growth_rate', 'expense_growth_rate']
-        for param in required_params:
-            if param not in scenario_config:
-                raise ValueError(f"Missing parameter: simulation.{scenario}.{param}")
+    # 標準シナリオのみ必須
+    if 'standard' not in sim_config:
+        raise ValueError("Missing required scenario: simulation.standard")
+
+    scenario_config = sim_config['standard']
+    required_params = ['annual_return_rate', 'inflation_rate',
+                      'income_growth_rate', 'expense_growth_rate']
+    for param in required_params:
+        if param not in scenario_config:
+            raise ValueError(f"Missing parameter: simulation.standard.{param}")
 
 
 
@@ -81,7 +81,7 @@ def get_scenario_config(config: Dict[str, Any], scenario: str = 'standard') -> D
 
     Args:
         config: 設定辞書
-        scenario: シナリオ名（'standard', 'optimistic', 'pessimistic'）
+        scenario: シナリオ名（デフォルト: 'standard'）
 
     Returns:
         シナリオ設定辞書
