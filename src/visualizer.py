@@ -577,52 +577,56 @@ def _add_monte_carlo_ranges(
     upper_1sigma = p84_man   # 84パーセンタイル
     lower_1sigma = p16_man   # 16パーセンタイル
 
-    # 2σ範囲（薄いオレンジ）
+    # 2σ範囲の上限境界線（薄い線）
     fig.add_trace(go.Scatter(
         x=dates_post,
         y=upper_2sigma,
         mode='lines',
-        line=dict(width=0),
+        line=dict(width=1, color='rgba(251, 146, 60, 0.4)', dash='dot'),
         showlegend=False,
         hoverinfo='skip'
     ))
+
+    # 2σ範囲（薄いオレンジ、透明度を上げて見やすく）
     fig.add_trace(go.Scatter(
         x=dates_post,
         y=lower_2sigma,
         mode='lines',
         fill='tonexty',
-        fillcolor='rgba(251, 146, 60, 0.1)',  # オレンジ、10%透明度
-        line=dict(width=0),
-        name='2σ範囲（95%）',
-        hovertemplate='<b>2σ範囲</b><br>%{x|%Y年%m月}<br>%{y:,.0f}万円<extra></extra>'
+        fillcolor='rgba(251, 146, 60, 0.15)',  # オレンジ、15%透明度（改善）
+        line=dict(width=1, color='rgba(251, 146, 60, 0.4)', dash='dot'),
+        name='95%信頼区間',
+        hovertemplate='<b>95%信頼区間</b><br>%{x|%Y年%m月}<br>%{y:,.0f}万円<extra></extra>'
     ))
 
-    # 1σ範囲（濃いオレンジ）
+    # 1σ範囲の上限境界線（濃い線）
     fig.add_trace(go.Scatter(
         x=dates_post,
         y=upper_1sigma,
         mode='lines',
-        line=dict(width=0),
+        line=dict(width=1.5, color='rgba(251, 146, 60, 0.6)', dash='dash'),
         showlegend=False,
         hoverinfo='skip'
     ))
+
+    # 1σ範囲（濃いオレンジ、透明度を上げて見やすく）
     fig.add_trace(go.Scatter(
         x=dates_post,
         y=lower_1sigma,
         mode='lines',
         fill='tonexty',
-        fillcolor='rgba(251, 146, 60, 0.2)',  # オレンジ、20%透明度
-        line=dict(width=0),
-        name='1σ範囲（68%）',
-        hovertemplate='<b>1σ範囲</b><br>%{x|%Y年%m月}<br>%{y:,.0f}万円<extra></extra>'
+        fillcolor='rgba(251, 146, 60, 0.25)',  # オレンジ、25%透明度（改善）
+        line=dict(width=1.5, color='rgba(251, 146, 60, 0.6)', dash='dash'),
+        name='68%信頼区間',
+        hovertemplate='<b>68%信頼区間</b><br>%{x|%Y年%m月}<br>%{y:,.0f}万円<extra></extra>'
     ))
 
-    # 中央値線（オレンジの点線）
+    # 中央値線（オレンジの実線、太く）
     fig.add_trace(go.Scatter(
         x=dates_post,
         y=p50_man,
         mode='lines',
-        line=dict(color='rgb(251, 146, 60)', width=2, dash='dot'),  # オレンジ、点線
+        line=dict(color='rgb(251, 146, 60)', width=2.5, dash='solid'),  # 実線に変更、太く
         name='中央値（MC）',
         hovertemplate='<b>中央値</b><br>%{x|%Y年%m月}<br>%{y:,.0f}万円<extra></extra>'
     ))

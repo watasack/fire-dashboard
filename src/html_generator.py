@@ -243,16 +243,11 @@ def generate_dashboard_html(
         const graphDiv = document.querySelector('.chart-content .plotly-graph-div');
 
         if (!graphDiv) {{
-          console.error('グラフが見つかりません');
           return;
         }}
 
-        console.log('グラフが見つかりました:', graphDiv);
-
         // Plotlyクリックイベントをリッスン
         graphDiv.on('plotly_click', function(data) {{
-          console.log('クリックイベント:', data);
-
           const point = data.points[0];
           if (!point) return;
 
@@ -260,8 +255,6 @@ def generate_dashboard_html(
           const date = new Date(point.x);
           const assets = point.y;
           const customdata = point.customdata;
-
-          console.log('カスタムデータ:', customdata);
 
           // 詳細パネルを表示
           const detailsDiv = document.getElementById('click-details');

@@ -2376,15 +2376,6 @@ def _simulate_post_fire_with_random_returns(
         # 月ごとの資産を記録
         if return_timeseries:
             timeseries.append(cash + stocks)
-            # デバッグログ: 月末の資産を記録（無効化）
-            # if month <= 10 or month in [100, 200, 300, 400, 500, 600]:
-            #     month_end_assets = cash + stocks
-            #     if baseline_assets is not None:
-            #         baseline_month_end = baseline_assets[month] if month < len(baseline_assets) else 0
-            #         print(f"[DEBUG Month {month} END] actual={month_end_assets/10000:.1f}万, baseline={baseline_month_end/10000:.1f}万, diff={(month_end_assets-baseline_month_end)/10000:.1f}万")
-            #     else:
-            #         # ベースライン計算時
-            #         print(f"[BASELINE Month {month} END] assets={month_end_assets/10000:.1f}万")
 
         # 破綻判定（早期終了なし - ユーザー要求により全期間シミュレート）
         # ただし、資産がマイナスの場合
