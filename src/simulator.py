@@ -947,23 +947,80 @@ def _calculate_person_pension(
         return person.get('annual_amount', 0)
 
 
+def _determine_optimal_pension_start_age(
+    current_assets: float,
+    config: Dict[str, Any],
+    fire_target_assets: float = None
+) -> int:
+    """
+    資産状況に基づいて最適な年金受給開始年齢を決定する。
+
+    Args:
+        current_assets: 現在の総資産（円）
+        config: 設定辞書
+        fire_target_assets: FIRE目標資産（円、Noneの場合は計算）
+
+    Returns:
+        最適な年金受給開始年齢
+    """
+    deferral_config = config.get('pension_deferral', {})
+
+    if not deferral_config.get('enabled', False):
+        # 年金繰り下げ戦略が無効の場合、従来の固定年齢を使用
+        return config['pension'].get('start_age', 65)
+
+    # FIRE目標資産を計算（未提供の場合）
+    if fire_target_assets is None:
+        # 簡易計算: 年間基礎支出 / 4% ルール
+        base_expense = config['fire']['base_expense_by_stage'].get('empty_nest', 2500000)
+        fire_target_assets = base_expense / 0.04
+
+    # 資産比率を計算（現在資産 / FIRE目標資産）
+    asset_ratio = current_assets / fire_target_assets if fire_target_assets > 0 else 0
+
+    # 閾値を取得
+    defer_to_70_threshold = deferral_config.get('defer_to_70_threshold', 1.50)
+    defer_to_68_threshold = deferral_config.get('defer_to_68_threshold', 1.20)
+    early_at_62_threshold = deferral_config.get('early_at_62_threshold', 0.50)
+
+    # 最適年齢を決定
+    if asset_ratio >= defer_to_70_threshold:
+        # 資産が目標の150%以上 → 70歳まで繰り下げ
+        return 70
+    elif asset_ratio >= defer_to_68_threshold:
+        # 資産が目標の120%以上 → 68歳まで繰り下げ
+        return 68
+    elif asset_ratio < early_at_62_threshold:
+        # 資産が目標の50%未満 → 62歳で繰り上げ受給
+        return 62
+    else:
+        # 通常通り65歳から受給
+        return 65
+
+
 def calculate_pension_income(
     year_offset: float,
     config: Dict[str, Any],
     fire_achieved: bool = False,
-    fire_year_offset: float = None
+    fire_year_offset: float = None,
+    current_assets: float = None,
+    fire_target_assets: float = None
 ) -> float:
     """
-    指定年における年金収入を計算（FIRE対応・動的計算）
+    指定年における年金収入を計算（FIRE対応・動的計算・繰り下げ戦略対応）
 
     FIRE達成時点で厚生年金の加入を停止し、その時点までの加入期間で年金額を計算する。
     国民年金は20歳から60歳まで（最大40年）加入すると仮定。
+
+    年金繰り下げ戦略が有効な場合、資産状況に応じて受給開始年齢を動的に決定する。
 
     Args:
         year_offset: シミュレーション開始からの経過年数
         config: 設定辞書
         fire_achieved: FIRE達成フラグ
         fire_year_offset: FIRE達成時点の経過年数（年）
+        current_assets: 現在の総資産（年金繰り下げ判定用）
+        fire_target_assets: FIRE目標資産（年金繰り下げ判定用）
 
     Returns:
         年間年金収入（円）
@@ -971,11 +1028,68 @@ def calculate_pension_income(
     if not _is_enabled(config, 'pension'):
         return 0
 
-    start_age = config['pension'].get('start_age', 65)
-    return sum(
-        _calculate_person_pension(person, year_offset, start_age, fire_achieved, fire_year_offset)
-        for person in config['pension'].get('people', [])
+    # 年金受給開始年齢を決定（繰り下げ戦略が有効な場合は動的）
+    pension_config = config.get('pension', {})
+    default_start_age = pension_config.get('start_age', 65)
+
+    # 現在の年齢を計算
+    start_age_config = config['simulation'].get('start_age', 35)
+    current_age = start_age_config + year_offset
+
+    # 繰り下げ戦略が無効、または資産情報がない場合は通常受給
+    deferral_config = config.get('pension_deferral', {})
+    if not deferral_config.get('enabled', False) or current_assets is None:
+        # 通常受給（デフォルト年齢から）
+        if current_age < default_start_age:
+            return 0
+
+        base_pension = sum(
+            _calculate_person_pension(person, year_offset, default_start_age, fire_achieved, fire_year_offset)
+            for person in pension_config.get('people', [])
+        )
+        return base_pension
+
+    # 資産状況に基づいて最適な開始年齢を決定
+    optimal_start_age = _determine_optimal_pension_start_age(
+        current_assets=current_assets,
+        config=config,
+        fire_target_assets=fire_target_assets
     )
+
+    # 繰り上げ受給の最小年齢を確認
+    min_start_age = deferral_config.get('min_start_age', 62)
+
+    # 最小年齢にも達していない場合は年金なし
+    if current_age < min_start_age:
+        return 0
+
+    # 最適受給開始年齢に達していない場合は待機（年金なし）
+    if current_age < optimal_start_age:
+        return 0
+
+    # 年金額を計算（受給開始年齢はoptimal_start_ageを使用）
+    # これにより、繰り上げ受給（62歳）でも年金を受け取れるようになる
+    base_pension = sum(
+        _calculate_person_pension(person, year_offset, optimal_start_age, fire_achieved, fire_year_offset)
+        for person in pension_config.get('people', [])
+    )
+
+    # 繰り下げ・繰り上げによる増減率を適用
+    age_diff = optimal_start_age - default_start_age
+
+    if age_diff > 0:
+        # 繰り下げ受給: +8.4%/年
+        increase_rate = deferral_config.get('deferral_increase_rate', 0.084)
+        adjustment_rate = 1 + (increase_rate * age_diff)
+    elif age_diff < 0:
+        # 繰り上げ受給: -4.8%/年
+        decrease_rate = deferral_config.get('early_decrease_rate', 0.048)
+        adjustment_rate = 1 - (decrease_rate * abs(age_diff))
+    else:
+        # 通常受給
+        adjustment_rate = 1.0
+
+    return base_pension * adjustment_rate
 
 
 def calculate_child_allowance(year_offset: float, config: Dict[str, Any]) -> float:
@@ -1503,11 +1617,14 @@ def _maintain_minimum_cash_balance(
     stocks_cost_basis: float,
     min_cash_balance: float,
     capital_gains_tax_rate: float,
-    allocation_enabled: bool
+    allocation_enabled: bool,
 ) -> Dict[str, Any]:
     """
     最低現金残高を維持（不足時に株式を売却）
-    
+
+    FIRE前専用: 固定の最低現金残高を維持する。
+    FIRE後は別のロジック(_manage_post_fire_cash)を使用する。
+
     Args:
         cash: 現在の現金残高
         stocks: 現在の株式残高
@@ -1517,7 +1634,7 @@ def _maintain_minimum_cash_balance(
         min_cash_balance: 最低現金残高
         capital_gains_tax_rate: 譲渡益税率
         allocation_enabled: 資産配分が有効か
-    
+
     Returns:
         {
             'cash': 更新後の現金,
@@ -1529,8 +1646,19 @@ def _maintain_minimum_cash_balance(
         }
     """
     capital_gain = 0
-    
-    if allocation_enabled and cash < min_cash_balance and stocks > 0:
+
+    if not allocation_enabled:
+        return {
+            'cash': cash,
+            'stocks': stocks,
+            'nisa_balance': nisa_balance,
+            'nisa_cost_basis': nisa_cost_basis,
+            'stocks_cost_basis': stocks_cost_basis,
+            'capital_gain': capital_gain
+        }
+
+    # 現金不足時に株式を売却
+    if cash < min_cash_balance and stocks > 0:
         shortage = min_cash_balance - cash
         result = _sell_stocks_with_tax(
             shortage, stocks, nisa_balance, nisa_cost_basis,
@@ -1542,7 +1670,7 @@ def _maintain_minimum_cash_balance(
         stocks_cost_basis = result.stocks_cost_basis
         cash += result.nisa_sold + result.cash_from_taxable
         capital_gain = result.capital_gain
-    
+
     return {
         'cash': cash,
         'stocks': stocks,
@@ -1550,6 +1678,135 @@ def _maintain_minimum_cash_balance(
         'nisa_cost_basis': nisa_cost_basis,
         'stocks_cost_basis': stocks_cost_basis,
         'capital_gain': capital_gain
+    }
+
+
+def _manage_post_fire_cash(
+    cash: float,
+    stocks: float,
+    nisa_balance: float,
+    nisa_cost_basis: float,
+    stocks_cost_basis: float,
+    monthly_expense: float,
+    drawdown: float,
+    config: Dict[str, Any],
+    capital_gains_tax_rate: float,
+    allocation_enabled: bool,
+    is_start_of_month: bool,
+) -> Dict[str, Any]:
+    """
+    FIRE後専用の現金管理戦略を実行する。
+    
+    平常時:
+      - 安全マージン500万円 + 生活費1ヶ月分を確保
+      - 月初に生活費1ヶ月分を株式から現金に変換
+    
+    暴落時（ドローダウン ≤ -20%）:
+      - 株式売却を停止（底値売却回避）
+      - 安全マージンから取り崩す
+      - 復帰条件: 現金 < 25万円 or ドローダウン ≥ -10%
+    
+    Args:
+        cash: 現在の現金残高
+        stocks: 現在の株式残高
+        nisa_balance: 現在のNISA残高
+        nisa_cost_basis: NISA簿価
+        stocks_cost_basis: 株式簿価
+        monthly_expense: 月次支出額
+        drawdown: 現在のドローダウン（負の値）
+        config: 設定辞書
+        capital_gains_tax_rate: 譲渡益税率
+        allocation_enabled: 資産配分が有効か
+        is_start_of_month: 月初かどうか
+    
+    Returns:
+        {
+            'cash': 更新後の現金,
+            'stocks': 更新後の株式,
+            'nisa_balance': 更新後のNISA残高,
+            'nisa_cost_basis': 更新後のNISA簿価,
+            'stocks_cost_basis': 更新後の株式簿価,
+            'capital_gain': 譲渡益,
+            'in_market_crash': 暴落中かどうか,
+            'stocks_sold_for_monthly': 月初の定期売却額
+        }
+    """
+    capital_gain = 0
+    stocks_sold_for_monthly = 0
+    
+    if not allocation_enabled:
+        return {
+            'cash': cash,
+            'stocks': stocks,
+            'nisa_balance': nisa_balance,
+            'nisa_cost_basis': nisa_cost_basis,
+            'stocks_cost_basis': stocks_cost_basis,
+            'capital_gain': capital_gain,
+            'in_market_crash': False,
+            'stocks_sold_for_monthly': 0,
+        }
+    
+    # 設定を取得
+    strategy_config = config.get('post_fire_cash_strategy', {})
+    if not strategy_config.get('enabled', False):
+        # 戦略が無効の場合は従来ロジック（何もしない）
+        return {
+            'cash': cash,
+            'stocks': stocks,
+            'nisa_balance': nisa_balance,
+            'nisa_cost_basis': nisa_cost_basis,
+            'stocks_cost_basis': stocks_cost_basis,
+            'capital_gain': capital_gain,
+            'in_market_crash': False,
+            'stocks_sold_for_monthly': 0,
+        }
+    
+    safety_margin = strategy_config.get('safety_margin', 5000000)
+    monthly_buffer_months = strategy_config.get('monthly_buffer_months', 1)
+    crash_threshold = strategy_config.get('market_crash_threshold', -0.20)
+    recovery_threshold = strategy_config.get('recovery_threshold', -0.10)
+    emergency_floor = strategy_config.get('emergency_cash_floor', 250000)
+    
+    # 暴落判定
+    in_market_crash = drawdown <= crash_threshold
+    is_recovering = drawdown >= recovery_threshold
+    is_emergency = cash < emergency_floor
+
+    # 目標現金レベル: 安全マージン + 生活費1ヶ月分
+    target_cash_level = safety_margin + (monthly_buffer_months * monthly_expense)
+
+    # 月初処理: 現金が目標レベルを下回っている場合のみ株式売却
+    # （収入がある場合は、収入だけで足りる可能性があるため）
+    if is_start_of_month:
+        # 暴落中でも以下の条件で売却再開:
+        # 1. 回復した（ドローダウン ≥ -10%）
+        # 2. 緊急時（現金 < 25万円）
+        should_sell_monthly = (not in_market_crash) or is_recovering or is_emergency
+
+        # 現金が目標レベルを下回っている場合のみ売却
+        cash_shortage = target_cash_level - cash
+        if should_sell_monthly and cash_shortage > 0 and stocks > 0:
+            result = _sell_stocks_with_tax(
+                cash_shortage, stocks, nisa_balance, nisa_cost_basis,
+                stocks_cost_basis, capital_gains_tax_rate, allocation_enabled,
+            )
+            stocks = result.stocks
+            nisa_balance = result.nisa_balance
+            nisa_cost_basis = result.nisa_cost_basis
+            stocks_cost_basis = result.stocks_cost_basis
+            cash += result.nisa_sold + result.cash_from_taxable
+            capital_gain += result.capital_gain
+            stocks_sold_for_monthly = result.total_sold
+    
+    return {
+        'cash': cash,
+        'stocks': stocks,
+        'nisa_balance': nisa_balance,
+        'nisa_cost_basis': nisa_cost_basis,
+        'stocks_cost_basis': stocks_cost_basis,
+        'capital_gain': capital_gain,
+        'in_market_crash': in_market_crash,
+        'stocks_sold_for_monthly': stocks_sold_for_monthly,
     }
 
 
@@ -1719,9 +1976,13 @@ def _calculate_monthly_income(
     shuhei_ratio: float,
     income_growth_rate: float,
     config: dict,
+    current_assets: float = None,
 ) -> dict:
     """
     月次収入を計算する。FIRE前後で労働収入の扱いを切り替える。
+
+    Args:
+        current_assets: 現在の総資産（年金繰り下げ判定用、Noneの場合はデフォルト年齢で受給）
 
     Returns:
       total_income:          月次合計収入
@@ -1733,10 +1994,17 @@ def _calculate_monthly_income(
       post_fire_income:           修平の FIRE後副収入設定値
     """
 
-    # 年金収入
+    # 年金収入（年金繰り下げ戦略対応）
     fire_year_offset = (fire_month / 12) if fire_month is not None else None
+
+    # FIRE目標資産を計算（年金繰り下げ判定用）
+    base_expense_empty_nest = config['fire']['base_expense_by_stage'].get('empty_nest', 2500000)
+    fire_target_assets = base_expense_empty_nest / 0.04  # 4%ルール
+
     annual_pension_income = calculate_pension_income(
-        years, config, fire_achieved=fire_achieved, fire_year_offset=fire_year_offset
+        years, config, fire_achieved=fire_achieved, fire_year_offset=fire_year_offset,
+        current_assets=current_assets,
+        fire_target_assets=fire_target_assets
     )
     monthly_pension_income = annual_pension_income / 12
 
@@ -1910,9 +2178,18 @@ def _process_post_fire_monthly_cycle(
               monthly_maintenance_cost + monthly_workation_cost +
               monthly_pension_premium + monthly_health_insurance_premium)
 
-    # 収入計算
+    # 収入計算（年金繰り下げ戦略対応）
+    # FIRE目標資産を計算
+    base_expense_empty_nest = config['fire']['base_expense_by_stage'].get('empty_nest', 2500000)
+    fire_target_assets = base_expense_empty_nest / 0.04
+
+    # 現在の総資産
+    current_total_assets = cash + stocks
+
     annual_pension_income = calculate_pension_income(
-        years, config, fire_achieved=True, fire_year_offset=years_offset
+        years, config, fire_achieved=True, fire_year_offset=years_offset,
+        current_assets=current_total_assets,
+        fire_target_assets=fire_target_assets
     )
     monthly_pension_income = annual_pension_income / 12
 
@@ -2118,8 +2395,12 @@ def _precompute_monthly_cashflows(
         )
 
         # 収入計算
+        # 注: 事前計算フェーズでは資産情報がないため、デフォルトの年金額を使用
+        # 実際の年金繰り下げ判定はシミュレーションループ内で動的に行われる
         annual_pension = calculate_pension_income(
-            years, config, fire_achieved=True, fire_year_offset=years_offset
+            years, config, fire_achieved=True, fire_year_offset=years_offset,
+            current_assets=None,  # 事前計算では資産情報なし
+            fire_target_assets=None
         )
         monthly_pension = annual_pension / 12
 
@@ -2319,9 +2600,15 @@ def _simulate_post_fire_with_random_returns(
                       monthly_maintenance_cost + monthly_workation_cost +
                       monthly_pension_premium + monthly_health_insurance_premium)
 
-            # 収入計算
+            # 収入計算（年金繰り下げ戦略対応）
+            # FIRE目標資産を計算
+            base_expense_empty_nest = config['fire']['base_expense_by_stage'].get('empty_nest', 2500000)
+            fire_target_assets = base_expense_empty_nest / 0.04
+
             annual_pension_income = calculate_pension_income(
-                years, config, fire_achieved=True, fire_year_offset=years_offset
+                years, config, fire_achieved=True, fire_year_offset=years_offset,
+                current_assets=current_total_assets,
+                fire_target_assets=fire_target_assets
             )
             monthly_pension_income = annual_pension_income / 12
 
@@ -2335,6 +2622,30 @@ def _simulate_post_fire_with_random_returns(
 
         # 収入を現金に加算
         cash += total_income
+
+        # FIRE後の現金管理戦略を適用（支出処理の前）
+        if allocation_enabled:
+            # 月次支出を推定（必要に応じて計算）
+            if precomputed_expenses is not None:
+                estimated_monthly_expense = precomputed_expenses[month]
+            else:
+                estimated_monthly_expense = expense
+
+            # 月初判定（常にtrue - モンテカルロでは毎月処理）
+            is_start_of_month = True
+
+            # FIRE後の現金管理を実行
+            cash_result = _manage_post_fire_cash(
+                cash, stocks, nisa_balance, nisa_cost_basis, stocks_cost_basis,
+                estimated_monthly_expense, drawdown, config,
+                capital_gains_tax_rate, allocation_enabled, is_start_of_month
+            )
+            cash = cash_result['cash']
+            stocks = cash_result['stocks']
+            nisa_balance = cash_result['nisa_balance']
+            nisa_cost_basis = cash_result['nisa_cost_basis']
+            stocks_cost_basis = cash_result['stocks_cost_basis']
+            capital_gains_this_year_post += cash_result['capital_gain']
 
         # 支出を現金から引き出し
         if cash >= expense:
@@ -2357,21 +2668,6 @@ def _simulate_post_fire_with_random_returns(
         monthly_return = random_returns[month]
         stocks *= (1 + monthly_return)
         nisa_balance *= (1 + monthly_return)
-
-        # 最低現金残高維持
-        if allocation_enabled:
-            if cash < min_cash_balance and stocks > 0:
-                shortage = min_cash_balance - cash
-                result = _sell_stocks_with_tax(
-                    shortage, stocks, nisa_balance, nisa_cost_basis,
-                    stocks_cost_basis, capital_gains_tax_rate, allocation_enabled,
-                )
-                stocks = result.stocks
-                nisa_balance = result.nisa_balance
-                nisa_cost_basis = result.nisa_cost_basis
-                stocks_cost_basis = result.stocks_cost_basis
-                cash += result.nisa_sold + result.cash_from_taxable
-                capital_gains_this_year_post += result.capital_gain
 
         # 月ごとの資産を記録
         if return_timeseries:
@@ -2833,11 +3129,13 @@ def _process_future_monthly_cycle(
         nisa_used_this_year = 0
         prev_year_capital_gains = _prev_gains
 
-    # 収入計算
+    # 収入計算（年金繰り下げ戦略対応）
+    current_total_assets = cash + stocks
     _income = _calculate_monthly_income(
         years, date, fire_achieved, fire_month,
         shuhei_income_base, sakura_income_base, income,
         shuhei_ratio, income_growth_rate, config,
+        current_assets=current_total_assets,
     )
     total_income = _income['total_income']
     labor_income = _income['labor_income']
@@ -2863,7 +3161,31 @@ def _process_future_monthly_cycle(
     # 1. 収入を現金に加算
     cash += total_income
 
+    # 1.5. FIRE後は月初に現金管理戦略を適用（支出処理の前）
+    # 重要: 支出処理の前に実行することで、二重売却を回避する
+    # - このステップで生活費1ヶ月分を株式から現金に変換
+    # - 次のステップでその現金から支出を引き出し
+    if fire_achieved:
+        # ベースラインシミュレーションではドローダウン計算がないため0を使用
+        # （暴落判定は常にfalse、常に月初売却が実行される）
+        drawdown = 0
+        is_start_of_month = True  # ベースラインシミュレーションでは毎月処理
+
+        cash_result = _manage_post_fire_cash(
+            cash, stocks, nisa_balance, nisa_cost_basis, stocks_cost_basis,
+            expense, drawdown, config, capital_gains_tax_rate, allocation_enabled,
+            is_start_of_month
+        )
+        cash = cash_result['cash']
+        stocks = cash_result['stocks']
+        nisa_balance = cash_result['nisa_balance']
+        nisa_cost_basis = cash_result['nisa_cost_basis']
+        stocks_cost_basis = cash_result['stocks_cost_basis']
+        capital_gains_this_year += cash_result['capital_gain']
+
     # 2. 支出を現金から引き出し
+    # FIRE後: 上記で現金バッファを確保済みのため、通常は株式売却不要
+    # FIRE前: 現金不足時に株式を売却して支出を賄う
     expense_result = _process_monthly_expense(
         cash, expense, stocks, nisa_balance, nisa_cost_basis,
         stocks_cost_basis, capital_gains_tax_rate, allocation_enabled
@@ -2884,19 +3206,6 @@ def _process_future_monthly_cycle(
     stocks = returns_result['stocks']
     nisa_balance = returns_result['nisa_balance']
     investment_return = returns_result['investment_return']
-
-    # 3.5. FIRE後は最低現金残高を維持
-    if fire_achieved:
-        balance_result = _maintain_minimum_cash_balance(
-            cash, stocks, nisa_balance, nisa_cost_basis, stocks_cost_basis,
-            min_cash_balance, capital_gains_tax_rate, allocation_enabled
-        )
-        cash = balance_result['cash']
-        stocks = balance_result['stocks']
-        nisa_balance = balance_result['nisa_balance']
-        nisa_cost_basis = balance_result['nisa_cost_basis']
-        stocks_cost_basis = balance_result['stocks_cost_basis']
-        capital_gains_this_year += balance_result['capital_gain']
 
     # 4. 余剰現金がある場合は自動投資（FIRE前のみ）
     auto_invested = 0
@@ -3159,11 +3468,17 @@ def _process_withdrawal_monthly_cycle(
     # この関数はFIRE後のシミュレーションなので、FIRE達成済みとして計算
     monthly_pension_income = 0
     if config is not None:
+        # FIRE目標資産を計算（年金繰り下げ判定用）
+        base_expense_empty_nest = config['fire']['base_expense_by_stage'].get('empty_nest', 2500000)
+        fire_target_assets = base_expense_empty_nest / 0.04
+
         annual_pension_income = calculate_pension_income(
             years_elapsed,
             config,
             fire_achieved=True,
-            fire_year_offset=start_year_offset  # FIRE達成時点の年数
+            fire_year_offset=start_year_offset,  # FIRE達成時点の年数
+            current_assets=assets,
+            fire_target_assets=fire_target_assets
         )
         monthly_pension_income = annual_pension_income / 12
 
