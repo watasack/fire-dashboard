@@ -584,6 +584,43 @@ asset_allocation:
   # 税金設定
   capital_gains_tax_rate: 0.20315  # 譲渡益課税20.315%（所得税15.315% + 住民税5%）
 
+# FIRE後の現金管理戦略（暴落時の底値売却回避）
+post_fire_cash_strategy:
+  enabled: true                # FIRE後の現金管理戦略を有効化
+
+  # 基本設定
+  safety_margin: 5000000       # 安全マージン: 500万円（常時確保）
+  monthly_buffer_months: 1     # 生活費バッファ: 1ヶ月分
+
+  # 暴落時の株式売却停止ルール
+  market_crash_threshold: -0.20    # ドローダウン-20%以下で暴落と判定
+  recovery_threshold: -0.10        # ドローダウン-10%以上で回復と判定
+  emergency_cash_floor: 250000     # 緊急時最低現金（25万円、これを下回ったら強制売却）
+
+  description: 'FIRE後専用の現金管理戦略。平常時は500万円+生活費1ヶ月分を確保し、月初に株式を売却して生活費を賄う。暴落時（ドローダウン-20%以下）は株式売却を停止し、安全マージンから取り崩す。回復（-10%以上）または現金25万円未満で株式売却を再開。'
+
+# 年金繰り下げ受給戦略
+pension_deferral:
+  enabled: true                # 年金繰り下げ戦略を有効化
+
+  # 繰り下げ判定基準（資産ベース）
+  # FIRE目標資産に対する現在資産の比率で判定
+  defer_to_70_threshold: 1.50   # 資産が目標の150%以上なら70歳まで繰り下げ
+  defer_to_68_threshold: 1.20   # 資産が目標の120%以上なら68歳まで繰り下げ
+  early_at_62_threshold: 0.50   # 資産が目標の50%未満なら62歳から繰り上げ受給
+
+  # 繰り下げ・繰り上げの効果（年率）
+  # 繰り下げ: +8.4%/年（+0.7%/月 × 12ヶ月）
+  # 繰り上げ: -4.8%/年（-0.4%/月 × 12ヶ月）※2022年4月改定後
+  deferral_increase_rate: 0.084   # 1年繰り下げで+8.4%
+  early_decrease_rate: 0.048      # 1年繰り上げで-4.8%
+
+  # 最小・最大受給開始年齢
+  min_start_age: 62            # 繰り上げ受給の下限
+  max_start_age: 75            # 繰り下げ受給の上限（2022年4月から75歳まで可能）
+
+  description: '資産状況に応じて年金受給開始時期を最適化'
+
 # 可視化設定
 visualization:
   font_family: "'Segoe UI', -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Meiryo', sans-serif"
