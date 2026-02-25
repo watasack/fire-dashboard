@@ -1,7 +1,7 @@
-# データファイル（プライバシー保護）
-data/*.csv
-data/*.xlsx
-data/paypay
+# データファイル（プライバシー保護） - 現在は管理対象
+# data/*.csv
+# data/*.xlsx
+# data/paypay
 
 # 生成されたダッシュボード（assetsは手動編集のため管理対象）
 dashboard/*
