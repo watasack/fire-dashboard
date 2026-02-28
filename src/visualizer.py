@@ -11,11 +11,18 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from src.data_schema import get_customdata_column_names
 
-# 資産エリアチャート用の色定数
-_COLOR_PRE_FIRE_CASH  = 'rgba(6, 182, 212, 0.4)'   # FIRE前 現金（シアン薄）
-_COLOR_PRE_FIRE_STOCK = 'rgba(6, 182, 212, 0.7)'   # FIRE前 株式（シアン濃）
-_COLOR_POST_FIRE_CASH  = 'rgba(16, 185, 129, 0.4)'  # FIRE後 現金（グリーン薄）
-_COLOR_POST_FIRE_STOCK = 'rgba(16, 185, 129, 0.7)'  # FIRE後 株式（グリーン濃）
+# 資産エリアチャート用の色定数（FIRE前=インディゴ系、FIRE後=エメラルド系で明確に区別）
+_COLOR_PRE_FIRE_CASH  = 'rgba(129, 140, 248, 0.35)'  # FIRE前 現金（インディゴ薄）
+_COLOR_PRE_FIRE_STOCK = 'rgba(79, 70, 229, 0.55)'    # FIRE前 株式（インディゴ濃）
+_COLOR_POST_FIRE_CASH  = 'rgba(52, 211, 153, 0.35)'  # FIRE後 現金（エメラルド薄）
+_COLOR_POST_FIRE_STOCK = 'rgba(5, 150, 105, 0.55)'   # FIRE後 株式（エメラルド濃）
+
+# MC信頼区間の色定数（控えめなグレーブルー系で資産エリアを邪魔しない）
+_COLOR_MC_2SIGMA_LINE = 'rgba(148, 163, 184, 0.35)'
+_COLOR_MC_2SIGMA_FILL = 'rgba(148, 163, 184, 0.10)'
+_COLOR_MC_1SIGMA_LINE = 'rgba(100, 116, 139, 0.45)'
+_COLOR_MC_1SIGMA_FILL = 'rgba(100, 116, 139, 0.12)'
+_COLOR_MC_MEDIAN      = 'rgba(51, 65, 85, 0.80)'
 
 
 def _add_stacked_asset_traces(
@@ -142,37 +149,40 @@ def _add_reference_markers(
     fire_target: Dict[str, Any],
     fire_achievement: Dict[str, Any],
     simulations: Dict[str, pd.DataFrame]
-) -> None:
+) -> tuple:
     """
-    基準線・マーカー（現在位置、FIRE縦線、破綻ライン）を fig に追加する。
-
-    Args:
-        fig: Plotly図オブジェクト
-        current_status: 現状分析結果
-        fire_target: FIRE目標額情報
-        fire_achievement: FIRE達成予想情報
-        simulations: シナリオ別シミュレーション結果
+    基準線・マーカー（現在位置、FIRE縦線、安全マージン）を fig に追加し、
+    FIRE達成ラインのシェイプとフェーズラベルのアノテーションを返す。
     """
-    # FIRE目標額（targetは後で使用するため計算のみ）
     target = fire_target['recommended_target'] / 10000
+    shapes = []
+    annotations = []
 
-    # 現在位置のマーカー
+    # 現在位置のマーカー（大きめ + リング）
     current_assets = current_status['net_assets'] / 10000
     now = pd.Timestamp.now()
     fig.add_trace(go.Scatter(
         x=[now],
         y=[current_assets],
+        mode='markers',
+        marker=dict(size=16, color='rgba(79, 70, 229, 0.15)',
+                    line=dict(width=0)),
+        showlegend=False, hoverinfo='skip',
+    ))
+    fig.add_trace(go.Scatter(
+        x=[now],
+        y=[current_assets],
         name='現在',
         mode='markers+text',
-        marker=dict(size=12, color='#0d9488', symbol='circle'),
+        marker=dict(size=9, color='#4f46e5', symbol='circle',
+                    line=dict(width=2, color='white')),
         text=['現在'],
         textposition='top center',
-        textfont=dict(size=11, color='#0d9488', weight='bold'),
-        hovertemplate=f'<b>現在</b><br>{current_assets:,.0f}万円<extra></extra>',
+        textfont=dict(size=11, color='#4f46e5', weight='bold'),
+        hovertemplate=f'<b>現在</b><br>¥{current_assets:,.0f}万<extra></extra>',
         showlegend=False
     ))
 
-    # FIRE達成時期の縦線（細線・直線）
     achievement_date = None
     if fire_achievement and not fire_achievement.get('achieved'):
         achievement_date = fire_achievement['achievement_date']
@@ -181,34 +191,77 @@ def _add_reference_markers(
         y_max = max(
             simulations['standard']['assets'].max() / 10000 if 'standard' in simulations else 0,
             target
-        ) * 1.1
+        ) * 1.2
 
+        # FIRE達成の縦帯（薄い背景で視覚的に目立たせる）
+        shapes.append({
+            'type': 'rect', 'xref': 'x', 'yref': 'paper',
+            'x0': achievement_date - pd.Timedelta(days=15),
+            'x1': achievement_date + pd.Timedelta(days=15),
+            'y0': 0, 'y1': 1,
+            'fillcolor': 'rgba(245, 158, 11, 0.08)',
+            'line': {'width': 0},
+            'layer': 'below',
+        })
+
+        # FIRE達成の縦線
         fig.add_trace(go.Scatter(
             x=[achievement_date, achievement_date],
             y=[0, y_max],
-            name='FIRE達成時期',
+            name='FIRE達成',
             mode='lines',
-            line={'color': '#f59e0b', 'width': 1},
-            hovertemplate=f'<b>FIRE達成時期</b><br>{achievement_date.strftime("%Y年%m月")}<extra></extra>',
+            line={'color': '#d97706', 'width': 2, 'dash': 'dash'},
+            hovertemplate=f'<b>FIRE達成</b><br>{achievement_date.strftime("%Y年%m月")}<extra></extra>',
             showlegend=True
         ))
 
-    # 安全マージン（500万円）- 細線・直線
-    if len(simulations) > 0 and achievement_date:
+        # フェーズラベル（蓄積期 / FIRE期）
+        annotations.append({
+            'x': now + (achievement_date - now) / 2,
+            'y': 1.0, 'xref': 'x', 'yref': 'paper',
+            'text': '蓄積期',
+            'showarrow': False,
+            'font': {'size': 11, 'color': '#6366f1', 'weight': 'bold'},
+            'bgcolor': 'rgba(238, 242, 255, 0.85)',
+            'borderpad': 4,
+            'xanchor': 'center', 'yanchor': 'top',
+        })
+        annotations.append({
+            'x': achievement_date + (pd.Timestamp(simulations['standard']['date'].max()) - achievement_date) / 5,
+            'y': 1.0, 'xref': 'x', 'yref': 'paper',
+            'text': 'FIRE期',
+            'showarrow': False,
+            'font': {'size': 11, 'color': '#059669', 'weight': 'bold'},
+            'bgcolor': 'rgba(236, 253, 245, 0.85)',
+            'borderpad': 4,
+            'xanchor': 'center', 'yanchor': 'top',
+        })
+
+    # 安全マージン（ダッシュ線 + ラベル）
+    if len(simulations) > 0:
         first_scenario = list(simulations.values())[0]
         x_start = first_scenario['date'].iloc[0]
-        df_post = first_scenario[first_scenario['date'] >= achievement_date]
-        x_end = df_post['date'].iloc[-1] if len(df_post) > 0 else achievement_date
+        x_end = first_scenario['date'].iloc[-1]
 
         fig.add_trace(go.Scatter(
             x=[x_start, x_end],
             y=[500, 500],
             name='安全マージン',
             mode='lines',
-            line={'color': '#dc2626', 'width': 1},
+            line={'color': 'rgba(220, 38, 38, 0.4)', 'width': 1.5, 'dash': 'dot'},
             hovertemplate='<b>安全マージン</b><br>¥500万<extra></extra>',
             showlegend=True
         ))
+        annotations.append({
+            'x': x_end, 'y': 500,
+            'xref': 'x', 'yref': 'y',
+            'text': '¥500万',
+            'showarrow': False,
+            'font': {'size': 9, 'color': '#dc2626'},
+            'xanchor': 'right', 'yanchor': 'bottom',
+        })
+
+    return shapes, annotations
 
 
 def _add_life_events_timeline(
@@ -577,56 +630,56 @@ def _add_monte_carlo_ranges(
     upper_1sigma = p84_man   # 84パーセンタイル
     lower_1sigma = p16_man   # 16パーセンタイル
 
-    # 2σ範囲の上限境界線（薄い線）
+    # 2σ範囲の上限境界線
     fig.add_trace(go.Scatter(
         x=dates_post,
         y=upper_2sigma,
         mode='lines',
-        line=dict(width=1, color='rgba(251, 146, 60, 0.4)', dash='dot'),
+        line=dict(width=0.8, color=_COLOR_MC_2SIGMA_LINE, dash='dot'),
         showlegend=False,
         hoverinfo='skip'
     ))
 
-    # 2σ範囲（薄いオレンジ、透明度を上げて見やすく）
+    # 2σ範囲（控えめなグレーブルー）
     fig.add_trace(go.Scatter(
         x=dates_post,
         y=lower_2sigma,
         mode='lines',
         fill='tonexty',
-        fillcolor='rgba(251, 146, 60, 0.15)',  # オレンジ、15%透明度（改善）
-        line=dict(width=1, color='rgba(251, 146, 60, 0.4)', dash='dot'),
+        fillcolor=_COLOR_MC_2SIGMA_FILL,
+        line=dict(width=0.8, color=_COLOR_MC_2SIGMA_LINE, dash='dot'),
         name='95%信頼区間',
         hovertemplate='<b>95%信頼区間</b><br>%{x|%Y年%m月}<br>%{y:,.0f}万円<extra></extra>'
     ))
 
-    # 1σ範囲の上限境界線（濃い線）
+    # 1σ範囲の上限境界線
     fig.add_trace(go.Scatter(
         x=dates_post,
         y=upper_1sigma,
         mode='lines',
-        line=dict(width=1.5, color='rgba(251, 146, 60, 0.6)', dash='dash'),
+        line=dict(width=1, color=_COLOR_MC_1SIGMA_LINE, dash='dash'),
         showlegend=False,
         hoverinfo='skip'
     ))
 
-    # 1σ範囲（濃いオレンジ、透明度を上げて見やすく）
+    # 1σ範囲（やや濃いグレーブルー）
     fig.add_trace(go.Scatter(
         x=dates_post,
         y=lower_1sigma,
         mode='lines',
         fill='tonexty',
-        fillcolor='rgba(251, 146, 60, 0.25)',  # オレンジ、25%透明度（改善）
-        line=dict(width=1.5, color='rgba(251, 146, 60, 0.6)', dash='dash'),
+        fillcolor=_COLOR_MC_1SIGMA_FILL,
+        line=dict(width=1, color=_COLOR_MC_1SIGMA_LINE, dash='dash'),
         name='68%信頼区間',
         hovertemplate='<b>68%信頼区間</b><br>%{x|%Y年%m月}<br>%{y:,.0f}万円<extra></extra>'
     ))
 
-    # 中央値線（オレンジの実線、太く）
+    # 中央値線（ダークスレートの実線）
     fig.add_trace(go.Scatter(
         x=dates_post,
         y=p50_man,
         mode='lines',
-        line=dict(color='rgb(251, 146, 60)', width=2.5, dash='solid'),  # 実線に変更、太く
+        line=dict(color=_COLOR_MC_MEDIAN, width=2, dash='solid'),
         name='中央値（MC）',
         hovertemplate='<b>中央値</b><br>%{x|%Y年%m月}<br>%{y:,.0f}万円<extra></extra>'
     ))
@@ -646,66 +699,49 @@ def create_fire_timeline_chart(
     FIRE達成までの道のりと達成後の持続性を統合したチャートを作成
 
     FIRE達成前後で色を変えて視覚的に分かりやすく表示
-    - FIRE前（労働期間）: シアン系
-    - FIRE後（リタイア期間）: グリーン系
-    - モンテカルロ範囲（FIRE後のみ）: 1σ、2σの範囲を半透明で表示
-
-    Args:
-        current_status: 現状分析結果
-        fire_target: FIRE目標額情報
-        fire_achievement: FIRE達成予想情報
-        simulations: シナリオ別シミュレーション結果
-        config: 設定辞書
-        monte_carlo_results: モンテカルロシミュレーション結果（オプション）
-
-    Returns:
-        Plotlyグラフオブジェクト
+    - FIRE前（蓄積期）: インディゴ系
+    - FIRE後（FIRE期）: エメラルド系
+    - モンテカルロ範囲（FIRE後のみ）: 控えめなグレーブルーで表示
     """
     fig = go.Figure()
 
-    # FIRE達成日を取得
     achievement_date = None
     if fire_achievement and not fire_achievement.get('achieved'):
         achievement_date = fire_achievement['achievement_date']
 
-    # 標準シナリオ
     if 'standard' in simulations:
         df = simulations['standard'].copy()
 
         if achievement_date:
-            # FIRE達成前（労働期間）- シアン系の積み上げエリア
             df_pre = df[df['date'] <= achievement_date].copy()
             if len(df_pre) > 0:
                 customdata_pre = df_pre[get_customdata_column_names()].values
                 _add_stacked_asset_traces(
                     fig, df_pre, 'pre',
-                    '現金（FIRE前）', '株式（FIRE前）',
+                    '現金（蓄積期）', '株式（蓄積期）',
                     _COLOR_PRE_FIRE_CASH, _COLOR_PRE_FIRE_STOCK,
                     customdata_pre,
-                    '<b>FIRE前</b><br><b>%{x|%Y年%m月}</b><br>現金: <b>¥%{y:,.0f}万</b><extra></extra>',
-                    '<b>FIRE前</b><br><b>%{x|%Y年%m月}</b><br>株式: <b>¥%{y:,.0f}万</b><extra></extra>',
+                    '<b>蓄積期</b><br><b>%{x|%Y年%m月}</b><br>現金: <b>¥%{y:,.0f}万</b><extra></extra>',
+                    '<b>蓄積期</b><br><b>%{x|%Y年%m月}</b><br>株式: <b>¥%{y:,.0f}万</b><extra></extra>',
                 )
 
-            # FIRE達成後（リタイア期間）- グリーン系の積み上げエリア
-            df_post = df[df['date'] >= achievement_date].copy()  # 90歳まで全期間
+            df_post = df[df['date'] >= achievement_date].copy()
             if len(df_post) > 0:
                 customdata_post = df_post[get_customdata_column_names()].values
                 _add_stacked_asset_traces(
                     fig, df_post, 'post',
-                    '現金（FIRE後）', '株式（FIRE後）',
+                    '現金（FIRE期）', '株式（FIRE期）',
                     _COLOR_POST_FIRE_CASH, _COLOR_POST_FIRE_STOCK,
                     customdata_post,
-                    '<b>FIRE後</b><br><b>%{x|%Y年%m月}</b><br>現金: <b>¥%{y:,.0f}万</b><extra></extra>',
-                    '<b>FIRE後</b><br><b>%{x|%Y年%m月}</b><br>株式: <b>¥%{y:,.0f}万</b><extra></extra>',
+                    '<b>FIRE期</b><br><b>%{x|%Y年%m月}</b><br>現金: <b>¥%{y:,.0f}万</b><extra></extra>',
+                    '<b>FIRE期</b><br><b>%{x|%Y年%m月}</b><br>株式: <b>¥%{y:,.0f}万</b><extra></extra>',
                 )
 
-                # モンテカルロの1σ、2σ範囲を追加（FIRE後のみ）
                 if monte_carlo_results and 'monthly_p50' in monte_carlo_results:
                     _add_monte_carlo_ranges(
                         fig, df_post, monte_carlo_results, achievement_date
                     )
         else:
-            # すでに達成済みの場合は全てグリーン系の積み上げエリア
             df_all = df.head(480).copy()
             customdata_all = df_all[get_customdata_column_names()].values
             _add_stacked_asset_traces(
@@ -717,67 +753,169 @@ def create_fire_timeline_chart(
                 '<b>株式</b><br>%{x|%Y年%m月}<br>¥%{y:,.0f}万円<extra></extra>',
             )
 
-    # 基準線・マーカー追加（現在位置、FIRE縦線、破綻ライン）
-    _add_reference_markers(fig, current_status, fire_target, fire_achievement, simulations)
+    # 基準線・マーカー・フェーズラベル
+    ref_shapes, ref_annotations = _add_reference_markers(
+        fig, current_status, fire_target, fire_achievement, simulations
+    )
 
-    # ライフイベントタイムライン追加
+    # X軸範囲（ライフイベントタイムラインは削除、テーブルで代替済み）
     life_events = extract_life_events(config, fire_achievement)
-    annotations, shapes = _add_life_events_timeline(fig, life_events, simulations)
-
-    # X軸範囲計算
     x_min, x_max = _calculate_x_axis_range(simulations, life_events)
 
-    # Y軸範囲計算（ベースシミュレーションを基準に）
+    # Y軸範囲（ベースシミュレーション基準）
     y_max = None
     if 'standard' in simulations:
         df = simulations['standard']
-        # DataFrameの'assets'は円単位なので、万円に変換
-        max_assets_yen = df['assets'].max()
-        max_assets_man = max_assets_yen / 10000  # 万円に変換
+        max_assets_man = df['assets'].max() / 10000
         y_max = max_assets_man * 1.2
 
-    # レイアウト
     layout = get_common_layout(config, '')
     yaxis_config = {
-        'title': '万円',
+        'title': {'text': '万円', 'font': {'size': 11, 'color': '#94a3b8'}},
         'showgrid': True,
-        'gridcolor': '#e0f2fe',
+        'gridcolor': 'rgba(226, 232, 240, 0.6)',
+        'gridwidth': 1,
         'tickformat': ',.0f',
+        'tickfont': {'size': 11, 'color': '#94a3b8'},
         'zeroline': False,
-        'side': 'right'
+        'side': 'right',
+        'dtick': 2000,
     }
-    # Y軸の上限を設定（モンテカルロの2σ範囲でベースシミュレーションが隠れないように）
     if y_max is not None:
         yaxis_config['range'] = [0, y_max]
 
     layout.update({
         'xaxis': {
             'title': '',
-            'showgrid': False,
+            'showgrid': True,
+            'gridcolor': 'rgba(226, 232, 240, 0.3)',
             'zeroline': False,
-            'range': [x_min, x_max]  # X軸の範囲を明示的に指定
+            'range': [x_min, x_max],
+            'tickfont': {'size': 11, 'color': '#94a3b8'},
+            'dtick': 'M60',
         },
         'yaxis': yaxis_config,
-        'height': 500,  # タイムライン用に高さを増やす
+        'height': 500,
         'showlegend': True,
         'legend': {
             'orientation': 'h',
             'yanchor': 'bottom',
-            'y': 1.02,
-            'xanchor': 'right',
-            'x': 1,
+            'y': 1.06,
+            'xanchor': 'center',
+            'x': 0.5,
             'bgcolor': 'rgba(255, 255, 255, 0)',
             'borderwidth': 0,
-            'font': {'size': 12, 'color': '#475569'}
+            'font': {'size': 11, 'color': '#64748b'},
+            'itemwidth': 30,
+            'tracegroupgap': 4,
         },
         'hovermode': 'closest',
-        'margin': {'l': 20, 'r': 56, 't': 40, 'b': 80},  # 下部マージンを増やす
-        'annotations': annotations,
-        'shapes': shapes
+        'margin': {'l': 16, 'r': 52, 't': 56, 'b': 40},
+        'annotations': ref_annotations,
+        'shapes': ref_shapes,
     })
 
     fig.update_layout(layout)
 
+    return fig
+
+
+def create_income_expense_stream_chart(
+    simulations: Dict[str, Any],
+    fire_achievement: Dict[str, Any],
+    config: Dict[str, Any],
+) -> go.Figure:
+    """年次の収入・支出内訳推移チャートを作成"""
+    if 'standard' not in simulations:
+        return go.Figure()
+
+    df = simulations['standard'].copy()
+
+    df['year'] = df['date'].dt.year
+    yearly = df.groupby('year').agg({
+        'shuhei_income': 'sum',
+        'sakura_income': 'sum',
+        'pension_income': 'sum',
+        'child_allowance': 'sum',
+        'base_expense': 'sum',
+        'education_expense': 'sum',
+        'mortgage_payment': 'sum',
+        'maintenance_cost': 'sum',
+        'workation_cost': 'sum',
+        'pension_premium': 'sum',
+        'health_insurance_premium': 'sum',
+    }).reset_index()
+
+    for col in yearly.columns:
+        if col != 'year':
+            yearly[col] = yearly[col] / 10000
+
+    fig = go.Figure()
+
+    income_items = [
+        ('shuhei_income', '修平 収入', '#1d4ed8'),
+        ('sakura_income', '桜 収入', '#3b82f6'),
+        ('pension_income', '年金収入', '#6366f1'),
+        ('child_allowance', '児童手当', '#818cf8'),
+    ]
+    for col, name, color in income_items:
+        if yearly[col].sum() > 0:
+            fig.add_trace(go.Bar(
+                x=yearly['year'], y=yearly[col],
+                name=name, marker_color=color,
+                hovertemplate=f'<b>{name}</b><br>%{{x}}年<br>%{{y:,.0f}}万円<extra></extra>',
+            ))
+
+    expense_items = [
+        ('base_expense', '基本生活費', '#dc2626'),
+        ('education_expense', '教育費', '#ea580c'),
+        ('mortgage_payment', '住宅ローン', '#d97706'),
+        ('maintenance_cost', 'メンテナンス', '#ca8a04'),
+        ('workation_cost', 'ワーケーション', '#65a30d'),
+        ('pension_premium', '国民年金', '#e879f9'),
+        ('health_insurance_premium', '健康保険', '#f9a8d4'),
+    ]
+    for col, name, color in expense_items:
+        if yearly[col].sum() > 0:
+            fig.add_trace(go.Bar(
+                x=yearly['year'], y=-yearly[col],
+                name=name, marker_color=color,
+                hovertemplate=f'<b>{name}</b><br>%{{x}}年<br>%{{y:,.0f}}万円<extra></extra>',
+            ))
+
+    achievement_date = None
+    if fire_achievement and not fire_achievement.get('achieved'):
+        achievement_date = fire_achievement.get('achievement_date')
+    if achievement_date:
+        fig.add_vline(
+            x=achievement_date.year, line_width=2,
+            line_dash='dash', line_color='#f59e0b',
+            annotation_text='FIRE', annotation_position='top',
+        )
+
+    layout = get_common_layout(config, '')
+    layout.update({
+        'barmode': 'relative',
+        'xaxis': {'title': '', 'showgrid': False, 'dtick': 5},
+        'yaxis': {
+            'title': '万円/年',
+            'showgrid': True, 'gridcolor': '#e0f2fe',
+            'tickformat': ',.0f', 'zeroline': True,
+            'zerolinecolor': '#94a3b8', 'zerolinewidth': 2,
+        },
+        'height': 420,
+        'margin': {'l': 56, 'r': 12, 't': 50, 'b': 40},
+        'legend': {
+            'orientation': 'h', 'yanchor': 'bottom', 'y': 1.01,
+            'xanchor': 'right', 'x': 1,
+            'bgcolor': 'rgba(255,255,255,0)', 'borderwidth': 0,
+            'font': {'size': 10, 'color': '#475569'},
+            'tracegroupgap': 2,
+            'itemwidth': 30,
+        },
+        'hovermode': 'x unified',
+    })
+    fig.update_layout(layout)
     return fig
 
 

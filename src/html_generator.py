@@ -7,7 +7,325 @@ import plotly.graph_objects as go
 from typing import Dict, Any, List
 from datetime import datetime
 import json
+import numpy as np
 from src.data_schema import CUSTOMDATA_COLUMNS, DISPLAY_NAMES, INCOME_COLUMNS, EXPENSE_COLUMNS
+
+
+def _format_man_yen(value: float) -> str:
+    """円を万円表示にフォーマット"""
+    return f"¥{value / 10000:,.0f}万"
+
+
+def _build_kpi_detail_evidence(
+    monte_carlo: Dict[str, Any],
+    fire_target: Dict[str, Any],
+    config: Dict[str, Any],
+) -> str:
+    """成功確率KPIの根拠テキストを生成（MC試行回数ベース）"""
+    if not monte_carlo or 'success_rate' not in monte_carlo:
+        return ''
+    mc_cfg = config.get('simulation', {}).get('monte_carlo', {})
+    iterations = mc_cfg.get('iterations', 1000)
+    success_count = int(monte_carlo['success_rate'] * iterations)
+    return f'{iterations:,}回中{success_count:,}回成功'
+
+
+def _risk_color(level: str) -> str:
+    """リスクレベルに応じたCSSクラス名を返す"""
+    return {'good': 'kpi-card--good', 'warn': 'kpi-card--warn', 'bad': 'kpi-card--bad'}.get(level, '')
+
+
+def _build_risk_metrics_html(
+    monte_carlo: Dict[str, Any],
+    config: Dict[str, Any],
+    fire_target: Dict[str, Any] = None,
+) -> str:
+    """リスクメトリクス（セカンダリKPI）のHTMLを生成"""
+    if not monte_carlo:
+        return ''
+
+    p5 = monte_carlo.get('percentile_5', 0)
+    median_final = monte_carlo.get('median_final_assets', 0)
+    p10 = monte_carlo.get('percentile_10', 0)
+    p90 = monte_carlo.get('percentile_90', 0)
+    max_dd_median = monte_carlo.get('max_drawdown_median', 0)
+    max_dd_p95 = monte_carlo.get('max_drawdown_p95', 0)
+
+    p5_text = _format_man_yen(p5) if p5 > 0 else '¥0万'
+    median_text = _format_man_yen(median_final)
+    range_text = f'{_format_man_yen(p10)}〜{_format_man_yen(p90)}'
+
+    # ドローダウンの具体例（FIRE時点の資産をベースに1行で表示）
+    fire_assets = 0
+    if fire_target:
+        fire_assets = fire_target.get('recommended_target', 0)
+    if fire_assets <= 0:
+        fire_assets = median_final * 0.5
+    trough = fire_assets * (1 - max_dd_median)
+    trough_p95 = fire_assets * (1 - max_dd_p95)
+    dd_sub = (
+        f'{_format_man_yen(fire_assets)} → 一時的に{_format_man_yen(trough)}'
+        f'（最悪5%: {_format_man_yen(trough_p95)}）'
+    )
+
+    # 条件付きカラーリング
+    p5_level = 'good' if p5 > 20_000_000 else ('warn' if p5 > 0 else 'bad')
+    median_level = 'good' if median_final > 50_000_000 else ('warn' if median_final > 0 else 'bad')
+    dd_level = 'good' if max_dd_median < 0.30 else ('warn' if max_dd_median < 0.50 else 'bad')
+
+    return f'''
+    <section class="secondary-kpi">
+      <div class="kpi-card {_risk_color(median_level)}">
+        <div class="kpi-label">中央値資産（90歳時点）</div>
+        <div class="kpi-value">{median_text}</div>
+        <div class="kpi-sub">最も起こりやすい結果</div>
+      </div>
+      <div class="kpi-card {_risk_color(p5_level)}">
+        <div class="kpi-label">P5残存資産（90歳時点）</div>
+        <div class="kpi-value">{p5_text}</div>
+        <div class="kpi-sub">最悪5%ケースでの最終資産</div>
+      </div>
+      <div class="kpi-card {_risk_color(dd_level)}">
+        <div class="kpi-label">ピークからの最大下落</div>
+        <div class="kpi-value">-{max_dd_median*100:.1f}%</div>
+        <div class="kpi-sub">{dd_sub}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">結果のばらつき（P10-P90）</div>
+        <div class="kpi-value kpi-value--range">{range_text}</div>
+        <div class="kpi-sub">80%の確率でこの範囲に収まる</div>
+      </div>
+    </section>'''
+
+
+def _build_assumptions_html(config: Dict[str, Any], monte_carlo: Dict[str, Any]) -> str:
+    """前提条件パネルのHTMLを生成（折りたたみ式）"""
+    sim = config.get('simulation', {})
+    std = sim.get('standard', {})
+    mc_cfg = sim.get('monte_carlo', {})
+    pension_cfg = config.get('pension', {})
+    fire_cfg = config.get('fire', {})
+    post_fire_cash = config.get('post_fire_cash_strategy', {})
+
+    return_rate = std.get('annual_return_rate', 0.05)
+    inflation = std.get('inflation_rate', 0.02)
+    income_growth = std.get('income_growth_rate', 0.02)
+    return_std = mc_cfg.get('return_std_dev', 0.06)
+    mc_iters = mc_cfg.get('iterations', 1000)
+    life_exp = sim.get('life_expectancy', 90)
+    start_age = sim.get('start_age', 35)
+
+    shuhei_income = sim.get('shuhei_income', 0)
+    sakura_income = sim.get('sakura_income', 0)
+    shuhei_post = sim.get('shuhei_post_fire_income', 0)
+    sakura_post = sim.get('sakura_post_fire_income', 0)
+
+    safety_margin = post_fire_cash.get('safety_margin', 0)
+    crash_threshold = post_fire_cash.get('market_crash_threshold', 0)
+
+    der = fire_cfg.get('dynamic_expense_reduction', {})
+    der_enabled = der.get('enabled', False)
+    der_rates = der.get('reduction_rates', {})
+
+    summary_badge = f"年率{return_rate*100:.1f}% / σ{return_std*100:.1f}% / MC {mc_iters:,}回"
+
+    rows = f'''
+        <tr class="group-header"><td colspan="2">市場パラメータ</td></tr>
+        <tr><td>年率リターン（期待値）</td><td>{return_rate*100:.1f}%</td></tr>
+        <tr><td>リターン標準偏差</td><td>{return_std*100:.1f}%</td></tr>
+        <tr><td>インフレ率</td><td>{inflation*100:.1f}%</td></tr>
+        <tr><td>収入成長率</td><td>{income_growth*100:.1f}%</td></tr>
+        <tr class="group-header"><td colspan="2">シミュレーション設定</td></tr>
+        <tr><td>想定寿命</td><td>{life_exp}歳</td></tr>
+        <tr><td>MCシミュレーション回数</td><td>{mc_iters:,}回</td></tr>
+        <tr><td>破綻ライン</td><td>100万円</td></tr>
+        <tr class="group-header"><td colspan="2">収入設定</td></tr>
+        <tr><td>修平 手取り月額</td><td>¥{shuhei_income/10000:.1f}万</td></tr>
+        <tr><td>桜 手取り月額</td><td>¥{sakura_income/10000:.1f}万</td></tr>
+        <tr><td>FIRE後 修平 副収入</td><td>¥{shuhei_post/10000:.1f}万/月</td></tr>
+        <tr><td>FIRE後 桜 事業収入</td><td>¥{sakura_post/10000:.1f}万/月</td></tr>
+        <tr class="group-header"><td colspan="2">リスク管理</td></tr>
+        <tr><td>現金安全マージン</td><td>{_format_man_yen(safety_margin)}</td></tr>
+        <tr><td>暴落判定閾値</td><td>{crash_threshold*100:.0f}%</td></tr>'''
+
+    if der_enabled:
+        l1 = der_rates.get('level_1_warning', 0)
+        l2 = der_rates.get('level_2_concern', 0)
+        l3 = der_rates.get('level_3_crisis', 0)
+        rows += f'''
+        <tr class="group-header"><td colspan="2">動的支出削減</td></tr>
+        <tr><td>警戒レベル</td><td>裁量支出{l1*100:.0f}%削減</td></tr>
+        <tr><td>懸念レベル</td><td>裁量支出{l2*100:.0f}%削減</td></tr>
+        <tr><td>危機レベル</td><td>裁量支出{l3*100:.0f}%削減</td></tr>'''
+
+    return f'''
+    <details class="info-detail">
+      <summary class="info-summary">
+        <span class="title-accent title-accent--slate"></span>
+        シミュレーション前提条件
+        <span class="summary-badge">{summary_badge}</span>
+      </summary>
+      <div class="info-detail-body">
+        <table class="assumptions-table">
+          <tbody>{rows}
+          </tbody>
+        </table>
+      </div>
+    </details>'''
+
+
+def _build_optimization_html(config: Dict[str, Any]) -> str:
+    """最適化結果サマリーパネルのHTMLを生成（折りたたみ式、デフォルト展開）"""
+    fire_cfg = config.get('fire', {})
+    pension_cfg = config.get('pension', {})
+
+    optimal_month = fire_cfg.get('optimal_fire_month')
+    extra_budget = fire_cfg.get('optimal_extra_monthly_budget', 0)
+    min_success = fire_cfg.get('min_success_rate', 0.95)
+
+    people = pension_cfg.get('people', [])
+    pension_rows = ''
+    for p in people:
+        name = p.get('name', '')
+        override = p.get('override_start_age')
+        ptype = p.get('pension_type', '')
+        type_label = '厚生年金+国民年金' if ptype == 'employee' else '国民年金'
+        if override:
+            base_age = 65
+            increase = (override - base_age) * 8.4
+            pension_rows += f'''
+        <tr>
+          <td>{name}（{type_label}）</td>
+          <td>{override}歳開始（+{increase:.1f}%増額）</td>
+        </tr>'''
+
+    if optimal_month is not None:
+        years = optimal_month // 12
+        months = optimal_month % 12
+        fire_text = f'{years}年{months}ヶ月後'
+    else:
+        fire_text = '未設定'
+
+    summary_badge = f"FIRE {fire_text} / 成功率{min_success*100:.0f}%"
+
+    return f'''
+    <details class="info-detail" open>
+      <summary class="info-summary">
+        <span class="title-accent title-accent--amber"></span>
+        最適化結果
+        <span class="summary-badge">{summary_badge}</span>
+      </summary>
+      <div class="info-detail-body">
+        <table class="assumptions-table">
+          <tbody>
+            <tr><td>最適FIRE時期</td><td>{fire_text}</td></tr>
+            <tr><td>成功率閾値</td><td>{min_success*100:.0f}%</td></tr>
+            <tr><td>FIRE後追加予算</td><td>¥{extra_budget/10000:.1f}万/月</td></tr>
+            <tr class="sep"><td colspan="2"></td></tr>{pension_rows}
+          </tbody>
+        </table>
+        <div class="optimization-note">
+          最適化により、成功率{min_success*100:.0f}%を維持しながら最も早いFIRE時期と
+          最適な年金受給開始年齢の組み合わせを探索しています。
+        </div>
+      </div>
+    </details>'''
+
+
+def _build_life_events_table(
+    life_events: List[Dict],
+    simulations: Dict,
+    config: Dict[str, Any],
+) -> str:
+    """ライフイベント財務インパクト表のHTMLを生成"""
+    if not life_events:
+        return ''
+
+    pension_people = config.get('pension', {}).get('people', [])
+    children = config.get('education', {}).get('children', [])
+    start_age = config.get('simulation', {}).get('start_age', 35)
+
+    birthdates = {}
+    for p in pension_people:
+        birthdates[p.get('name', '')] = p.get('birthdate', '')
+    for c in children:
+        birthdates[c.get('name', '')] = c.get('birthdate', '')
+
+    # 年次の収支変化をシミュレーションデータから抽出
+    df = simulations.get('standard')
+    annual_data = {}
+    if df is not None:
+        df_copy = df.copy()
+        df_copy['year'] = df_copy['date'].dt.year
+        for year, grp in df_copy.groupby('year'):
+            total_income = grp['income'].sum()
+            total_expense = grp['expense'].sum()
+            annual_data[year] = {'income': total_income, 'expense': total_expense}
+
+    rows = ''
+    for event in life_events:
+        event_date = event['date']
+        label = event['label']
+        color = event['color']
+        year = event_date.year
+
+        # 年齢計算
+        ages = []
+        for p in pension_people:
+            bd = p.get('birthdate', '')
+            if bd:
+                birth_year = int(bd.split('/')[0])
+                age = year - birth_year
+                ages.append(f"{p.get('name', '')}{age}歳")
+
+        age_str = ' / '.join(ages) if ages else ''
+
+        # 前年比の収支変化（色分け用にHTMLタグ付き）
+        impact_html = ''
+        if year in annual_data and (year - 1) in annual_data:
+            prev = annual_data[year - 1]
+            curr = annual_data[year]
+            income_delta = (curr['income'] - prev['income']) / 10000
+            expense_delta = (curr['expense'] - prev['expense']) / 10000
+            parts = []
+            if abs(income_delta) > 5:
+                sign = '+' if income_delta > 0 else ''
+                css = 'impact-positive' if income_delta > 0 else 'impact-negative'
+                parts.append(f'<span class="{css}">収入{sign}{income_delta:.0f}万</span>')
+            if abs(expense_delta) > 5:
+                sign = '+' if expense_delta > 0 else ''
+                css = 'impact-negative' if expense_delta > 0 else 'impact-positive'
+                parts.append(f'<span class="{css}">支出{sign}{expense_delta:.0f}万</span>')
+            impact_html = '&ensp;'.join(parts) if parts else '<span class="impact-neutral">―</span>'
+        else:
+            impact_html = '<span class="impact-neutral">―</span>'
+
+        rows += f'''
+          <tr>
+            <td>{event_date.strftime('%Y/%m')}</td>
+            <td><span class="event-dot" style="background:{color}"></span>{label}</td>
+            <td class="age-cell">{age_str}</td>
+            <td class="impact-cell">{impact_html}</td>
+          </tr>'''
+
+    return f'''
+    <section class="life-events-section">
+      <h3 class="panel-title"><span class="title-accent title-accent--purple"></span>ライフイベントと財務インパクト</h3>
+      <div class="life-events-table-wrap">
+        <table class="life-events-table">
+          <thead>
+            <tr>
+              <th>年月</th>
+              <th>イベント</th>
+              <th>年齢</th>
+              <th>年間収支変化（前年比）</th>
+            </tr>
+          </thead>
+          <tbody>{rows}
+          </tbody>
+        </table>
+      </div>
+    </section>'''
 
 
 def generate_dashboard_html(
@@ -16,27 +334,28 @@ def generate_dashboard_html(
     action_items: List[Dict[str, Any]],
     config: Dict[str, Any]
 ) -> None:
-    """
-    一画面完結型のダッシュボードHTMLを生成
-
-    Args:
-        charts: グラフオブジェクトの辞書
-        summary_data: サマリーデータ
-        action_items: アクションアイテムのリスト
-        config: 設定辞書
-    """
+    """一画面完結型のダッシュボードHTMLを生成"""
     current_status = summary_data['current_status']
     fire_target = summary_data['fire_target']
     fire_achievement = summary_data.get('fire_achievement')
     trends = summary_data['trends']
     expense_breakdown = summary_data['expense_breakdown']
     monte_carlo = summary_data.get('monte_carlo')
+    life_events = summary_data.get('life_events', [])
+    simulations = summary_data.get('simulations', {})
     update_time = summary_data['update_time']
 
     # グラフをHTMLに変換
-    fire_timeline_html = charts['fire_timeline'].to_html(full_html=False, include_plotlyjs='cdn', config={'responsive': True})
+    fire_timeline_html = charts['fire_timeline'].to_html(
+        full_html=False, include_plotlyjs='cdn', config={'responsive': True}
+    )
+    income_expense_html = ''
+    if 'income_expense_stream' in charts:
+        income_expense_html = charts['income_expense_stream'].to_html(
+            full_html=False, include_plotlyjs=False, config={'responsive': True}
+        )
 
-    # FIRE達成情報の文字列生成
+    # FIRE達成情報
     if fire_achievement:
         if fire_achievement.get('achieved'):
             achievement_text = '達成済み！'
@@ -51,46 +370,40 @@ def generate_dashboard_html(
         achievement_text = '計算中'
         achievement_detail = ''
 
-    # モンテカルロ成功率の文字列生成
+    # 成功率の表示（感覚的表現を排除）
     if monte_carlo and 'success_rate' in monte_carlo:
         success_rate = monte_carlo['success_rate']
         success_text = f"{success_rate*100:.1f}%"
-        # 成功率に応じた評価コメント
-        if success_rate >= 0.95:
-            success_detail = '非常に高い安全性'
-        elif success_rate >= 0.85:
-            success_detail = '高い安全性'
-        elif success_rate >= 0.70:
-            success_detail = '中程度の安全性'
-        elif success_rate >= 0.50:
-            success_detail = 'やや不安定'
-        else:
-            success_detail = '要改善'
+        success_detail = _build_kpi_detail_evidence(monte_carlo, fire_target, config)
     else:
         success_text = '―'
-        success_detail = '計算中'
+        success_detail = 'MC未実行'
 
-    # カスタムデータスキーマをJSON化（JavaScriptで使用）
+    # 前提条件の短縮表示
+    std_cfg = config.get('simulation', {}).get('standard', {})
+    return_rate = std_cfg.get('annual_return_rate', 0.05)
+    inflation = std_cfg.get('inflation_rate', 0.02)
+    achievement_basis = f"年率{return_rate*100:.0f}%・インフレ{inflation*100:.0f}%前提"
+
+    # 達成率の根拠
+    progress = fire_target['progress_rate']
+    target_yen = fire_target['recommended_target']
+    current_yen = fire_target.get('current_net_assets', current_status['net_assets'])
+    progress_detail = f"目標{_format_man_yen(target_yen)} / 現在{_format_man_yen(current_yen)}"
+
+    # データスキーマ
     customdata_schema = {col: idx for idx, col in enumerate(CUSTOMDATA_COLUMNS)}
     customdata_schema_json = json.dumps(customdata_schema)
-
-    # カラム表示名をJSON化
     display_names_json = json.dumps(DISPLAY_NAMES, ensure_ascii=False)
-
-    # 収入・支出カラムリストをJSON化
     income_columns_json = json.dumps(INCOME_COLUMNS)
     expense_columns_json = json.dumps(EXPENSE_COLUMNS)
 
-    # カテゴリー別支出比率をJSON化
     category_percentages = expense_breakdown.get('category_percentages', {})
-    # TOP5のみを取得
     top_categories = sorted(category_percentages.items(), key=lambda x: x[1], reverse=True)[:5]
     category_data_json = json.dumps(dict(top_categories))
 
-    # 家族情報をJSON化
+    # 家族情報
     family_info = []
-
-    # 親の情報
     pension_people = config.get('pension', {}).get('people', [])
     for person in pension_people:
         family_info.append({
@@ -98,18 +411,21 @@ def generate_dashboard_html(
             'birthdate': person.get('birthdate', ''),
             'role': 'parent'
         })
-
-    # 子供の情報
     children = config.get('education', {}).get('children', [])
     for i, child in enumerate(children):
-        child_name = child.get('name', f'子供{i+1}')  # 名前が設定されていればそれを使用
+        child_name = child.get('name', f'子供{i+1}')
         family_info.append({
             'name': child_name,
             'birthdate': child.get('birthdate', ''),
             'role': 'child'
         })
-
     family_info_json = json.dumps(family_info, ensure_ascii=False)
+
+    # セクション構築
+    risk_metrics_html = _build_risk_metrics_html(monte_carlo, config, fire_target)
+    assumptions_html = _build_assumptions_html(config, monte_carlo)
+    optimization_html = _build_optimization_html(config)
+    life_events_table_html = _build_life_events_table(life_events, simulations, config)
 
     # HTMLテンプレート
     html_content = f"""
@@ -128,20 +444,28 @@ def generate_dashboard_html(
       <div class="header-brand">
         <h1>FIREダッシュボード</h1>
       </div>
+      <div class="header-update">
+        <span class="status-dot"></span>
+        <span>{update_time.strftime('%Y-%m-%d %H:%M')} 更新</span>
+      </div>
     </header>
 
-    <!-- メインKPI -->
+    <!-- メインKPI（根拠付き） -->
     <section class="hero-kpi">
       <div class="kpi-primary">
         <div class="kpi-label">FIRE達成率</div>
-        <div class="kpi-value kpi-value--large">{fire_target['progress_rate']:.1%}</div>
-        <div class="kpi-detail">あと¥{fire_target['shortfall']/10000:,.0f}万円</div>
+        <div class="kpi-value kpi-value--large">{progress:.1%}</div>
+        <div class="progress-bar-wrap">
+          <div class="progress-bar-fill" style="width: {min(progress * 100, 100):.1f}%"></div>
+        </div>
+        <div class="kpi-detail">{progress_detail}</div>
       </div>
       <div class="kpi-divider"></div>
       <div class="kpi-primary">
         <div class="kpi-label">達成予想</div>
         <div class="kpi-value kpi-value--large">{achievement_text}</div>
-        <div class="kpi-detail">{achievement_detail}</div>
+        <div class="kpi-detail kpi-detail--accent">{achievement_detail}</div>
+        <div class="kpi-detail">{achievement_basis}</div>
       </div>
       <div class="kpi-divider"></div>
       <div class="kpi-primary">
@@ -151,10 +475,13 @@ def generate_dashboard_html(
       </div>
     </section>
 
-    <!-- メイングラフ（全幅） -->
+    <!-- リスクメトリクス -->
+    {risk_metrics_html}
+
+    <!-- メイングラフ（資産シミュレーション） -->
     <section class="main-chart">
       <div class="chart-panel">
-        <h2 class="chart-title">資産シミュレーション</h2>
+        <h2 class="chart-title"><span class="title-accent title-accent--teal"></span>資産シミュレーション</h2>
         <div class="chart-content">
           {fire_timeline_html}
         </div>
@@ -172,13 +499,9 @@ def generate_dashboard_html(
 
           <!-- 2カラムレイアウト -->
           <div style="display: grid; grid-template-columns: 1.6fr 1fr; gap: 20px; min-height: 0;">
-
-            <!-- 左側: ウォーターフォールグラフ -->
             <div>
               <div id="waterfall-chart" style="width: 100%; height: 350px;"></div>
             </div>
-
-            <!-- 右側: 詳細テーブル -->
             <div>
               <table id="detail-table" style="width: 100%; border-collapse: collapse; font-size: 13px; background: white; border-radius: 6px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
                 <thead>
@@ -187,44 +510,47 @@ def generate_dashboard_html(
                     <th style="padding: 10px 12px; text-align: right; font-weight: 600; color: #0c4a6e; border-bottom: 2px solid #bae6fd;">金額</th>
                   </tr>
                 </thead>
-                <tbody id="detail-table-body">
-                  <!-- JavaScriptで動的に生成 -->
-                </tbody>
+                <tbody id="detail-table-body"></tbody>
               </table>
             </div>
-
           </div>
         </div>
       </div>
+    </section>
+
+    <!-- 収支 + ライフイベント（並列レイアウト） -->
+    <section class="dual-content">
+      <div class="chart-panel">
+        <h2 class="chart-title"><span class="title-accent title-accent--blue"></span>年次収支内訳推移</h2>
+        <div class="chart-content">
+          {income_expense_html}
+        </div>
+      </div>
+      {life_events_table_html}
+    </section>
+
+    <!-- 前提条件 + 最適化結果（折りたたみ） -->
+    <section class="info-panels">
+      {assumptions_html}
+      {optimization_html}
     </section>
 
   </div>
 
   <!-- グラフクリックイベント処理 -->
   <script>
-    // データスキーマ（カラム名 → インデックスのマッピング）
     const CUSTOMDATA_SCHEMA = {customdata_schema_json};
-
-    // 表示名マッピング
     const DISPLAY_NAMES = {display_names_json};
-
-    // 収入・支出カラムリスト
     const INCOME_COLUMNS = {income_columns_json};
     const EXPENSE_COLUMNS = {expense_columns_json};
-
-    // カテゴリー別支出比率（TOP5）
     const categoryPercentages = {category_data_json};
-
-    // 家族情報
     const familyInfo = {family_info_json};
 
-    // customdataからカラム値を取得するヘルパー関数
     function getCustomDataValue(customdata, columnName) {{
       const index = CUSTOMDATA_SCHEMA[columnName];
       return index !== undefined ? customdata[index] : 0;
     }}
 
-    // 年齢計算関数
     function calculateAge(birthdate, targetDate) {{
       const birth = new Date(birthdate);
       const target = new Date(targetDate);
@@ -236,41 +562,26 @@ def generate_dashboard_html(
       return age;
     }}
 
-    // Plotlyグラフの読み込み完了を待つ
     window.addEventListener('load', function() {{
-      // 少し遅延させてPlotlyグラフが確実にレンダリングされるまで待つ
       setTimeout(function() {{
-        const graphDiv = document.querySelector('.chart-content .plotly-graph-div');
+        const graphDiv = document.querySelector('.main-chart:first-of-type .chart-content .plotly-graph-div');
+        if (!graphDiv) return;
 
-        if (!graphDiv) {{
-          return;
-        }}
-
-        // Plotlyクリックイベントをリッスン
         graphDiv.on('plotly_click', function(data) {{
           const point = data.points[0];
           if (!point) return;
-
-          // クリックされた点のデータを取得
           const date = new Date(point.x);
           const assets = point.y;
           const customdata = point.customdata;
 
-          // 詳細パネルを表示
           const detailsDiv = document.getElementById('click-details');
           detailsDiv.style.display = 'block';
 
-          // 日付フォーマット
-          const dateStr = date.getFullYear() + '年' +
-                         (date.getMonth() + 1) + '月';
-
-          // データを表示
+          const dateStr = date.getFullYear() + '年' + (date.getMonth() + 1) + '月';
           document.getElementById('detail-date').textContent = dateStr;
-          document.getElementById('detail-assets').textContent =
-            '¥' + assets.toFixed(1) + '万';
+          document.getElementById('detail-assets').textContent = '¥' + assets.toFixed(1) + '万';
 
           if (customdata && customdata.length >= Object.keys(CUSTOMDATA_SCHEMA).length) {{
-            // スキーマを使用してcustomdataから値を取得
             const laborIncome = getCustomDataValue(customdata, 'labor_income');
             const shuheiIncome = getCustomDataValue(customdata, 'shuhei_income');
             const sakuraIncome = getCustomDataValue(customdata, 'sakura_income');
@@ -292,28 +603,23 @@ def generate_dashboard_html(
             const totalIncome = laborIncome + pensionIncome + childAllowance;
             const totalExpense = baseExpense + educationExpense + mortgagePayment + maintenanceCost + workationCost + pensionPremium + healthInsurancePremium;
 
-            // 詳細テーブルを生成
             const tableBody = document.getElementById('detail-table-body');
             tableBody.innerHTML = '';
 
-            // ヘルパー関数: テーブル行を追加
-            function addRow(label, value, className = '') {{
+            function addRow(label, value, className) {{
+              className = className || '';
               const row = document.createElement('tr');
               row.className = className;
-
               const cellLabel = document.createElement('td');
               cellLabel.textContent = label;
               cellLabel.style.padding = '8px 12px';
               cellLabel.style.borderBottom = '1px solid #e0f2fe';
-
               const cellValue = document.createElement('td');
               cellValue.textContent = value;
               cellValue.style.padding = '8px 12px';
               cellValue.style.textAlign = 'right';
               cellValue.style.borderBottom = '1px solid #e0f2fe';
               cellValue.style.fontWeight = className.includes('bold') ? '600' : 'normal';
-
-              // スタイル設定
               if (className.includes('section-header')) {{
                 cellLabel.style.background = '#cffafe';
                 cellLabel.style.fontWeight = '600';
@@ -340,287 +646,125 @@ def generate_dashboard_html(
                 cellValue.style.fontSize = '12px';
                 cellValue.style.color = '#64748b';
               }}
-
               row.appendChild(cellLabel);
               row.appendChild(cellValue);
               tableBody.appendChild(row);
             }}
 
-            // 家族情報セクション
             if (familyInfo.length > 0) {{
               addRow('家族構成', '', 'section-header');
               for (const person of familyInfo) {{
                 const age = calculateAge(person.birthdate, date);
-                const ageStr = age + '歳';
-                addRow(person.name, ageStr, 'subcategory');
+                addRow(person.name, age + '歳', 'subcategory');
               }}
             }}
 
-            // 収入セクション
             addRow('収入', '', 'section-header');
             if (laborIncome > 0) {{
               addRow('労働収入', '+¥' + (laborIncome / 10000).toFixed(1) + '万', 'income');
-              if (shuheiIncome > 0) {{
-                addRow('└ 修平（会社員）', '+¥' + (shuheiIncome / 10000).toFixed(1) + '万', 'subcategory');
-              }}
-              if (sakuraIncome > 0) {{
-                addRow('└ 桜（個人事業主）', '+¥' + (sakuraIncome / 10000).toFixed(1) + '万', 'subcategory');
-              }}
+              if (shuheiIncome > 0) addRow('└ 修平', '+¥' + (shuheiIncome / 10000).toFixed(1) + '万', 'subcategory');
+              if (sakuraIncome > 0) addRow('└ 桜', '+¥' + (sakuraIncome / 10000).toFixed(1) + '万', 'subcategory');
             }}
-            if (pensionIncome > 0) {{
-              addRow('年金収入', '+¥' + (pensionIncome / 10000).toFixed(1) + '万', 'income');
-            }}
-            if (childAllowance > 0) {{
-              addRow('児童手当', '+¥' + (childAllowance / 10000).toFixed(1) + '万', 'income');
-            }}
+            if (pensionIncome > 0) addRow('年金収入', '+¥' + (pensionIncome / 10000).toFixed(1) + '万', 'income');
+            if (childAllowance > 0) addRow('児童手当', '+¥' + (childAllowance / 10000).toFixed(1) + '万', 'income');
             addRow('収入合計', '¥' + (totalIncome / 10000).toFixed(1) + '万', 'subtotal bold');
 
-            // 支出セクション
             addRow('支出', '', 'section-header');
-
-            // 基本生活費をカテゴリ別に表示
             if (baseExpense > 0) {{
               const baseExpenseManEn = baseExpense / 10000;
               addRow('基本生活費', '-¥' + baseExpenseManEn.toFixed(1) + '万', 'expense');
-
-              // カテゴリー別に表示（TOP5）
               const categories = Object.keys(categoryPercentages);
               if (categories.length > 0) {{
                 for (const category of categories) {{
                   const percentage = categoryPercentages[category] / 100;
                   const categoryExpense = baseExpenseManEn * percentage;
-                  if (categoryExpense > 0.1) {{
-                    addRow('  - ' + category, '-¥' + categoryExpense.toFixed(1) + '万', 'subcategory');
-                  }}
+                  if (categoryExpense > 0.1) addRow('  - ' + category, '-¥' + categoryExpense.toFixed(1) + '万', 'subcategory');
                 }}
               }}
             }}
-
-            if (educationExpense > 0) {{
-              addRow('教育費', '-¥' + (educationExpense / 10000).toFixed(1) + '万', 'expense');
-            }}
-            if (mortgagePayment > 0) {{
-              addRow('住宅ローン', '-¥' + (mortgagePayment / 10000).toFixed(1) + '万', 'expense');
-            }}
-            if (maintenanceCost > 0) {{
-              addRow('メンテナンス費用', '-¥' + (maintenanceCost / 10000).toFixed(1) + '万', 'expense');
-            }}
-            if (workationCost > 0) {{
-              addRow('ワーケーション費用', '-¥' + (workationCost / 10000).toFixed(1) + '万', 'expense');
-            }}
-            if (pensionPremium > 0) {{
-              addRow('国民年金保険料', '-¥' + (pensionPremium / 10000).toFixed(1) + '万', 'expense');
-            }}
-            if (healthInsurancePremium > 0) {{
-              addRow('国民健康保険料', '-¥' + (healthInsurancePremium / 10000).toFixed(1) + '万', 'expense');
-            }}
+            if (educationExpense > 0) addRow('教育費', '-¥' + (educationExpense / 10000).toFixed(1) + '万', 'expense');
+            if (mortgagePayment > 0) addRow('住宅ローン', '-¥' + (mortgagePayment / 10000).toFixed(1) + '万', 'expense');
+            if (maintenanceCost > 0) addRow('メンテナンス費用', '-¥' + (maintenanceCost / 10000).toFixed(1) + '万', 'expense');
+            if (workationCost > 0) addRow('ワーケーション', '-¥' + (workationCost / 10000).toFixed(1) + '万', 'expense');
+            if (pensionPremium > 0) addRow('国民年金保険料', '-¥' + (pensionPremium / 10000).toFixed(1) + '万', 'expense');
+            if (healthInsurancePremium > 0) addRow('国民健康保険料', '-¥' + (healthInsurancePremium / 10000).toFixed(1) + '万', 'expense');
             addRow('支出合計', '-¥' + (totalExpense / 10000).toFixed(1) + '万', 'subtotal bold');
 
-            // 資産構成セクション
             addRow('資産構成', '', 'section-header');
-            if (cash >= 0) {{
-              addRow('現金・預金', '¥' + (cash / 10000).toFixed(1) + '万', 'subcategory');
-            }}
-            if (stocks >= 0) {{
-              addRow('投資信託', '¥' + (stocks / 10000).toFixed(1) + '万', 'subcategory');
-            }}
+            if (cash >= 0) addRow('現金・預金', '¥' + (cash / 10000).toFixed(1) + '万', 'subcategory');
+            if (stocks >= 0) addRow('投資信託', '¥' + (stocks / 10000).toFixed(1) + '万', 'subcategory');
             addRow('総資産', '¥' + ((cash + stocks) / 10000).toFixed(1) + '万', 'subtotal bold');
 
-            // その他セクション
             addRow('その他', '', 'section-header');
-            if (investmentReturn > 0) {{
-              addRow('運用益', '+¥' + (investmentReturn / 10000).toFixed(1) + '万', 'income');
-            }}
-            if (autoInvested > 0) {{
-              addRow('自動投資（NISA）', '-¥' + (autoInvested / 10000).toFixed(1) + '万', 'expense');
-            }}
-            if (capitalGainsTax > 0) {{
-              addRow('譲渡益課税', '-¥' + (capitalGainsTax / 10000).toFixed(1) + '万', 'expense');
-            }}
+            if (investmentReturn > 0) addRow('運用益', '+¥' + (investmentReturn / 10000).toFixed(1) + '万', 'income');
+            if (autoInvested > 0) addRow('自動投資（NISA）', '-¥' + (autoInvested / 10000).toFixed(1) + '万', 'expense');
+            if (capitalGainsTax > 0) addRow('譲渡益課税', '-¥' + (capitalGainsTax / 10000).toFixed(1) + '万', 'expense');
 
-            // 純変動
             const netChange = (totalIncome - totalExpense + investmentReturn - autoInvested - capitalGainsTax) / 10000;
             const netChangeStr = (netChange >= 0 ? '+' : '') + '¥' + netChange.toFixed(1) + '万';
             addRow('純変動', netChangeStr, 'total');
 
-            // ウォーターフォールグラフを作成（細分化、0円項目を除外）
-
-            // データ項目を定義（0でない項目のみ含める）
+            // ウォーターフォールチャート
             const items = [];
-            if (laborIncome !== 0) {{
-              items.push({{
-                label: '労働収入',
-                value: laborIncome / 10000,
-                measure: 'relative'
-              }});
-            }}
-            if (pensionIncome !== 0) {{
-              items.push({{
-                label: '年金収入',
-                value: pensionIncome / 10000,
-                measure: 'relative'
-              }});
-            }}
-            if (childAllowance !== 0) {{
-              items.push({{
-                label: '児童手当',
-                value: childAllowance / 10000,
-                measure: 'relative'
-              }});
-            }}
+            if (laborIncome !== 0) items.push({{ label: '労働収入', value: laborIncome / 10000, measure: 'relative' }});
+            if (pensionIncome !== 0) items.push({{ label: '年金収入', value: pensionIncome / 10000, measure: 'relative' }});
+            if (childAllowance !== 0) items.push({{ label: '児童手当', value: childAllowance / 10000, measure: 'relative' }});
 
-            // 基本生活費をカテゴリー別に分割（TOP5）
             if (baseExpense !== 0) {{
               const baseExpenseManEn = baseExpense / 10000;
               const categories = Object.keys(categoryPercentages);
-
               if (categories.length > 0) {{
-                // カテゴリー別に分割
                 for (const category of categories) {{
                   const percentage = categoryPercentages[category] / 100;
                   const categoryExpense = baseExpenseManEn * percentage;
-                  if (categoryExpense > 0.1) {{  // 0.1万円以上のみ表示
-                    items.push({{
-                      label: category,
-                      value: -categoryExpense,
-                      measure: 'relative'
-                    }});
-                  }}
+                  if (categoryExpense > 0.1) items.push({{ label: category, value: -categoryExpense, measure: 'relative' }});
                 }}
               }} else {{
-                // カテゴリーデータがない場合は基本生活費として表示
-                items.push({{
-                  label: '基本生活費',
-                  value: -baseExpenseManEn,
-                  measure: 'relative'
-                }});
+                items.push({{ label: '基本生活費', value: -baseExpenseManEn, measure: 'relative' }});
               }}
             }}
-
-            if (educationExpense !== 0) {{
-              items.push({{
-                label: '教育費',
-                value: -educationExpense / 10000,
-                measure: 'relative'
-              }});
-            }}
-            if (mortgagePayment !== 0) {{
-              items.push({{
-                label: '住宅ローン',
-                value: -mortgagePayment / 10000,
-                measure: 'relative'
-              }});
-            }}
-            if (maintenanceCost !== 0) {{
-              items.push({{
-                label: 'メンテナンス',
-                value: -maintenanceCost / 10000,
-                measure: 'relative'
-              }});
-            }}
-            if (workationCost !== 0) {{
-              items.push({{
-                label: 'ワーケーション',
-                value: -workationCost / 10000,
-                measure: 'relative'
-              }});
-            }}
-            if (pensionPremium !== 0) {{
-              items.push({{
-                label: '国民年金',
-                value: -pensionPremium / 10000,
-                measure: 'relative'
-              }});
-            }}
-            if (healthInsurancePremium !== 0) {{
-              items.push({{
-                label: '国民健康保険',
-                value: -healthInsurancePremium / 10000,
-                measure: 'relative'
-              }});
-            }}
-            if (investmentReturn !== 0) {{
-              items.push({{
-                label: '運用益',
-                value: investmentReturn / 10000,
-                measure: 'relative'
-              }});
-            }}
-            if (autoInvested !== 0) {{
-              items.push({{
-                label: '自動投資',
-                value: -autoInvested / 10000,
-                measure: 'relative'
-              }});
-            }}
-            if (capitalGainsTax !== 0) {{
-              items.push({{
-                label: '譲渡益課税',
-                value: -capitalGainsTax / 10000,
-                measure: 'relative'
-              }});
-            }}
-
-            // 純変動を最後に追加
-            items.push({{
-              label: '純変動',
-              value: netChange,
-              measure: 'total'
-            }});
+            if (educationExpense !== 0) items.push({{ label: '教育費', value: -educationExpense / 10000, measure: 'relative' }});
+            if (mortgagePayment !== 0) items.push({{ label: '住宅ローン', value: -mortgagePayment / 10000, measure: 'relative' }});
+            if (maintenanceCost !== 0) items.push({{ label: 'メンテナンス', value: -maintenanceCost / 10000, measure: 'relative' }});
+            if (workationCost !== 0) items.push({{ label: 'ワーケーション', value: -workationCost / 10000, measure: 'relative' }});
+            if (pensionPremium !== 0) items.push({{ label: '国民年金', value: -pensionPremium / 10000, measure: 'relative' }});
+            if (healthInsurancePremium !== 0) items.push({{ label: '国民健康保険', value: -healthInsurancePremium / 10000, measure: 'relative' }});
+            if (investmentReturn !== 0) items.push({{ label: '運用益', value: investmentReturn / 10000, measure: 'relative' }});
+            if (autoInvested !== 0) items.push({{ label: '自動投資', value: -autoInvested / 10000, measure: 'relative' }});
+            if (capitalGainsTax !== 0) items.push({{ label: '譲渡益課税', value: -capitalGainsTax / 10000, measure: 'relative' }});
+            items.push({{ label: '純変動', value: netChange, measure: 'total' }});
 
             const waterfallData = [{{
-              type: 'waterfall',
-              orientation: 'v',
-              x: items.map(item => item.label),
-              y: items.map(item => item.value),
+              type: 'waterfall', orientation: 'v',
+              x: items.map(item => item.label), y: items.map(item => item.value),
               measure: items.map(item => item.measure),
               textposition: 'auto',
-              text: items.map(item => {{
-                const val = item.value;
-                const prefix = val >= 0 ? '+' : '';
-                return prefix + val.toFixed(1) + '万';
-              }}),
+              text: items.map(item => {{ const val = item.value; return (val >= 0 ? '+' : '') + val.toFixed(1) + '万'; }}),
               increasing: {{ marker: {{ color: '#10b981' }} }},
               decreasing: {{ marker: {{ color: '#ef4444' }} }},
               totals: {{ marker: {{ color: '#06b6d4' }} }},
-              connector: {{
-                line: {{ color: '#94a3b8', width: 1, dash: 'dot' }}
-              }}
+              connector: {{ line: {{ color: '#94a3b8', width: 1, dash: 'dot' }} }}
             }}];
-
             const waterfallLayout = {{
               showlegend: false,
               margin: {{ t: 40, b: 50, l: 50, r: 20 }},
-              yaxis: {{
-                title: '万円',
-                tickformat: ',.0f',
-                gridcolor: '#e0f2fe'
-              }},
-              xaxis: {{
-                tickangle: 0
-              }},
-              plot_bgcolor: '#f0f9ff',
-              paper_bgcolor: '#f0f9ff'
+              yaxis: {{ title: '万円', tickformat: ',.0f', gridcolor: '#e0f2fe' }},
+              xaxis: {{ tickangle: 0 }},
+              plot_bgcolor: '#f0f9ff', paper_bgcolor: '#f0f9ff'
             }};
-
             Plotly.newPlot('waterfall-chart', waterfallData, waterfallLayout, {{ displayModeBar: false, responsive: true }});
           }} else {{
-            // データがない場合
-            const tableBody = document.getElementById('detail-table-body');
-            tableBody.innerHTML = '<tr><td colspan="2" style="padding: 20px; text-align: center; color: #64748b;">データがありません</td></tr>';
+            document.getElementById('detail-table-body').innerHTML = '<tr><td colspan="2" style="padding: 20px; text-align: center; color: #64748b;">データがありません</td></tr>';
           }}
-
-          // 詳細パネルの内部スクロールを最上部にリセット
           detailsDiv.scrollTop = 0;
         }});
-      }}, 500); // 500ms待機
+      }}, 500);
     }});
   </script>
 </body>
 </html>
 """
 
-    # ファイル出力
     output_path = config['output']['html_file']
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write(html_content)

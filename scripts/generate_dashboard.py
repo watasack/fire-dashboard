@@ -40,7 +40,9 @@ from src.simulator import (
     generate_returns_enhanced,
 )
 from src.visualizer import (
-    create_fire_timeline_chart
+    create_fire_timeline_chart,
+    create_income_expense_stream_chart,
+    extract_life_events,
 )
 from src.html_generator import generate_dashboard_html
 
@@ -204,9 +206,15 @@ def main():
         charts = {
             'fire_timeline': create_fire_timeline_chart(
                 current_status, fire_target, fire_achievement, simulations, config,
-                monte_carlo_results=mc_results  # モンテカルロデータを渡す
-            )
+                monte_carlo_results=mc_results
+            ),
+            'income_expense_stream': create_income_expense_stream_chart(
+                simulations, fire_achievement, config
+            ),
         }
+
+        # ライフイベント（財務インパクト表用）
+        life_events = extract_life_events(config, fire_achievement)
 
         print("[OK] Visualizations created\n")
 
@@ -221,6 +229,8 @@ def main():
                 'trends': trends,
                 'expense_breakdown': expense_breakdown,
                 'monte_carlo': mc_results,
+                'life_events': life_events,
+                'simulations': simulations,
                 'update_time': datetime.now()
             },
             action_items=action_items,
