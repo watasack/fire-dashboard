@@ -15,19 +15,27 @@ FIRE達成時期と年金受給開始年齢を同時に最適化する。
 """
 
 import copy
+import multiprocessing
 import numpy as np
 import pandas as pd
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from pathlib import Path
 from typing import Dict, Any, List, Tuple, Optional
 from itertools import product
+
+_PROJECT_ROOT = str(Path(__file__).parent.parent)
 
 from src.simulator import (
     simulate_future_assets,
     simulate_post_fire_assets,
     _simulate_post_fire_with_random_returns,
+    _simulate_post_fire_mc_vectorized,
     _precompute_monthly_cashflows,
     _initialize_post_fire_simulation,
     generate_random_returns,
     generate_returns_enhanced,
+    generate_random_returns_batch,
+    generate_returns_enhanced_batch,
 )
 
 
@@ -488,6 +496,177 @@ def _select_diverse_top_k(
     return pd.DataFrame(selected)
 
 
+
+def _init_worker(project_root: str) -> None:
+    """ワーカープロセスの sys.path を設定する（Windows spawn 対応）。"""
+    import sys
+    if project_root not in sys.path:
+        sys.path.insert(0, project_root)
+
+
+def _evaluate_single_candidate(args: dict) -> List[dict]:
+    """
+    単一候補のMC評価（並列ワーカー関数）。
+
+    候補 1 件に対してすべての expense_reduction_candidates を評価し、
+    結果リスト（len = len(expense_reduction_candidates)）を返す。
+    """
+    import numpy as np
+    from src.simulator import (
+        _simulate_post_fire_with_random_returns,
+        _simulate_post_fire_mc_vectorized,
+        _precompute_monthly_cashflows,
+        generate_returns_enhanced_batch,
+        generate_random_returns_batch,
+    )
+
+    cand                        = args['cand']
+    pre_fire_row                = args['pre_fire_row']
+    config                      = args['config']
+    scenario                    = args['scenario']
+    iterations                  = args['iterations']
+    person_names                = args['person_names']
+    expense_reduction_candidates = args['expense_reduction_candidates']
+    enhanced_enabled            = args['enhanced_enabled']
+    return_std_dev              = args['return_std_dev']
+    mean_reversion_speed        = args['mean_reversion_speed']
+    life_expectancy             = args['life_expectancy']
+    start_age                   = args['start_age']
+    post_fire_income            = args['post_fire_income']
+    params                      = args['params']
+    default_safety              = args['default_safety']
+    default_crash               = args['default_crash']
+    default_l1                  = args['default_l1']
+    default_l2                  = args['default_l2']
+    default_l3                  = args['default_l3']
+
+    fire_month   = int(cand['fire_month'])
+    override     = {name: int(cand[f'age_{name}']) for name in person_names}
+    extra_budget = float(cand.get('extra_budget', 0))
+
+    cash_strategy = {}
+    cand_safety = cand.get('cash_safety_margin')
+    cand_crash  = cand.get('cash_crash_threshold')
+    if cand_safety is not None and float(cand_safety) != default_safety:
+        cash_strategy['safety_margin'] = float(cand_safety)
+    if cand_crash is not None and float(cand_crash) != default_crash:
+        cash_strategy['market_crash_threshold'] = float(cand_crash)
+
+    fire_cash        = pre_fire_row['cash']
+    fire_stocks      = pre_fire_row['stocks']
+    fire_nisa        = pre_fire_row['nisa_balance']
+    fire_nisa_cost   = pre_fire_row.get('nisa_cost_basis', fire_nisa)
+    fire_stocks_cost = pre_fire_row['stocks_cost_basis']
+    years_offset     = fire_month / 12
+
+    fire_age         = start_age + years_offset
+    remaining_years  = life_expectancy - fire_age
+    remaining_months = int(remaining_years * 12)
+    if remaining_months <= 0:
+        return []
+
+    precomputed = _precompute_monthly_cashflows(
+        years_offset, remaining_months, config, post_fire_income,
+        override_start_ages=override,
+    )
+    precomputed_expenses, precomputed_income, precomputed_base_expenses, \
+        precomputed_life_stages, precomputed_workation_costs = precomputed
+
+    monthly_return_rate = (1 + params['annual_return_rate']) ** (1 / 12) - 1
+
+    if enhanced_enabled:
+        random_returns_matrix = generate_returns_enhanced_batch(
+            annual_return_mean=params['annual_return_rate'],
+            annual_return_std=return_std_dev,
+            total_months=remaining_months,
+            n_paths=iterations,
+            config=config,
+            random_seed=0,
+        )
+    else:
+        random_returns_matrix = generate_random_returns_batch(
+            annual_return_mean=params['annual_return_rate'],
+            annual_return_std=return_std_dev,
+            total_months=remaining_months,
+            n_paths=iterations,
+            mean_reversion_speed=mean_reversion_speed,
+            random_seed=0,
+        )
+
+    results = []
+    for er in expense_reduction_candidates:
+        cfg = config
+        if cash_strategy:
+            cfg = _apply_cash_strategy(cfg, cash_strategy)
+        if er:
+            cfg = _apply_expense_reduction(cfg, er)
+
+        baseline_returns = np.full(remaining_months, monthly_return_rate)
+        baseline_assets = _simulate_post_fire_with_random_returns(
+            current_cash=fire_cash,
+            current_stocks=fire_stocks,
+            years_offset=years_offset,
+            config=cfg,
+            scenario=scenario,
+            random_returns=baseline_returns,
+            nisa_balance=fire_nisa,
+            nisa_cost_basis=fire_nisa_cost,
+            stocks_cost_basis=fire_stocks_cost,
+            return_timeseries=True,
+            precomputed_expenses=precomputed_expenses,
+            precomputed_income=precomputed_income,
+            precomputed_base_expenses=precomputed_base_expenses,
+            precomputed_life_stages=precomputed_life_stages,
+            precomputed_workation_costs=precomputed_workation_costs,
+            baseline_assets=None,
+            override_start_ages=override,
+            extra_monthly_budget=extra_budget,
+        )
+
+        final_assets_arr = _simulate_post_fire_mc_vectorized(
+            fire_cash=fire_cash,
+            fire_stocks=fire_stocks,
+            years_offset=years_offset,
+            config=cfg,
+            scenario=scenario,
+            random_returns_matrix=random_returns_matrix,
+            nisa_balance=fire_nisa,
+            nisa_cost_basis=fire_nisa_cost,
+            stocks_cost_basis=fire_stocks_cost,
+            precomputed_expenses=precomputed_expenses,
+            precomputed_income=precomputed_income,
+            precomputed_base_expenses=precomputed_base_expenses,
+            precomputed_life_stages=precomputed_life_stages,
+            precomputed_workation_costs=precomputed_workation_costs,
+            baseline_assets=baseline_assets,
+            override_start_ages=override,
+            extra_monthly_budget=extra_budget,
+        )
+
+        success_rate = int((final_assets_arr > 0).sum()) / iterations
+        er_l1 = er.get('level_1_warning', default_l1)
+        er_l2 = er.get('level_2_concern', default_l2)
+        er_l3 = er.get('level_3_crisis', default_l3)
+
+        entry = {
+            'fire_month':           fire_month,
+            'extra_budget':         extra_budget,
+            'cash_safety_margin':   float(cand.get('cash_safety_margin', default_safety)),
+            'cash_crash_threshold': float(cand.get('cash_crash_threshold', default_crash)),
+            'er_level1':            er_l1,
+            'er_level2':            er_l2,
+            'er_level3':            er_l3,
+            'success_rate':         success_rate,
+            'p10_assets':           float(np.percentile(final_assets_arr, 10)),
+            'median_assets':        float(np.median(final_assets_arr)),
+            'mean_assets':          float(np.mean(final_assets_arr)),
+        }
+        for name in person_names:
+            entry[f'age_{name}'] = override[name]
+        results.append(entry)
+
+    return results
+
 def _run_mc_evaluation(
     candidates: pd.DataFrame,
     pre_fire_df: pd.DataFrame,
@@ -497,190 +676,97 @@ def _run_mc_evaluation(
     person_names: List[str],
     expense_reduction_candidates: List[Dict[str, float]] = None,
 ) -> pd.DataFrame:
-    """Phase 3: 上位候補に対してMCシミュレーションを実行する。"""
+    """Phase 3: 上位候補に対してMCシミュレーションを並列実行する。"""
     if expense_reduction_candidates is None:
         expense_reduction_candidates = [{}]
 
-    results = []
-    params = config['simulation'][scenario]
+    params    = config['simulation'][scenario]
     mc_config = config['simulation'].get('monte_carlo', {})
-    return_std_dev = mc_config.get('return_std_dev', 0.15)
+    return_std_dev       = mc_config.get('return_std_dev', 0.15)
     mean_reversion_speed = mc_config.get('mean_reversion_speed', 0.0)
-    enhanced_enabled = mc_config.get('enhanced_model', {}).get('enabled', False)
+    enhanced_enabled     = mc_config.get('enhanced_model', {}).get('enabled', False)
 
     life_expectancy = config['simulation'].get('life_expectancy', 90)
-    start_age = config['simulation'].get('start_age', 35)
+    start_age       = config['simulation'].get('start_age', 35)
 
     default_strategy = config.get('post_fire_cash_strategy', {})
-    default_safety = default_strategy.get('safety_margin', 5_000_000)
-    default_crash = default_strategy.get('market_crash_threshold', -0.20)
+    default_safety   = default_strategy.get('safety_margin', 5_000_000)
+    default_crash    = default_strategy.get('market_crash_threshold', -0.20)
 
     default_der = config.get('fire', {}).get('dynamic_expense_reduction', {}).get('reduction_rates', {})
-    default_l1 = default_der.get('level_1_warning', 0.0)
-    default_l2 = default_der.get('level_2_concern', 0.0)
-    default_l3 = default_der.get('level_3_crisis', 0.0)
+    default_l1  = default_der.get('level_1_warning', 0.0)
+    default_l2  = default_der.get('level_2_concern', 0.0)
+    default_l3  = default_der.get('level_3_crisis', 0.0)
 
-    total = len(candidates) * len(expense_reduction_candidates)
-    eval_idx = 0
+    post_fire_income = (
+        config['simulation'].get('shuhei_post_fire_income', 0)
+        + config['simulation'].get('sakura_post_fire_income', 0)
+    )
 
+    # 候補ごとに評価引数を準備
+    all_args = []
     for _, cand in candidates.iterrows():
         fire_month = int(cand['fire_month'])
-        override = {name: int(cand[f'age_{name}']) for name in person_names}
-        extra_budget = float(cand.get('extra_budget', 0))
-
-        cash_strategy = {}
-        cand_safety = cand.get('cash_safety_margin')
-        cand_crash = cand.get('cash_crash_threshold')
-        if cand_safety is not None and cand_safety != default_safety:
-            cash_strategy['safety_margin'] = float(cand_safety)
-        if cand_crash is not None and cand_crash != default_crash:
-            cash_strategy['market_crash_threshold'] = float(cand_crash)
-
-        row = pre_fire_df.iloc[fire_month]
-        fire_cash = row['cash']
-        fire_stocks = row['stocks']
-        fire_nisa = row['nisa_balance']
-        fire_nisa_cost = row.get('nisa_cost_basis', fire_nisa)
-        fire_stocks_cost = row['stocks_cost_basis']
-        years_offset = fire_month / 12
-
-        fire_age = start_age + years_offset
-        remaining_years = life_expectancy - fire_age
-        remaining_months = int(remaining_years * 12)
-
-        if remaining_months <= 0:
+        if fire_month >= len(pre_fire_df):
             continue
+        all_args.append({
+            'cand':                       cand.to_dict(),
+            'pre_fire_row':               pre_fire_df.iloc[fire_month].to_dict(),
+            'config':                     config,
+            'scenario':                   scenario,
+            'iterations':                 iterations,
+            'person_names':               person_names,
+            'expense_reduction_candidates': expense_reduction_candidates,
+            'enhanced_enabled':           enhanced_enabled,
+            'return_std_dev':             return_std_dev,
+            'mean_reversion_speed':       mean_reversion_speed,
+            'life_expectancy':            life_expectancy,
+            'start_age':                  start_age,
+            'post_fire_income':           post_fire_income,
+            'params':                     params,
+            'default_safety':             default_safety,
+            'default_crash':              default_crash,
+            'default_l1':                 default_l1,
+            'default_l2':                 default_l2,
+            'default_l3':                 default_l3,
+        })
 
-        post_fire_income = (
-            config['simulation'].get('shuhei_post_fire_income', 0)
-            + config['simulation'].get('sakura_post_fire_income', 0)
-        )
+    n_cands   = len(all_args)
+    n_er      = len(expense_reduction_candidates)
+    n_workers = min(multiprocessing.cpu_count(), n_cands)
+    print(f"  並列評価: {n_cands}候補 × {n_er}削減戦略 = {n_cands * n_er}評価 ({n_workers}プロセス)")
 
-        precomputed = _precompute_monthly_cashflows(
-            years_offset, remaining_months, config, post_fire_income,
-            override_start_ages=override
-        )
-        precomputed_expenses, precomputed_income, precomputed_base_expenses, \
-            precomputed_life_stages, precomputed_workation_costs = precomputed
+    all_results: List[dict] = []
+    completed = 0
 
-        monthly_return_rate = (1 + params['annual_return_rate']) ** (1/12) - 1
+    with ProcessPoolExecutor(
+        max_workers=n_workers,
+        initializer=_init_worker,
+        initargs=(_PROJECT_ROOT,),
+    ) as executor:
+        futures = {
+            executor.submit(_evaluate_single_candidate, args): i
+            for i, args in enumerate(all_args)
+        }
+        for future in as_completed(futures):
+            cand_results = future.result()
+            all_results.extend(cand_results)
+            completed += 1
+            if completed % 10 == 0 or completed == n_cands:
+                print(f"  [{completed}/{n_cands}] 候補評価完了")
 
-        random_returns_cache = []
-        for i in range(iterations):
-            if enhanced_enabled:
-                rr = generate_returns_enhanced(
-                    annual_return_mean=params['annual_return_rate'],
-                    annual_return_std=return_std_dev,
-                    total_months=remaining_months,
-                    config=config,
-                    random_seed=i
-                )
-            else:
-                rr = generate_random_returns(
-                    params['annual_return_rate'],
-                    return_std_dev,
-                    remaining_months,
-                    mean_reversion_speed=mean_reversion_speed,
-                    random_seed=i
-                )
-            random_returns_cache.append(rr)
+    # 評価結果をサマリー表示（ソート済み）
+    result_df = pd.DataFrame(all_results)
+    if not result_df.empty:
+        top_rows = result_df.nlargest(min(5, len(result_df)), 'success_rate')
+        for _, r in top_rows.iterrows():
+            ages_str = '/'.join(f"{int(r[f'age_{n}'])}歳" for n in person_names)
+            er_str = (f", 削減{r['er_level1']*100:.0f}/{r['er_level2']*100:.0f}/{r['er_level3']*100:.0f}%"
+                      if r['er_level1'] > 0 or r['er_level2'] > 0 or r['er_level3'] > 0 else "")
+            print(f"  FIRE月{int(r['fire_month'])} ({ages_str}{er_str}): "
+                  f"成功率{r['success_rate']*100:.1f}%, P10={r['p10_assets']/10000:.0f}万円")
 
-        for er in expense_reduction_candidates:
-            cfg = config
-            if cash_strategy:
-                cfg = _apply_cash_strategy(cfg, cash_strategy)
-            if er:
-                cfg = _apply_expense_reduction(cfg, er)
-
-            baseline_returns = np.full(remaining_months, monthly_return_rate)
-            baseline_assets = _simulate_post_fire_with_random_returns(
-                current_cash=fire_cash,
-                current_stocks=fire_stocks,
-                years_offset=years_offset,
-                config=cfg,
-                scenario=scenario,
-                random_returns=baseline_returns,
-                nisa_balance=fire_nisa,
-                nisa_cost_basis=fire_nisa_cost,
-                stocks_cost_basis=fire_stocks_cost,
-                return_timeseries=True,
-                precomputed_expenses=precomputed_expenses,
-                precomputed_income=precomputed_income,
-                precomputed_base_expenses=precomputed_base_expenses,
-                precomputed_life_stages=precomputed_life_stages,
-                precomputed_workation_costs=precomputed_workation_costs,
-                baseline_assets=None,
-                override_start_ages=override,
-                extra_monthly_budget=extra_budget,
-            )
-
-            success_count = 0
-            final_assets_list = []
-
-            for i in range(iterations):
-                final = _simulate_post_fire_with_random_returns(
-                    current_cash=fire_cash,
-                    current_stocks=fire_stocks,
-                    years_offset=years_offset,
-                    config=cfg,
-                    scenario=scenario,
-                    random_returns=random_returns_cache[i],
-                    nisa_balance=fire_nisa,
-                    nisa_cost_basis=fire_nisa_cost,
-                    stocks_cost_basis=fire_stocks_cost,
-                    return_timeseries=False,
-                    precomputed_expenses=precomputed_expenses,
-                    precomputed_income=precomputed_income,
-                    precomputed_base_expenses=precomputed_base_expenses,
-                    precomputed_life_stages=precomputed_life_stages,
-                    precomputed_workation_costs=precomputed_workation_costs,
-                    baseline_assets=baseline_assets,
-                    override_start_ages=override,
-                    extra_monthly_budget=extra_budget,
-                )
-
-                final_assets_list.append(final)
-                if final > 0:
-                    success_count += 1
-
-            success_rate = success_count / iterations
-            er_l1 = er.get('level_1_warning', default_l1)
-            er_l2 = er.get('level_2_concern', default_l2)
-            er_l3 = er.get('level_3_crisis', default_l3)
-
-            entry = {
-                'fire_month': fire_month,
-                'extra_budget': extra_budget,
-                'cash_safety_margin': float(cand.get('cash_safety_margin', default_safety)),
-                'cash_crash_threshold': float(cand.get('cash_crash_threshold', default_crash)),
-                'er_level1': er_l1,
-                'er_level2': er_l2,
-                'er_level3': er_l3,
-                'success_rate': success_rate,
-                'p10_assets': np.percentile(final_assets_list, 10),
-                'median_assets': np.median(final_assets_list),
-                'mean_assets': np.mean(final_assets_list),
-            }
-            for name in person_names:
-                entry[f'age_{name}'] = override[name]
-
-            results.append(entry)
-
-            eval_idx += 1
-            ages_str = '/'.join(f"{override[n]}歳" for n in person_names)
-            budget_str = f", +{extra_budget/10000:.0f}万/月" if extra_budget > 0 else ""
-            cs_str = ""
-            if float(cand.get('cash_safety_margin', default_safety)) != default_safety:
-                cs_str += f", 安全証拠金{float(cand['cash_safety_margin'])/10000:.0f}万"
-            if float(cand.get('cash_crash_threshold', default_crash)) != default_crash:
-                cs_str += f", 暴落閾値{float(cand['cash_crash_threshold'])*100:.0f}%"
-            er_str = ""
-            if er_l1 > 0 or er_l2 > 0 or er_l3 > 0:
-                er_str = f", 削減{er_l1*100:.0f}/{er_l2*100:.0f}/{er_l3*100:.0f}%"
-            print(f"  [{eval_idx}/{total}] FIRE月{fire_month} ({ages_str}{budget_str}{cs_str}{er_str}): "
-                  f"成功率{success_rate*100:.1f}%, P10={entry['p10_assets']/10000:.0f}万円")
-
-    return pd.DataFrame(results)
+    return result_df
 
 
 def _find_optimal_solution(
@@ -845,5 +931,5 @@ def _print_result(result: Dict[str, Any]) -> None:
                           and er_l2 == opt_rr.get('level_2_concern', 0.0)
                           and er_l3 == opt_rr.get('level_3_crisis', 0.0))
             marker = " ★" if is_optimal else ""
-            meets = "  " if sr >= min_rate else "✗ "
+            meets = "  " if sr >= min_rate else "x "
             print(f"  {meets}月{fm:>3} | {age:>4.1f}歳 | {ages_str:>16} | {eb_str:>8} | {sm_str:>10} | {ct_str:>8} | {er_str:>14} | {sr*100:>5.1f}% | {p10/10000:>8.0f}万円{marker}")
