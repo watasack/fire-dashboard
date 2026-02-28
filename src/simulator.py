@@ -21,6 +21,23 @@ _BANKRUPTCY_THRESHOLD = 1_000_000              # 破綻ライン（円）
 _HEALTH_INS_BASIC_DEDUCTION = 430_000  # 基礎控除（2024年度・円）
 _HEALTH_INS_DEFAULT_INCOME_RATE = 0.11  # 所得割率デフォルト（40歳以上・全国平均）
 
+# シミュレーション参照日付（再現性のため実行ごとに一度だけ設定）
+_REFERENCE_DATE: datetime = None
+
+
+def _set_reference_date(date: datetime = None) -> None:
+    """シミュレーション開始時に参照日付を固定する。"""
+    global _REFERENCE_DATE
+    _REFERENCE_DATE = date or datetime.now()
+
+
+def _get_reference_date() -> datetime:
+    """固定された参照日付を返す。未設定時は現在時刻で初期化。"""
+    global _REFERENCE_DATE
+    if _REFERENCE_DATE is None:
+        _REFERENCE_DATE = datetime.now()
+    return _REFERENCE_DATE
+
 
 class _StockSaleResult(NamedTuple):
     """_sell_stocks_with_tax() の戻り値。"""
@@ -396,22 +413,17 @@ def calculate_drawdown_level(
     dynamic_config = config.get('fire', {}).get('dynamic_expense_reduction', {})
     thresholds = dynamic_config.get('drawdown_thresholds', {})
 
-    level_1_threshold = thresholds.get('level_1_warning', -0.15)
-    level_2_threshold = thresholds.get('level_2_concern', -0.30)
-    level_3_threshold = thresholds.get('level_3_crisis', -0.50)
+    level_1_threshold = thresholds.get('level_1_warning', -0.10)
+    level_2_threshold = thresholds.get('level_2_concern', -0.20)
+    level_3_threshold = thresholds.get('level_3_crisis', -0.35)
 
-    # レベル判定（閾値以下で次のレベルに移行）
     if drawdown >= level_1_threshold:
-        # ドローダウンが-15%より小さい（-10%など）
         level = 0  # 正常
     elif drawdown >= level_2_threshold:
-        # -15% 〜 -30%
         level = 1  # 警戒
     elif drawdown >= level_3_threshold:
-        # -30% 〜 -50%
         level = 2  # 深刻
     else:
-        # -50%以下
         level = 3  # 危機
 
     return drawdown, level
@@ -746,7 +758,7 @@ def _get_age_at_offset(birthdate_str: str, year_offset: float) -> float:
         シミュレーション時点での年齢（歳）
     """
     birthdate = _parse_birthdate(birthdate_str)  # キャッシュされたパース結果を使用
-    current_age = (datetime.now() - birthdate).days / 365.25
+    current_age = (_get_reference_date() - birthdate).days / 365.25
     return current_age + year_offset
 
 
@@ -1312,14 +1324,11 @@ def calculate_mortgage_payment(year_offset: float, config: Dict[str, Any]) -> fl
     if not end_date_str:
         return 0
 
-    current_date = datetime.now()
-
-    # 終了日をパース（キャッシュされる）
+    ref_date = _get_reference_date()
     end_date = _parse_birthdate(end_date_str)
 
-    # シミュレーション中の日付を計算（year_offsetは浮動小数点なので月単位に変換）
     months_offset = int(year_offset * 12)
-    simulation_date = current_date + relativedelta(months=months_offset)
+    simulation_date = ref_date + relativedelta(months=months_offset)
 
     # 終了日を過ぎていれば0、そうでなければ月次支払額を返す
     if simulation_date > end_date:
@@ -1349,10 +1358,9 @@ def calculate_house_maintenance(year_offset: float, config: Dict[str, Any]) -> f
     if not items:
         return 0
 
-    current_date = datetime.now()
-    current_year = current_date.year
+    ref_date = _get_reference_date()
+    current_year = ref_date.year
 
-    # シミュレーション中の年を計算（整数に丸める）
     simulation_year = int(current_year + year_offset)
 
     total_maintenance_cost = 0
@@ -1462,7 +1470,7 @@ def _sell_stocks_with_tax(
     # NISA優先売却（非課税）
     if nisa_balance > 0 and shortage > 0:
         nisa_sold = min(shortage, nisa_balance)
-        nisa_sold_cost = nisa_sold / stocks * stocks_cost_basis if stocks > 0 else 0.0
+        nisa_sold_cost = nisa_sold / nisa_balance * nisa_cost_basis if nisa_balance > 0 else 0.0
         nisa_balance -= nisa_sold
         nisa_cost_basis = max(0.0, nisa_cost_basis - nisa_sold_cost)
         stocks -= nisa_sold
@@ -1514,7 +1522,7 @@ def _calculate_monthly_expenses(
         workation_cost, pension_premium, health_insurance_premium, total（全て月額・円）
     """
     fallback_annual = monthly_expense * 12 * (1 + expense_growth_rate) ** years
-    base_expense = calculate_base_expense(years, config, fallback_annual) / 12
+    base_expense = calculate_base_expense(years, config, fallback_annual, expense_growth_rate) / 12
     education_expense = calculate_education_expense(years, config) / 12
     mortgage_payment = calculate_mortgage_payment(years, config)
     maintenance_cost = calculate_house_maintenance(years, config) / 12
@@ -1891,7 +1899,6 @@ def _process_monthly_expense(
     if cash >= expense:
         cash -= expense
     else:
-        # 現金が足りない場合は株から取り崩し
         shortage = expense - cash
         cash = 0
         
@@ -1903,7 +1910,10 @@ def _process_monthly_expense(
         nisa_balance = result.nisa_balance
         nisa_cost_basis = result.nisa_cost_basis
         stocks_cost_basis = result.stocks_cost_basis
-        cash += result.cash_from_taxable
+        # NISA分は支出に直接充当、課税口座分は税引後現金として支出に充当
+        # 株式売却で得た合計(nisa_sold + cash_from_taxable)から支出(shortage)を差し引いた残余のみ現金化
+        total_proceeds = result.nisa_sold + result.cash_from_taxable
+        cash += max(0, total_proceeds - shortage)
         capital_gain = result.capital_gain
         withdrawal_from_stocks = result.total_sold
         capital_gains_tax = result.capital_gain * capital_gains_tax_rate
@@ -2373,8 +2383,9 @@ def simulate_post_fire_assets(
     Returns:
         90歳時点での資産額
     """
+    if _REFERENCE_DATE is None:
+        _set_reference_date()
 
-    # 初期化
     init = _initialize_post_fire_simulation(
         current_cash, current_stocks, years_offset, config, scenario,
         nisa_balance, nisa_cost_basis, stocks_cost_basis
@@ -2392,13 +2403,11 @@ def simulate_post_fire_assets(
     min_cash_balance = init['min_cash_balance']
     post_fire_income = init['post_fire_income']
 
-    # 健康保険料の動的計算用
-    current_date_post = datetime.now()
+    current_date_post = _get_reference_date()
     current_year_post = (current_date_post + relativedelta(months=int(years_offset * 12))).year
     capital_gains_this_year_post = 0
     prev_year_capital_gains_post = 0
 
-    # ドローダウン追跡用（FIRE後現金管理戦略）
     peak_assets_history = []
 
     # 月次シミュレーション
@@ -2497,6 +2506,8 @@ def _precompute_monthly_cashflows(
         )
 
         # 収入計算
+        # current_assets=None: 事前計算時は各月の資産額が未確定のため、
+        # 資産ベースの動的繰り下げは使用不可。override_start_agesで年金開始年齢を直接指定する。
         annual_pension = calculate_pension_income(
             years, config, fire_achieved=True, fire_year_offset=years_offset,
             current_assets=None,
@@ -2572,8 +2583,7 @@ def _simulate_post_fire_with_random_returns(
     min_cash_balance = init['min_cash_balance']
     post_fire_income = init['post_fire_income']
 
-    # 健康保険料の動的計算用
-    current_date_post = datetime.now()
+    current_date_post = _get_reference_date()
     current_year_post = (current_date_post + relativedelta(months=int(years_offset * 12))).year
     capital_gains_this_year_post = 0
     prev_year_capital_gains_post = 0
@@ -2878,7 +2888,7 @@ def can_retire_now(
         override_start_ages=override_start_ages
     )
 
-    # 破綻ライン: 500万円を下回らないことを確認
+    # 破綻ライン: 100万円を下回らないことを確認
     return final_assets > _BANKRUPTCY_THRESHOLD
 
 
@@ -2934,7 +2944,10 @@ def calculate_base_expense_by_category(
             return None, {}
 
         child_age = _get_age_at_offset(birthdate_str, year_offset)
-        stage = _get_life_stage(child_age)
+        if child_age < 0:
+            stage = 'empty_nest'
+        else:
+            stage = _get_life_stage(child_age)
 
     # 該当ステージの予算を取得
     if stage not in budgets_by_stage:
@@ -2960,8 +2973,8 @@ def calculate_base_expense_by_category(
     additional_by_stage = config.get('fire', {}).get('additional_child_expense_by_stage', {})
 
     if additional_by_stage and len(children) > 1:
-        current_date = datetime.now()
-        simulation_date = current_date + pd.Timedelta(days=year_offset * 365.25)
+        ref_date = _get_reference_date()
+        simulation_date = ref_date + pd.Timedelta(days=year_offset * 365.25)
 
         for additional_child in children[1:]:
             child_birthdate_str = additional_child.get('birthdate')
@@ -2994,49 +3007,57 @@ def calculate_base_expense_by_category(
     return base_expense, breakdown
 
 
-def calculate_base_expense(year_offset: float, config: Dict[str, Any], fallback_expense: float) -> float:
+def calculate_base_expense(
+    year_offset: float,
+    config: Dict[str, Any],
+    fallback_expense: float,
+    expense_growth_rate: float = None,
+) -> float:
     """
-    指定年における基本生活費を計算（ライフステージ別 + 家族人数調整）
+    指定年における基本生活費を計算（ライフステージ別 + 家族人数調整 + インフレ）
 
-    カテゴリ別予算が有効な場合はそちらを優先、無効の場合は従来方式を使用
+    カテゴリ別予算が有効な場合はそちらを優先、無効の場合は従来方式を使用。
+    いずれの場合も expense_growth_rate による複利インフレを適用する。
+
+    fallback_expense は呼び出し元でインフレ適用済みの値を受け取る前提。
+    ステージ別・カテゴリ別の値はインフレ未適用の名目値のため、本関数内で適用する。
 
     Args:
         year_offset: シミュレーション開始からの経過年数
         config: 設定辞書
-        fallback_expense: フォールバック年間支出（ライフステージ設定がない場合）
+        fallback_expense: フォールバック年間支出（呼び出し元でインフレ適用済み）
+        expense_growth_rate: インフレ率（Noneの場合config.simulation.standardから取得）
 
     Returns:
-        年間基本生活費（円）
+        年間基本生活費（円、インフレ適用済み）
     """
+    if expense_growth_rate is None:
+        expense_growth_rate = config.get('simulation', {}).get('standard', {}).get('expense_growth_rate', 0.02)
+    inflation_factor = (1 + expense_growth_rate) ** year_offset
+
     # カテゴリ別予算を試す
     category_expense, breakdown = calculate_base_expense_by_category(
         year_offset, config, fallback_expense
     )
     if category_expense is not None:
-        return category_expense
+        return category_expense * inflation_factor
 
     # 従来方式（既存ロジック）
     # ============================
-    # 手動設定の年間支出があればそれを使用
     manual_expense = config.get('fire', {}).get('manual_annual_expense')
     if manual_expense is not None:
-        return manual_expense
+        return manual_expense * inflation_factor
 
-    # ライフステージ別支出設定を取得
     base_expense_by_stage = config.get('fire', {}).get('base_expense_by_stage', {})
 
-    # ライフステージ設定がない場合はフォールバックを使用
     if not base_expense_by_stage:
         return fallback_expense
 
-    # 子供の情報を取得（最初の子供を基準にライフステージを決定）
     children = config.get('education', {}).get('children', [])
     if not children:
-        # 子供がいない場合はempty_nestの支出を使用
-        return base_expense_by_stage.get('empty_nest', fallback_expense)
-
-    # 最初の子供の年齢を計算してライフステージを決定
-    current_date = datetime.now()
+        if 'empty_nest' in base_expense_by_stage:
+            return base_expense_by_stage['empty_nest'] * inflation_factor
+        return fallback_expense
 
     child = children[0]
     birthdate_str = child.get('birthdate')
@@ -3045,15 +3066,24 @@ def calculate_base_expense(year_offset: float, config: Dict[str, Any], fallback_
 
     child_age = _get_age_at_offset(birthdate_str, year_offset)
 
-    # 基本支出（第一子の年齢に基づく）
-    stage = _get_life_stage(child_age)
-    base_expense = base_expense_by_stage.get(stage, fallback_expense)
+    # 第一子が未出生の場合、子供がいないものとして扱う（Fix 5）
+    if child_age < 0:
+        if 'empty_nest' in base_expense_by_stage:
+            return base_expense_by_stage['empty_nest'] * inflation_factor
+        return fallback_expense
 
-    # 第二子以降：各子供の年齢（ステージ）に応じた追加費用を加算
+    stage = _get_life_stage(child_age)
+
+    # ステージキーが存在しない場合はfallback（既にインフレ適用済み）を返す
+    if stage not in base_expense_by_stage:
+        return fallback_expense
+    base_expense = base_expense_by_stage[stage]
+
     additional_by_stage = config.get('fire', {}).get('additional_child_expense_by_stage', {})
 
     if additional_by_stage and len(children) > 1:
-        simulation_date = current_date + pd.Timedelta(days=year_offset * 365.25)
+        ref_date = _get_reference_date()
+        simulation_date = ref_date + pd.Timedelta(days=year_offset * 365.25)
 
         for additional_child in children[1:]:
             child_birthdate_str = additional_child.get('birthdate')
@@ -3062,17 +3092,17 @@ def calculate_base_expense(year_offset: float, config: Dict[str, Any], fallback_
 
             child_birthdate = datetime.strptime(child_birthdate_str, '%Y/%m/%d')
 
-            # まだ生まれていない場合はスキップ
             if child_birthdate > simulation_date:
                 continue
 
-            # 各子供の年齢からステージを判定
             child_age = _get_age_at_offset(child_birthdate_str, year_offset)
+            if child_age < 0:
+                continue
             child_stage = _get_life_stage(child_age)
 
             base_expense += additional_by_stage.get(child_stage, 0)
 
-    return base_expense
+    return base_expense * inflation_factor
 
 
 def _initialize_future_simulation(
@@ -3292,8 +3322,9 @@ def _process_future_monthly_cycle(
     # - このステップで生活費1ヶ月分を株式から現金に変換
     # - 次のステップでその現金から支出を引き出し
     if fire_achieved:
-        # ベースラインシミュレーションではドローダウン計算がないため0を使用
-        # （暴落判定は常にfalse、常に月初売却が実行される）
+        # ベースラインシミュレーション（決定論的）ではドローダウン計算を行わない。
+        # 動的支出削減はMCシミュレーション内で各パスのドローダウンに応じて適用される。
+        # ベースラインはMC結果と比較するための楽観的基準線として機能する。
         drawdown = 0
         is_start_of_month = True  # ベースラインシミュレーションでは毎月処理
 
@@ -3364,7 +3395,9 @@ def _process_future_monthly_cycle(
                 print(f"  FIRE強制達成 at month {month} ({years:.1f} years), assets=JPY{total_assets:,.0f}")
         else:
             annual_pension_premium_for_fire = calculate_national_pension_premium(years, config, fire_achieved=True)
-            annual_health_insurance_premium_for_fire = calculate_national_health_insurance_premium(years, config, fire_achieved=True)
+            annual_health_insurance_premium_for_fire = calculate_national_health_insurance_premium(
+                years, config, fire_achieved=True, prev_year_capital_gains=prev_year_capital_gains
+            )
             current_annual_expense = (base_expense + monthly_education_expense + monthly_mortgage_payment + monthly_maintenance_cost + monthly_workation_cost) * 12 + annual_pension_premium_for_fire + annual_health_insurance_premium_for_fire
 
             if allocation_enabled:
@@ -3498,8 +3531,8 @@ def simulate_future_assets(
     fire_achieved = False
     fire_month = None
 
-    # 開始日
-    current_date = datetime.now()
+    _set_reference_date()
+    current_date = _get_reference_date()
     current_year = current_date.year
     nisa_used_this_year = 0
     capital_gains_this_year = 0
@@ -3595,7 +3628,7 @@ def _process_withdrawal_monthly_cycle(
     # ライフステージ別の基本生活費を計算
     fallback_annual_expense = annual_expense * (1 + inflation_rate) ** years_elapsed
     if config is not None:
-        annual_base_expense = calculate_base_expense(years_elapsed, config, fallback_annual_expense)
+        annual_base_expense = calculate_base_expense(years_elapsed, config, fallback_annual_expense, inflation_rate)
     else:
         annual_base_expense = fallback_annual_expense
     adjusted_base_expense = annual_base_expense / 12
@@ -3679,7 +3712,7 @@ def _process_withdrawal_monthly_cycle(
     # 資産更新（年金収入、児童手当、FIRE後副収入も考慮）
     assets = assets - total_expense + investment_return + monthly_pension_income + monthly_child_allowance + monthly_post_fire_income
 
-    # 資産が破綻ライン（500万円）以下になったら終了
+    # 資産が破綻ライン（100万円）以下になったら終了
     should_break = assets <= _BANKRUPTCY_THRESHOLD
 
     return {
@@ -3729,6 +3762,7 @@ def run_monte_carlo_simulation(
             'all_results': 全イテレーションの結果リスト
         }
     """
+    _set_reference_date()
     print(f"Running Monte Carlo simulation ({iterations} iterations)...")
 
     # ステップ1: ベースシミュレーション（固定リターン）でFIRE達成時点を取得

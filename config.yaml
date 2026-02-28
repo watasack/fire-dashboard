@@ -412,6 +412,10 @@ fire:
   # ワーケーション費用のベースライン比較削減も引き続き併用
   dynamic_expense_reduction:
     enabled: true
+    drawdown_thresholds:
+      level_1_warning: -0.10   # -10%で警戒
+      level_2_concern: -0.20   # -20%で深刻
+      level_3_crisis: -0.35    # -35%で危機
     reduction_rates:
       level_0_normal: 0.0      # 平常時: 削減なし
       level_1_warning: 0.2    # 警戒（-15%～-30%）: 裁量支出10%削減
@@ -432,7 +436,7 @@ fire:
   # 最適化結果（optimize_pension.py が自動更新）
   # optimal_fire_month が設定されている場合、ダッシュボードはこの月でFIREしたものとしてMCを実行する
   # null の場合は従来通り最初にFIRE可能になった月を使用
-  optimal_fire_month: 52       # 最適化結果: 月52、成功率98.4%
+  optimal_fire_month: 44       # 最適化結果: 月44、成功率95.2%
   optimal_extra_monthly_budget: 0  # 最適化結果: FIRE後追加月額予算
   min_success_rate: 0.95       # 最適化の成功率閾値
 
@@ -509,7 +513,7 @@ mortgage:
 # 住宅メンテナンス費用設定
 house_maintenance:
   enabled: true                # 住宅メンテナンス費用を有効化
-  # 建設年（メンテナンス周期の基準）
+  # 建設年（参考情報。実際の周期計算はitems.first_yearを使用）
   construction_year: 2025
   # 定期メンテナンス項目のリスト
   items:
