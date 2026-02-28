@@ -30,7 +30,15 @@ from src.analyzer import (
     analyze_expense_by_category,
     generate_action_items
 )
-from src.simulator import simulate_future_assets, run_monte_carlo_simulation
+from src.simulator import (
+    simulate_future_assets,
+    run_monte_carlo_simulation,
+    _extract_override_start_ages,
+    _simulate_post_fire_with_random_returns,
+    _precompute_monthly_cashflows,
+    generate_random_returns,
+    generate_returns_enhanced,
+)
 from src.visualizer import (
     create_fire_timeline_chart
 )
@@ -80,15 +88,27 @@ def main():
             print(f"  Using fixed initial labor income: JPY{initial_labor_income:,.0f}/month")
             monthly_income = initial_labor_income
 
+        override_start_ages = _extract_override_start_ages(config)
+        if override_start_ages:
+            print(f"  Pension override: {override_start_ages}")
+
+        optimal_fire_month = config.get('fire', {}).get('optimal_fire_month')
+        extra_monthly_budget = config.get('fire', {}).get('optimal_extra_monthly_budget', 0)
+        if extra_monthly_budget:
+            print(f"  Extra monthly budget: JPY{extra_monthly_budget:,.0f}")
+
         simulations = {}
-        for scenario in ['standard']:  # 標準シナリオのみ
+        for scenario in ['standard']:
             print(f"  Simulating {scenario} scenario...")
             simulations[scenario] = simulate_future_assets(
                 current_assets=current_status['net_assets'],
-                monthly_income=monthly_income,  # 設定値または予測値を使用
+                monthly_income=monthly_income,
                 monthly_expense=trends['monthly_avg_expense'],
                 config=config,
-                scenario=scenario
+                scenario=scenario,
+                override_start_ages=override_start_ages,
+                force_fire_month=optimal_fire_month,
+                extra_monthly_budget=extra_monthly_budget,
             )
         print("[OK] Simulations complete\n")
 
@@ -99,14 +119,18 @@ def main():
 
         if 'standard' in simulations:
             df = simulations['standard']
-            # FIRE達成月を探す（シミュレーションで記録されたfire_achievedフラグを使用）
             fire_rows = df[df['fire_achieved'] == True]
 
             if len(fire_rows) > 0:
-                # FIRE達成した最初の月を取得
                 fire_row = fire_rows.iloc[0]
                 fire_date = fire_row['date']
                 month_num = fire_row['fire_month']
+                if optimal_fire_month is not None:
+                    print(f"  Using optimized FIRE month: {optimal_fire_month}")
+            else:
+                fire_row = None
+
+            if fire_row is not None:
                 years = int(month_num / 12)
                 months = int(month_num % 12)
 
@@ -119,7 +143,6 @@ def main():
                     'fire_assets': fire_row['assets']
                 }
 
-                # 後方互換性のためfire_target辞書を作成
                 fire_target = {
                     'recommended_target': fire_row['assets'],
                     'current_net_assets': current_status['net_assets'],
@@ -134,7 +157,6 @@ def main():
                 print(f"  FIRE Target: JPY{fire_target['recommended_target']:,.0f}")
             else:
                 print("  FIRE not achievable within simulation period")
-                # デフォルト値を設定
                 fire_target = {
                     'recommended_target': 0,
                     'current_net_assets': current_status['net_assets'],
@@ -170,7 +192,10 @@ def main():
                 scenario='standard',
                 iterations=mc_iterations,
                 monthly_income=monthly_income,
-                monthly_expense=trends['monthly_avg_expense']
+                monthly_expense=trends['monthly_avg_expense'],
+                override_start_ages=override_start_ages,
+                min_fire_month=optimal_fire_month,
+                extra_monthly_budget=extra_monthly_budget,
             )
             print("[OK] Monte Carlo simulation complete\n")
 
