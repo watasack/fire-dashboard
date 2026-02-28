@@ -95,7 +95,7 @@ python scripts/dynamic_reduction_analysis.py
 - P10: 0円（破産） → 33.6万円（破産回避）
 
 **注:** config.yamlで `dynamic_expense_reduction.enabled: true` に設定すると、
-全シミュレーションで暴落時の支出削減と副収入増加が適用されます。
+全シミュレーションで暴落時の支出削減が適用されます。（副収入増加機能は削除済み）
 
 ### カテゴリ別予算管理（詳細版）
 
