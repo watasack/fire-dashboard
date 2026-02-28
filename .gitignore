@@ -7,6 +7,14 @@
 dashboard/*
 !dashboard/assets/
 
+# Node.js（スクリーンショット取得用）
+node_modules/
+package.json
+package-lock.json
+
+# ビジュアルテスト用スクリーンショット（作業用一時ファイル）
+dashboard_screenshots/
+
 # Python
 __pycache__/
 *.py[cod]

@@ -15,7 +15,8 @@
 │   ├── data_loader.py          # データ読み込み
 │   ├── data_processor.py       # データ処理
 │   ├── analyzer.py             # 現状分析
-│   ├── visualizer.py           # グラフ生成
+│   ├── data_schema.py          # データスキーマ定義
+│   ├── visualizer.py           # グラフ生成（Plotly）
 │   └── html_generator.py       # HTMLダッシュボード生成
 ├── tests/
 │   ├── test_simulation_convergence.py  # 統合テスト（主要）
@@ -23,7 +24,10 @@
 ├── scripts/
 │   └── generate_dashboard.py   # ダッシュボード生成スクリプト
 ├── dashboard/
-│   └── index.html              # 生成されたダッシュボード
+│   ├── index.html              # 生成されたダッシュボード
+│   └── assets/
+│       └── styles.css          # ダッシュボードのスタイル
+├── dashboard_screenshots/       # ビジュアルテスト用スクリーンショット
 ├── .serena/
 │   └── analysis-bug-root-cause.md  # バグ根本原因分析
 ├── README.md                    # シミュレーション仕様書（NotebookLM用）
@@ -165,6 +169,68 @@ python -m pytest tests/test_category_dynamic_reduction.py -v
 
 `expense_categories.enabled: false` の場合、従来の総額方式（`base_expense_by_stage`）が使用されます。
 既存のシミュレーションに影響を与えません。
+
+---
+
+## ビジュアルテスト（スクリーンショットベース）
+
+ダッシュボードのUI/UX変更時は、**スクリーンショットを取得して実際の描画結果を確認する**ことを推奨する。CSSやHTMLの変更はコードだけでは最終的な見た目を判断できないため、必ずブラウザでの実際の描画を確認する。
+
+### ワークフロー
+
+```
+1. コード変更（visualizer.py / html_generator.py / styles.css）
+2. ダッシュボード再生成
+     .venv/bin/python scripts/generate_dashboard.py
+3. ブラウザでスクリーンショットを取得
+4. 画像を確認し、意図通りの描画かを判断
+5. 問題があれば 1 に戻る
+```
+
+### スクリーンショットの取得方法
+
+ブラウザ自動化ツール（Playwright等）を使い、`file:///` プロトコルでダッシュボードHTMLを開いてスクリーンショットを取得する。
+
+**推奨設定:**
+- ビューポート幅: **1440px**（ダッシュボードの `max-width` に合わせる）
+- デバイススケール: **2x以上**（高解像度キャプチャ）
+
+**撮影対象の推奨区分:**
+
+| 区分 | 対象 | 確認ポイント |
+|------|------|------------|
+| 全体 | ページ全体 | 全体のバランス、セクション間の余白、情報密度 |
+| ヘッダー+KPI | Hero KPI + リスクカード | 数値の視認性、カード高さの均等性、色の意味 |
+| メインチャート | 資産シミュレーション | 色の区別（蓄積期/FIRE期）、凡例の読みやすさ、基準線の視認性 |
+| 並列セクション | 収支チャート + ライフイベント表 | 横並びのバランス、テーブルの読みやすさ |
+| 下部パネル | 前提条件 + 最適化結果 | 折りたたみ動作、バッジの表示、展開時の内容 |
+
+### スクリーンショットの保存
+
+`dashboard_screenshots/` ディレクトリに保存する。命名規則:
+
+```
+{バージョン}_{セクション}.png
+
+例:
+  v5_full.png          — v5全体
+  v5_chart_closeup.png — v5のメインチャート拡大
+  v7_risk_cards.png    — v7のリスクカード
+```
+
+バージョン番号は作業セッション内で連番とする（gitコミット単位ではない）。
+
+### ビジュアルテストが必要な変更の例
+
+- Plotlyチャートの色・レイアウト変更（`visualizer.py`）
+- CSSのグリッドレイアウト・間隔調整（`styles.css`）
+- HTMLの構造変更・セクション追加（`html_generator.py`）
+- レスポンシブ対応の確認（ビューポート幅を変えて撮影）
+
+### 注意事項
+
+- Plotlyチャートは `include_plotlyjs='cdn'` でCDNからJSを読み込むため、スクリーンショット取得時にはネットワーク接続が必要
+- スクリーンショットは `.gitignore` に含めてリポジトリにはコミットしない（作業用の一時ファイル）
 
 ---
 
