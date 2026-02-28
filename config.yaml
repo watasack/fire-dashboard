@@ -28,8 +28,8 @@ simulation:
   life_expectancy: 90          # 想定寿命
   # 労働収入（夫婦別設定）
   shuhei_income: 465875  # 修平の手取り月額（円）: 年収7,507,388→社保・税引後
-  sakura_income: 300000  # 桜の手取り月額（円）: 個人事業主の想定手取り
-  initial_labor_income: 765875 # 世帯手取り合計（shuhei_income + sakura_income）
+  sakura_income: 500000  # 桜の手取り月額（円）: 個人事業主の想定手取り
+  initial_labor_income: 965875 # 世帯手取り合計（shuhei_income + sakura_income）
   shuhei_post_fire_income: 50000    # FIRE後の修平の副収入（月額・円）開発業務など
   sakura_post_fire_income: 200000   # FIRE後の桜の月収（個人事業主として継続）
 
@@ -55,6 +55,7 @@ simulation:
     inflation_rate: 0.02       # インフレ率 2%
     income_growth_rate: 0.02   # 収入成長率 2%
     expense_growth_rate: 0.02  # 支出成長率 2%（インフレ連動）
+    pension_growth_rate: 0.01  # 年金成長率 1%（マクロ経済スライド相当）
 
   # モンテカルロシミュレーション設定
   monte_carlo:
@@ -179,15 +180,10 @@ fire:
         discretionary: true
         description: 'カラオケ・ゲーム・アミューズメント施設'
 
-      - id: travel_domestic
-        name: '旅行（国内）'
+      - id: travel
+        name: '旅行'
         discretionary: true
-        description: '国内旅行・温泉・帰省'
-
-      - id: travel_international
-        name: '旅行（海外）'
-        discretionary: true
-        description: '海外旅行・ワーケーション'
+        description: '国内旅行・海外旅行・温泉・帰省'
 
       - id: hobby
         name: '趣味'
@@ -217,195 +213,277 @@ fire:
     # ライフステージ別の予算配分（年額・円）
     # 各ステージの合計は base_expense_by_stage と一致するよう設計
     budgets_by_stage:
-      # 子供が0-5歳（未就学）: 合計 2,596,000円
-      # 基礎生活費 1,896,000円 (73%) / 裁量的支出 700,000円 (27%)
+      # 子供が0-5歳（未就学）: 合計 2,760,000円 ※2025年実績ベース
+      # 基礎生活費 1,557,000円 (56%) / 裁量的支出 1,203,000円 (44%)
       young_child:
-        food_home: 600000              # 食費（自炊）: 月5万円
-        utilities_electricity: 120000   # 電気: 月1万円
-        utilities_gas: 60000            # ガス: 月5千円
-        utilities_water: 60000          # 水道: 月5千円
-        communication_mobile: 46000     # 携帯: 月3,800円（2人分格安SIM）
-        communication_internet: 60000   # ネット: 月5千円
+        food_home: 780000              # 食費（自炊）: 月6.5万円 ※2025年実績78万
+        utilities_electricity: 96000    # 電気: 月8,000円（実績12万-太陽光売電▲2万）
+        utilities_gas: 50000            # ガス: 月4,167円 ※2025年実績5万
+        utilities_water: 43000          # 水道: 月3,583円 ※2025年実績4.3万
+        communication_mobile: 46000     # 携帯: 月3,833円 ※2025年実績4.6万
+        communication_internet: 57000   # ネット: 月4,750円 ※2025年実績5.7万
         transport_commute: 0            # 定期券: FIRE後は0円
-        insurance_life: 240000          # 生命保険: 月2万円
-        insurance_casualty: 120000      # 損害保険: 月1万円
-        medical: 120000                 # 医療費: 月1万円
-        household_goods: 470000         # 日用品: 月3.9万円（おむつ・育児用品含む）
-        food_out: 240000                # 外食: 月2万円
-        transport_other: 60000          # 交通費（その他）: 月5千円
-        clothing: 120000                # 被服費: 月1万円
-        entertainment_movies: 36000     # 映画等: 月3千円
-        entertainment_other: 60000      # 娯楽（その他）: 月5千円
-        travel_domestic: 60000          # 国内旅行: 年6万円
-        travel_international: 0         # 海外旅行: 0円（幼児がいるため）
-        hobby: 48000                    # 趣味: 月4千円
-        education_books: 24000          # 書籍: 月2千円
-        education_courses: 24000        # 講座: 月2千円
-        beauty: 24000                   # 美容: 月2千円
-        other: 4000                     # その他: バッファ
+        insurance_life: 0               # 生命保険: 未契約
+        insurance_casualty: 0           # 損害保険: 未契約
+        medical: 5000                   # 医療費・薬: ※2025年実績5,264円（健康な年）
+        household_goods: 480000         # 日用品: 月4万円 ※2025年実績48万（おむつ・育児用品含む）
+        food_out: 280000                # 外食: 月2.3万円 ※2025年実績28万
+        transport_other: 260000         # 交通費（その他）: 月2.2万円 ※2025年実績26万
+        clothing: 110000                # 被服費: 月9,167円 ※2025年実績11万
+        entertainment_movies: 20000     # 映画等: 月1,667円 ※2025年実績2万
+        entertainment_other: 20000      # 娯楽（遊園地等）: 月1,667円 ※2025年実績2万
+        travel: 250000                  # 旅行: 年25万円 ※2025年実績25万（海外含む）
+        hobby: 40000                    # 趣味（おもちゃ等）: 月3,333円 ※2025年実績4万
+        education_books: 20000          # 書籍: 月1,667円 ※2025年実績2万
+        education_courses: 120000       # 習い事: 月1万円 ※2025年実績12万
+        beauty: 30000                   # 美容: 月2,500円 ※2025年実績3万
+        other: 53000                    # その他（家具家電3.3万・交際費2万）※2025年実績5.3万
 
-      # 子供が6-11歳（小学生）: 合計 2,814,000円
-      # 基礎生活費 1,914,000円 (68%) / 裁量的支出 900,000円 (32%)
+      # 子供が6-11歳（小学生）: 合計 3,232,000円 ※2025年実績比率適用
+      # 基礎生活費 1,589,000円 (49%) / 裁量的支出 1,643,000円 (51%)
       elementary:
-        food_home: 660000              # 食費増（成長期）
-        utilities_electricity: 132000   # 電気増（在宅時間増）
-        utilities_gas: 66000
-        utilities_water: 66000
+        food_home: 858000              # 食費増（成長期）
+        utilities_electricity: 108000   # 電気: 月9,000円（在宅増分考慮-太陽光売電）
+        utilities_gas: 55000
+        utilities_water: 47000
         communication_mobile: 46000
-        communication_internet: 60000
+        communication_internet: 57000
         transport_commute: 0
-        insurance_life: 240000
-        insurance_casualty: 120000
-        medical: 120000
-        household_goods: 404000         # 日用品減（おむつ卒業）
-        food_out: 270000                # 外食増
-        transport_other: 72000          # 習い事送迎等
-        clothing: 120000                # 被服費増（成長で買い替え）
-        entertainment_movies: 48000
-        entertainment_other: 72000
-        travel_domestic: 100000         # 旅行増
-        travel_international: 40000     # 海外旅行開始
-        hobby: 60000
-        education_books: 36000
-        education_courses: 36000        # オンライン学習等
-        beauty: 36000
-        other: 10000
+        insurance_life: 0               # 生命保険: 未契約
+        insurance_casualty: 0           # 損害保険: 未契約
+        medical: 5000
+        household_goods: 413000         # 日用品減（おむつ卒業）
+        food_out: 315000                # 外食増
+        transport_other: 312000         # 習い事送迎等
+        clothing: 110000                # 被服費
+        entertainment_movies: 27000
+        entertainment_other: 24000
+        travel: 417000                  # 旅行（国内・海外含む）
+        hobby: 50000
+        education_books: 30000
+        education_courses: 180000       # 習い事増
+        beauty: 45000
+        other: 133000
 
-      # 子供が12-14歳（中学生）: 合計 2,992,000円
-      # 基礎生活費 2,032,000円 (68%) / 裁量的支出 960,000円 (32%)
+      # 子供が12-14歳（中学生）: 合計 3,468,000円 ※2025年実績比率適用
+      # 基礎生活費 1,723,000円 (50%) / 裁量的支出 1,745,000円 (50%)
       junior_high:
-        food_home: 720000              # 食費増（成長期ピーク）
-        utilities_electricity: 144000
-        utilities_gas: 72000
-        utilities_water: 72000
+        food_home: 936000              # 食費増（成長期ピーク）
+        utilities_electricity: 120000   # 電気: 月1万円（在宅増分考慮-太陽光売電）
+        utilities_gas: 60000
+        utilities_water: 52000
         communication_mobile: 55000     # 子供にスマホ支給（格安SIM）
-        communication_internet: 60000
+        communication_internet: 57000
         transport_commute: 0
-        insurance_life: 240000
-        insurance_casualty: 120000
-        medical: 120000
-        household_goods: 429000
-        food_out: 288000                # 外食増
-        transport_other: 84000          # 部活遠征等
-        clothing: 120000                # 制服・部活用品
-        entertainment_movies: 60000
-        entertainment_other: 84000
-        travel_domestic: 96000
-        travel_international: 36000
-        hobby: 72000                    # 部活・趣味増
-        education_books: 36000
-        education_courses: 36000
-        beauty: 36000
-        other: 12000
+        insurance_life: 0               # 生命保険: 未契約
+        insurance_casualty: 0           # 損害保険: 未契約
+        medical: 5000
+        household_goods: 438000
+        food_out: 336000                # 外食増
+        transport_other: 364000         # 部活遠征等
+        clothing: 110000                # 制服・部活用品
+        entertainment_movies: 33000
+        entertainment_other: 28000
+        travel: 400000                  # 旅行（国内・海外含む）
+        hobby: 60000                    # 部活・趣味増
+        education_books: 30000
+        education_courses: 180000
+        beauty: 45000
+        other: 159000
 
-      # 子供が15-17歳（高校生）: 合計 3,139,000円
-      # 基礎生活費 1,984,000円 (63%) / 裁量的支出 1,155,000円 (37%)
+      # 子供が15-17歳（高校生）: 合計 3,830,000円 ※2025年実績比率適用
+      # 基礎生活費 1,672,000円 (44%) / 裁量的支出 2,158,000円 (56%)
       high_school:
-        food_home: 720000
-        utilities_electricity: 144000
-        utilities_gas: 72000
-        utilities_water: 72000
+        food_home: 936000
+        utilities_electricity: 120000   # 電気: 月1万円（在宅増分考慮-太陽光売電）
+        utilities_gas: 60000
+        utilities_water: 52000
         communication_mobile: 55000
-        communication_internet: 60000
+        communication_internet: 57000
         transport_commute: 120000       # 高校通学定期（遠距離想定）
-        insurance_life: 240000
-        insurance_casualty: 120000
-        medical: 120000
-        household_goods: 261000         # 日用品減
-        food_out: 330000                # 外食増（友人と外食増加）
-        transport_other: 132000         # 部活遠征・受験見学等
-        clothing: 143000                # 私服増加
-        entertainment_movies: 66000
-        entertainment_other: 99000
-        travel_domestic: 110000
-        travel_international: 60000     # 修学旅行等
-        hobby: 99000
-        education_books: 33000
-        education_courses: 33000
-        beauty: 33000
-        other: 17000
+        insurance_life: 0               # 生命保険: 未契約
+        insurance_casualty: 0           # 損害保険: 未契約
+        medical: 5000
+        household_goods: 267000         # 日用品減
+        food_out: 385000                # 外食増（友人と外食増加）
+        transport_other: 572000         # 部活遠征・受験見学等
+        clothing: 131000                # 私服増加
+        entertainment_movies: 37000
+        entertainment_other: 33000
+        travel: 458000                  # 旅行（国内・海外含む、修学旅行等）
+        hobby: 83000
+        education_books: 28000
+        education_courses: 165000
+        beauty: 41000
+        other: 225000
 
-      # 子供が18-21歳（大学生）: 合計 3,251,000円
-      # 基礎生活費 2,061,000円 (63%) / 裁量的支出 1,190,000円 (37%)
+      # 子供が18-21歳（大学生）: 合計 3,957,000円 ※2025年実績比率適用
+      # 基礎生活費 1,748,000円 (44%) / 裁量的支出 2,209,000円 (56%)
       university:
-        food_home: 720000
-        utilities_electricity: 144000
-        utilities_gas: 72000
-        utilities_water: 72000
+        food_home: 936000
+        utilities_electricity: 120000   # 電気: 月1万円（在宅増分考慮-太陽光売電）
+        utilities_gas: 60000
+        utilities_water: 52000
         communication_mobile: 55000
-        communication_internet: 60000
+        communication_internet: 57000
         transport_commute: 240000       # 大学通学定期（遠距離想定）
-        insurance_life: 240000
-        insurance_casualty: 120000
-        medical: 120000
-        household_goods: 218000
-        food_out: 340000                # 外食増（大学生活）
-        transport_other: 136000
-        clothing: 150000
-        entertainment_movies: 68000
-        entertainment_other: 102000
-        travel_domestic: 114000
-        travel_international: 60000     # ゼミ旅行・卒業旅行等
-        hobby: 102000
-        education_books: 34000
-        education_courses: 34000
-        beauty: 34000
-        other: 16000
+        insurance_life: 0               # 生命保険: 未契約
+        insurance_casualty: 0           # 損害保険: 未契約
+        medical: 5000
+        household_goods: 223000
+        food_out: 397000                # 外食増（大学生活）
+        transport_other: 589000
+        clothing: 138000
+        entertainment_movies: 38000
+        entertainment_other: 34000
+        travel: 475000                  # 旅行（国内・海外含む、ゼミ・卒業旅行等）
+        hobby: 85000
+        education_books: 28000
+        education_courses: 170000
+        beauty: 43000
+        other: 212000
 
-      # 子供独立後（22歳以降）: 合計 2,392,000円
-      # 基礎生活費 1,392,000円 (58%) / 裁量的支出 1,000,000円 (42%)
+      # 子供独立後フォールバック（parent_age 不明時用、empty_nest_active と同値）
       empty_nest:
-        food_home: 480000              # 食費減（二人世帯）
-        utilities_electricity: 96000    # 光熱費減
-        utilities_gas: 48000
-        utilities_water: 48000
+        food_home: 624000              # 食費減（二人世帯）
+        utilities_electricity: 72000    # 電気: 月6,000円（二人世帯-太陽光売電）
+        utilities_gas: 40000
+        utilities_water: 34000
         communication_mobile: 37000     # 携帯減（2人分格安SIM）
-        communication_internet: 60000
+        communication_internet: 57000
         transport_commute: 0            # 定期券不要
-        insurance_life: 180000          # 保険見直し
-        insurance_casualty: 120000
-        medical: 144000                 # 医療費増（加齢）
-        household_goods: 179000         # 日用品減
-        food_out: 240000                # 外食増（時間的余裕）
-        transport_other: 100000         # 趣味の移動増
-        clothing: 120000
-        entertainment_movies: 60000
-        entertainment_other: 80000
-        travel_domestic: 120000         # 旅行大幅増
-        travel_international: 60000     # 海外旅行増
-        hobby: 80000                    # 趣味充実
-        education_books: 40000
-        education_courses: 40000        # 生涯学習
+        insurance_life: 0               # 生命保険: 未契約
+        insurance_casualty: 0           # 損害保険: 未契約
+        medical: 6000                   # 医療費（加齢考慮）
+        household_goods: 183000         # 日用品減
+        food_out: 280000                # 外食（時間的余裕）
+        transport_other: 240000         # 趣味の移動（子ども送迎なし・月2万円）
+        clothing: 110000
+        entertainment_movies: 33000
+        entertainment_other: 27000
+        travel: 350000                  # 旅行（ワーケーション70万別途計上のため抑制）
+        hobby: 67000                    # 趣味充実
+        education_books: 33000
+        education_courses: 150000       # 生涯学習（オンライン講座中心）
+        beauty: 50000
+        other: 180000
+
+      # 子供独立後・アクティブ期（親〜69歳）: 合計 2,573,000円
+      # 基礎生活費 1,053,000円 (41%) / 裁量的支出 1,520,000円 (59%)
+      empty_nest_active:
+        food_home: 624000              # 食費（二人世帯・月5.2万）
+        utilities_electricity: 72000
+        utilities_gas: 40000
+        utilities_water: 34000
+        communication_mobile: 37000
+        communication_internet: 57000
+        transport_commute: 0
+        insurance_life: 0
+        insurance_casualty: 0
+        medical: 6000
+        household_goods: 183000
+        food_out: 280000               # 外食（時間的余裕）
+        transport_other: 240000        # 趣味の移動（月2万）
+        clothing: 110000
+        entertainment_movies: 33000
+        entertainment_other: 27000
+        travel: 350000                 # 旅行（ワーケーション70万別途計上のため抑制）
+        hobby: 67000
+        education_books: 33000
+        education_courses: 150000      # 生涯学習（オンライン講座中心）
+        beauty: 50000
+        other: 180000
+
+      # 子供独立後・シニア期（親70〜79歳）: 合計 2,224,000円
+      # 基礎生活費 1,124,000円 (51%) / 裁量的支出 1,100,000円 (49%)
+      empty_nest_senior:
+        food_home: 580000              # 食欲減退（月4.8万）
+        utilities_electricity: 72000
+        utilities_gas: 40000
+        utilities_water: 34000
+        communication_mobile: 37000
+        communication_internet: 57000
+        transport_commute: 0
+        insurance_life: 0
+        insurance_casualty: 0
+        medical: 144000                # 月1.2万（70代平均・高額療養費後）
+        household_goods: 160000        # 消費量減少
+        food_out: 200000               # 外出頻度低下
+        transport_other: 160000        # 行動範囲縮小
+        clothing: 80000
+        entertainment_movies: 25000
+        entertainment_other: 20000
+        travel: 240000                 # 遠距離旅行減少
+        hobby: 55000
+        education_books: 30000
+        education_courses: 100000      # 活動縮小
         beauty: 40000
-        other: 20000
+        other: 150000
+
+      # 子供独立後・高齢期（親80歳〜）: 合計 1,848,000円
+      # 基礎生活費 1,140,000円 (62%) / 裁量的支出 708,000円 (38%)
+      empty_nest_elderly:
+        food_home: 520000              # 食欲さらに減退（月4.3万）
+        utilities_electricity: 72000
+        utilities_gas: 40000
+        utilities_water: 34000
+        communication_mobile: 37000
+        communication_internet: 57000
+        transport_commute: 0
+        insurance_life: 0
+        insurance_casualty: 0
+        medical: 240000                # 月2万（80代平均・高額療養費後）
+        household_goods: 140000
+        food_out: 120000               # 外食大幅減少
+        transport_other: 80000         # 移動大幅縮小
+        clothing: 50000
+        entertainment_movies: 12000
+        entertainment_other: 10000
+        travel: 100000                 # 近場のみ
+        hobby: 40000
+        education_books: 24000
+        education_courses: 48000
+        beauty: 24000
+        other: 200000                  # 介護関連費・緊急対応費
 
   # ==========================================
-  # 従来方式（後方互換性のため保持）
+  # ライフステージ別合計値（シミュレーション計算用）
   # ==========================================
-  # expense_categories.enabled: false の場合、以下の総額方式を使用
+  # expense_categories の合計値と一致させること（シミュレーションで直接参照）
   # ライフステージ別の基本生活費（教育費・住宅ローン・住宅メンテナンスを除く）
   # 子供の年齢に応じて自動的に切り替わります
   # 家計調査2024年平均（二人以上世帯）から住居費・教育費を除き、
   # 車なし世帯の交通費差分（約▲30万円/年）を反映した値
   base_expense_by_stage:
-    young_child: 2596000    # 子供が0-5歳（未就学）: 260万円/年
-    elementary: 2814000     # 子供が6-11歳（小学生）: 281万円/年
-    junior_high: 2992000    # 子供が12-14歳（中学生）: 299万円/年
-    high_school: 3139000    # 子供が15-17歳（高校生）: 314万円/年
-    university: 3251000     # 子供が18-21歳（大学生）: 325万円/年
-    empty_nest: 2392000     # 子供独立後（22歳以降）: 239万円/年
+    young_child: 2760000    # 子供が0-5歳（未就学）: 276万円/年（旅行統合・電気↓・保険ゼロ後）
+    elementary: 3232000     # 子供が6-11歳（小学生）: 323万円/年（同上）
+    junior_high: 3468000    # 子供が12-14歳（中学生）: 347万円/年（同上）
+    high_school: 3830000    # 子供が15-17歳（高校生）: 383万円/年（同上）
+    university: 3957000     # 子供が18-21歳（大学生）: 396万円/年（同上）
+    empty_nest: 2573000          # 子供独立後フォールバック: 257万円/年
+    empty_nest_active: 2573000   # 子供独立後・アクティブ期（親〜69歳）: 257万円/年
+    empty_nest_senior: 2224000   # 子供独立後・シニア期（親70〜79歳）: 222万円/年
+    empty_nest_elderly: 1848000  # 子供独立後・高齢期（親80歳〜）: 185万円/年
 
-  # 裁量的支出の比率（ライフステージ別）
-  # 基本生活費のうち、暴落時に削減可能な支出の割合
+  # 裁量的支出の比率（ライフステージ別、シミュレーション計算用）
+  # 基本生活費のうち、暴落時に削減可能な支出の割合（expense_categories の discretionary 合計 / 全体合計）
   # 裁量的支出: 旅行、娯楽、外食、ワーケーション等
   # 基礎生活費: 食費（基本）、光熱費、保険、住宅ローン等
   discretionary_ratio_by_stage:
-    young_child: 0.25      # 25%が裁量的（ワーケーション等が主）
-    elementary: 0.30       # 30%（旅行・レジャーが増加）
-    junior_high: 0.30      # 30%
-    high_school: 0.35      # 35%（塾・習い事が基礎に移行、旅行可）
-    university: 0.35       # 35%
-    empty_nest: 0.40       # 40%（教育費なし、旅行・趣味増）
+    young_child: 0.44      # 44%（保険ゼロ・電気↓により必須費が減少、裁量比率が上昇）
+    elementary: 0.51       # 51%
+    junior_high: 0.50      # 50%
+    high_school: 0.56      # 56%
+    university: 0.56       # 56%
+    empty_nest: 0.59           # 59%（フォールバック）
+    empty_nest_active: 0.59    # 59%（アクティブ期）
+    empty_nest_senior: 0.49    # 49%（シニア期: 医療費増により非裁量比率上昇）
+    empty_nest_elderly: 0.38   # 38%（高齢期: 医療費・介護費が中心）
+
+  # 子供独立後サブステージの年齢境界
+  empty_nest_sub_stages:
+    senior_from_age: 70        # 70歳からシニア期
+    elderly_from_age: 80       # 80歳から高齢期
 
   # 動的支出削減設定（暴落時の自動対応）
   # ドローダウンレベルに応じて裁量的支出を段階的に削減
@@ -418,9 +496,9 @@ fire:
       level_3_crisis: -0.35    # -35%で危機
     reduction_rates:
       level_0_normal: 0.0      # 平常時: 削減なし
-      level_1_warning: 0.2    # 警戒（-15%～-30%）: 裁量支出10%削減
-      level_2_concern: 0.5    # 懸念（-30%～-50%）: 裁量支出30%削減
-      level_3_crisis: 0.7     # 危機（-50%以下）: 裁量支出50%削減
+      level_1_warning: 0.4    # 警戒（-15%～-30%）: 裁量支出10%削減
+      level_2_concern: 0.8    # 懸念（-30%～-50%）: 裁量支出30%削減
+      level_3_crisis: 0.95     # 危機（-50%以下）: 裁量支出50%削減
 
   # 追加子供1人あたりの生活費増加（ステージ別・年額・円）
   # 第二子以降、各子供の年齢（ステージ）に応じた追加費用を加算
@@ -436,9 +514,9 @@ fire:
   # 最適化結果（optimize_pension.py が自動更新）
   # optimal_fire_month が設定されている場合、ダッシュボードはこの月でFIREしたものとしてMCを実行する
   # null の場合は従来通り最初にFIRE可能になった月を使用
-  optimal_fire_month: 44       # 最適化結果: 月44、成功率95.2%
+  optimal_fire_month: 73       # 最適化結果: 月73、成功率95.9%
   optimal_extra_monthly_budget: 0  # 最適化結果: FIRE後追加月額予算
-  min_success_rate: 0.95       # 最適化の成功率閾値
+  min_success_rate: 0.90       # 最適化の成功率閾値
 
   # 固定支出（一律、データが不足している場合のフォールバック）
   manual_annual_expense: null  # nullの場合はライフステージ別を使用
@@ -539,10 +617,12 @@ pension:
     - name: '修平'
       birthdate: '1990/05/13'     # 生年月日（YYYY/MM/DD形式）
       pension_type: 'employee'    # 厚生年金 + 国民年金
-      work_start_age: 23          # 就労開始年齢（大卒想定）
-      avg_monthly_salary: 625615  # 平均標準報酬額（円）- 厚生年金計算用
+      work_start_age: 21          # 加入開始年齢（177ヶ月実績から逆算: 35.8歳 - 14.75年）
+      avg_monthly_salary: 625615  # 現在の標準報酬月額（円）- FIRE後将来分の計算用
       # 算出根拠: 年収7,507,388円（月固定556,000×12 + ボーナス417,694×2）/ 12ヶ月
-      # 動的計算により、FIRE達成タイミングに応じて年金額が自動計算されます
+      past_pension_base_annual: 236929   # ねんきん定期便: 老齢厚生年金実績額（円/年）
+      past_contribution_months: 177      # ねんきん定期便: これまでの加入月数
+      # 計算方式: 過去実績(236,929円) + 残り期間(625,615円 × 将来月数 × 0.005481)
       override_start_age: 75      # 最適化結果: 75歳繰下げ（+84.0%増額）
     - name: '桜'
       birthdate: '1991/04/20'     # 生年月日（YYYY/MM/DD形式）
