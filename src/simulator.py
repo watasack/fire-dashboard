@@ -237,6 +237,57 @@ def generate_random_returns(
 
         return returns
 
+
+def generate_random_returns_batch(
+    annual_return_mean: float,
+    annual_return_std: float,
+    total_months: int,
+    n_paths: int,
+    mean_reversion_speed: float = 0.0,
+    random_seed: Optional[int] = None,
+) -> np.ndarray:
+    """
+    月次リターンのバッチ生成（generate_random_returns の N パス同時処理版）
+
+    mean_reversion_speed=0 の場合は完全ベクトル化（ループなし）。
+    mean_reversion_speed>0 の場合は T ループ + N ベクトル演算。
+
+    Args:
+        annual_return_mean: 年率リターン平均
+        annual_return_std: 年率リターン標準偏差
+        total_months: シミュレーション月数
+        n_paths: 同時生成するパス数
+        mean_reversion_speed: 平均回帰の速度（0.0-1.0）
+        random_seed: 乱数シード
+
+    Returns:
+        shape (n_paths, total_months) の月次リターン率行列
+    """
+    rng = np.random.default_rng(random_seed)
+    log_monthly_mean = np.log(1 + annual_return_mean) / 12
+    log_monthly_std = annual_return_std / np.sqrt(12)
+
+    if mean_reversion_speed > 0:
+        eps = rng.standard_normal((n_paths, total_months))
+        returns = np.zeros((n_paths, total_months))
+        prev_log = np.full(n_paths, log_monthly_mean)  # [N]
+
+        for t in range(total_months):
+            deviation = prev_log - log_monthly_mean  # [N]
+            adjustment = -mean_reversion_speed * deviation  # [N]
+            log_ret = log_monthly_mean + adjustment + log_monthly_std * eps[:, t]  # [N]
+            returns[:, t] = np.exp(log_ret) - 1
+            prev_log = log_ret
+
+        return returns
+    else:
+        log_returns = rng.normal(
+            loc=log_monthly_mean,
+            scale=log_monthly_std,
+            size=(n_paths, total_months),
+        )
+        return np.exp(log_returns) - 1
+
 def generate_returns_enhanced(
     annual_return_mean: float,
     annual_return_std: float,
@@ -366,6 +417,83 @@ def generate_returns_enhanced(
 
         # ボラティリティのクリッピング（暴走防止 / 非現実的な静穏防止）
         σ_t = np.sqrt(np.clip(σ_t_squared, σ_floor**2, σ_ceil**2))
+
+    return returns
+
+
+def generate_returns_enhanced_batch(
+    annual_return_mean: float,
+    annual_return_std: float,
+    total_months: int,
+    n_paths: int,
+    config: Dict[str, Any],
+    random_seed: Optional[int] = None,
+) -> np.ndarray:
+    """
+    拡張リターンのバッチ生成（N パス同時処理、高速化版）
+
+    generate_returns_enhanced を N パス同時に生成することで、
+    Python for ループの呼び出し回数を 1/N に削減する。
+
+    時系列依存（GARCH の σ_t、平均回帰の累積リターン）は
+    T 回のループで各ステップをベクトル演算として処理する。
+    ループ回数: N×T → T（N パスを同時処理するため）
+
+    Args:
+        annual_return_mean: 年率期待リターン
+        annual_return_std: 年率ボラティリティ
+        total_months: シミュレーション期間（月）
+        n_paths: 同時生成するパス数
+        config: 設定辞書（monte_carlo.enhanced_model）
+        random_seed: 乱数シード（再現性のため）
+
+    Returns:
+        shape (n_paths, total_months) の月次リターン率行列
+    """
+    rng = np.random.default_rng(random_seed)
+    eps = rng.standard_normal((n_paths, total_months))  # 全ε_t を事前生成
+
+    mc_config = config['simulation'].get('monte_carlo', {})
+    enhanced = mc_config.get('enhanced_model', {})
+
+    ω = enhanced.get('garch_omega', 0.00001)
+    α = enhanced.get('garch_alpha', 0.15)
+    β = enhanced.get('garch_beta', 0.80)
+    σ_floor = enhanced.get('volatility_floor', 0.008)
+    σ_ceil = enhanced.get('volatility_ceiling', 0.035)
+
+    mr_window = enhanced.get('mean_reversion_window', 12)
+    λ_crash = enhanced.get('mr_speed_crash', 0.15)
+    λ_normal = enhanced.get('mr_speed_normal', 0.30)
+    λ_bubble = enhanced.get('mr_speed_bubble', 0.10)
+    crash_thresh = enhanced.get('crash_threshold', -0.15)
+    bubble_thresh = enhanced.get('bubble_threshold', 0.15)
+
+    μ_monthly = np.log(1 + annual_return_mean) / 12
+    σ_long = annual_return_std / np.sqrt(12)
+    R_expected = (1 + annual_return_mean) ** (mr_window / 12) - 1
+
+    returns = np.zeros((n_paths, total_months))
+    σ_t = np.full(n_paths, σ_long)  # [N]
+
+    for t in range(total_months):
+        if t >= mr_window:
+            R_cum = np.prod(1 + returns[:, t - mr_window:t], axis=1) - 1  # [N]
+            R_deviation = R_cum - R_expected  # [N]
+            λ = np.where(
+                R_deviation < crash_thresh, λ_crash,
+                np.where(R_deviation > bubble_thresh, λ_bubble, λ_normal),
+            )  # [N]
+            mr_adjustment = -λ * R_deviation / mr_window  # [N]
+        else:
+            mr_adjustment = 0.0
+
+        log_ret = μ_monthly + mr_adjustment + σ_t * eps[:, t]  # [N]
+        returns[:, t] = np.exp(log_ret) - 1
+
+        realized_shock_sq = (σ_t * eps[:, t]) ** 2  # [N]
+        σ_t_sq = ω + α * realized_shock_sq + β * σ_t ** 2  # [N]
+        σ_t = np.sqrt(np.clip(σ_t_sq, σ_floor ** 2, σ_ceil ** 2))  # [N]
 
     return returns
 
@@ -762,12 +890,36 @@ def _get_age_at_offset(birthdate_str: str, year_offset: float) -> float:
     return current_age + year_offset
 
 
-def _get_life_stage(child_age: float) -> str:
+def _get_primary_parent_age(config: Dict[str, Any], year_offset: float) -> Optional[float]:
+    """
+    設定から主たる親（年金設定の最初の人）の指定年時点での年齢を返す。
+    シミュレーション中の empty_nest サブステージ判定に使用する。
+    """
+    pension_people = config.get('pension', {}).get('people', [])
+    if pension_people:
+        birthdate_str = pension_people[0].get('birthdate')
+        if birthdate_str:
+            return _get_age_at_offset(birthdate_str, year_offset)
+    start_age = config.get('simulation', {}).get('start_age')
+    if start_age is not None:
+        return float(start_age) + year_offset
+    return None
+
+
+def _get_life_stage(
+    child_age: float,
+    parent_age: Optional[float] = None,
+    senior_from_age: int = 70,
+    elderly_from_age: int = 80,
+) -> str:
     """
     子供の年齢からライフステージキーを返す。
+    child_age >= 22（子供独立後）の場合、parent_age に応じてサブステージを返す。
 
     Returns:
-        'young_child' | 'elementary' | 'junior_high' | 'high_school' | 'university' | 'empty_nest'
+        'young_child' | 'elementary' | 'junior_high' | 'high_school' | 'university'
+        | 'empty_nest_active' | 'empty_nest_senior' | 'empty_nest_elderly'
+        | 'empty_nest' (parent_age が不明な場合の後方互換)
     """
     if child_age < 6:
         return 'young_child'
@@ -780,7 +932,14 @@ def _get_life_stage(child_age: float) -> str:
     elif child_age < 22:
         return 'university'
     else:
-        return 'empty_nest'
+        if parent_age is None:
+            return 'empty_nest'
+        if parent_age >= elderly_from_age:
+            return 'empty_nest_elderly'
+        elif parent_age >= senior_from_age:
+            return 'empty_nest_senior'
+        else:
+            return 'empty_nest_active'
 
 
 def _is_enabled(config: Dict, section: str) -> bool:
@@ -942,12 +1101,19 @@ def _calculate_person_pension(
     if pension_type == 'employee':
         avg_monthly_salary = person.get('avg_monthly_salary', 0)
         work_start_age = person.get('work_start_age', 23)
+        past_pension_base = person.get('past_pension_base_annual', 0)
+        past_months = person.get('past_contribution_months', 0)
         if fire_achieved and fire_year_offset is not None:
             work_end_age = _get_age_at_offset(birthdate_str, fire_year_offset)
         else:
             work_end_age = min(person_age, 65)
         work_months = int(max(0, work_end_age - work_start_age) * 12)
-        employees_pension = _calculate_employees_pension_amount(avg_monthly_salary, work_months)
+        if past_pension_base > 0 and past_months > 0:
+            # 実績ベース: ねんきん定期便の過去実績額 + FIREまでの将来積み上げ
+            future_months = max(0, work_months - past_months)
+            employees_pension = past_pension_base + avg_monthly_salary * future_months * _EMPLOYEE_PENSION_MULTIPLIER
+        else:
+            employees_pension = _calculate_employees_pension_amount(avg_monthly_salary, work_months)
         national_pension = _calculate_national_pension_amount(_PENSION_MAX_CONTRIBUTION_YEARS)
         return employees_pension + national_pension
 
@@ -1069,6 +1235,10 @@ def calculate_pension_income(
     start_age_config = config['simulation'].get('start_age', 35)
     current_age = start_age_config + year_offset
 
+    # 年金成長率（マクロ経済スライド相当）
+    pension_growth_rate = config.get('simulation', {}).get('standard', {}).get('pension_growth_rate', 0.0)
+    inflation_factor = (1 + pension_growth_rate) ** year_offset
+
     # override_start_ages 指定時: 各人の開始年齢を直接使用
     if override_start_ages is not None:
         increase_rate = deferral_config.get('deferral_increase_rate', 0.084)
@@ -1093,7 +1263,7 @@ def calculate_pension_income(
             else:
                 adj = 1.0
             total_pension += base * adj
-        return total_pension
+        return total_pension * inflation_factor
 
     # 繰り下げ戦略が無効、または資産情報がない場合は通常受給
     if not deferral_config.get('enabled', False) or current_assets is None:
@@ -1104,7 +1274,7 @@ def calculate_pension_income(
             _calculate_person_pension(person, year_offset, default_start_age, fire_achieved, fire_year_offset)
             for person in pension_config.get('people', [])
         )
-        return base_pension
+        return base_pension * inflation_factor
 
     # 資産状況に基づいて最適な開始年齢を決定
     optimal_start_age = _determine_optimal_pension_start_age(
@@ -1137,7 +1307,7 @@ def calculate_pension_income(
     else:
         adjustment_rate = 1.0
 
-    return base_pension * adjustment_rate
+    return base_pension * adjustment_rate * inflation_factor
 
 
 def calculate_child_allowance(year_offset: float, config: Dict[str, Any]) -> float:
@@ -2489,12 +2659,16 @@ def _precompute_monthly_cashflows(
 
         # ライフステージを取得して記録
         children = config.get('education', {}).get('children', [])
+        _sub = config.get('fire', {}).get('empty_nest_sub_stages', {})
+        _senior_from = _sub.get('senior_from_age', 70)
+        _elderly_from = _sub.get('elderly_from_age', 80)
+        _parent_age = _get_primary_parent_age(config, years)
         if children:
             first_child = children[0]
             child_age = _get_age_at_offset(first_child['birthdate'], years)
-            life_stages[month_idx] = _get_life_stage(child_age)
+            life_stages[month_idx] = _get_life_stage(child_age, _parent_age, _senior_from, _elderly_from)
         else:
-            life_stages[month_idx] = 'empty_nest'
+            life_stages[month_idx] = _get_life_stage(22.0, _parent_age, _senior_from, _elderly_from)
 
         expenses[month_idx] = (
             annual_base / 12 +
@@ -2717,12 +2891,16 @@ def _simulate_post_fire_with_random_returns(
             # ドローダウンベースの裁量支出削減
             if drawdown_level > 0:
                 children_cfg = config.get('education', {}).get('children', [])
+                _sub = config.get('fire', {}).get('empty_nest_sub_stages', {})
+                _senior_from = _sub.get('senior_from_age', 70)
+                _elderly_from = _sub.get('elderly_from_age', 80)
+                _parent_age = _get_primary_parent_age(config, years)
                 if children_cfg:
                     first_child = children_cfg[0]
                     child_age = _get_age_at_offset(first_child['birthdate'], years)
-                    stage = _get_life_stage(child_age)
+                    stage = _get_life_stage(child_age, _parent_age, _senior_from, _elderly_from)
                 else:
-                    stage = 'empty_nest'
+                    stage = _get_life_stage(22.0, _parent_age, _senior_from, _elderly_from)
                 _, dd_breakdown = apply_dynamic_expense_reduction(
                     annual_base_expense, stage, drawdown_level, config
                 )
@@ -2932,10 +3110,13 @@ def calculate_base_expense_by_category(
     discretionary_map = {cat['id']: cat['discretionary'] for cat in definitions}
 
     # 子供の情報を取得（最初の子供を基準にライフステージを決定）
+    _sub = config.get('fire', {}).get('empty_nest_sub_stages', {})
+    _senior_from = _sub.get('senior_from_age', 70)
+    _elderly_from = _sub.get('elderly_from_age', 80)
+    _parent_age = _get_primary_parent_age(config, year_offset)
     children = config.get('education', {}).get('children', [])
     if not children:
-        # 子供がいない場合はempty_nestの支出を使用
-        stage = 'empty_nest'
+        stage = _get_life_stage(22.0, _parent_age, _senior_from, _elderly_from)
     else:
         # 最初の子供の年齢を計算してライフステージを決定
         child = children[0]
@@ -2945,13 +3126,16 @@ def calculate_base_expense_by_category(
 
         child_age = _get_age_at_offset(birthdate_str, year_offset)
         if child_age < 0:
+            stage = _get_life_stage(22.0, _parent_age, _senior_from, _elderly_from)
+        else:
+            stage = _get_life_stage(child_age, _parent_age, _senior_from, _elderly_from)
+
+    # 該当ステージの予算を取得（empty_nest_* が未定義の場合は empty_nest にフォールバック）
+    if stage not in budgets_by_stage:
+        if stage.startswith('empty_nest_') and 'empty_nest' in budgets_by_stage:
             stage = 'empty_nest'
         else:
-            stage = _get_life_stage(child_age)
-
-    # 該当ステージの予算を取得
-    if stage not in budgets_by_stage:
-        return None, {}
+            return None, {}
 
     stage_budget = budgets_by_stage[stage]
 
@@ -3053,11 +3237,25 @@ def calculate_base_expense(
     if not base_expense_by_stage:
         return fallback_expense
 
+    _sub = config.get('fire', {}).get('empty_nest_sub_stages', {})
+    _senior_from = _sub.get('senior_from_age', 70)
+    _elderly_from = _sub.get('elderly_from_age', 80)
+    _parent_age = _get_primary_parent_age(config, year_offset)
     children = config.get('education', {}).get('children', [])
+
+    def _resolve_empty_nest_stage() -> str:
+        return _get_life_stage(22.0, _parent_age, _senior_from, _elderly_from)
+
+    def _get_stage_expense(s: str) -> Optional[float]:
+        if s in base_expense_by_stage:
+            return base_expense_by_stage[s]
+        if s.startswith('empty_nest_') and 'empty_nest' in base_expense_by_stage:
+            return base_expense_by_stage['empty_nest']
+        return None
+
     if not children:
-        if 'empty_nest' in base_expense_by_stage:
-            return base_expense_by_stage['empty_nest'] * inflation_factor
-        return fallback_expense
+        val = _get_stage_expense(_resolve_empty_nest_stage())
+        return val * inflation_factor if val is not None else fallback_expense
 
     child = children[0]
     birthdate_str = child.get('birthdate')
@@ -3068,16 +3266,16 @@ def calculate_base_expense(
 
     # 第一子が未出生の場合、子供がいないものとして扱う（Fix 5）
     if child_age < 0:
-        if 'empty_nest' in base_expense_by_stage:
-            return base_expense_by_stage['empty_nest'] * inflation_factor
-        return fallback_expense
+        val = _get_stage_expense(_resolve_empty_nest_stage())
+        return val * inflation_factor if val is not None else fallback_expense
 
-    stage = _get_life_stage(child_age)
+    stage = _get_life_stage(child_age, _parent_age, _senior_from, _elderly_from)
 
     # ステージキーが存在しない場合はfallback（既にインフレ適用済み）を返す
-    if stage not in base_expense_by_stage:
+    val = _get_stage_expense(stage)
+    if val is None:
         return fallback_expense
-    base_expense = base_expense_by_stage[stage]
+    base_expense = val
 
     additional_by_stage = config.get('fire', {}).get('additional_child_expense_by_stage', {})
 
@@ -4001,5 +4199,349 @@ def run_monte_carlo_simulation(
         'monthly_p84': monthly_p84,
         'monthly_p975': monthly_p975,
     }
+
+
+def _sell_stocks_vectorized(
+    shortage: np.ndarray,
+    stocks: np.ndarray,
+    nisa_balance: np.ndarray,
+    nisa_cost_basis: np.ndarray,
+    stocks_cost_basis: np.ndarray,
+    capital_gains_tax_rate: float,
+    allocation_enabled: bool,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    _sell_stocks_with_tax の NumPy ベクトル化版。N 個の MC iteration を同時処理する。
+
+    Args:
+        shortage: 各 iteration で確保したい金額 [N]
+        stocks: 株式残高（NISA含む）[N]
+        nisa_balance: NISA 残高 [N]
+        nisa_cost_basis: NISA 簿価 [N]
+        stocks_cost_basis: 株式全体の簿価 [N]
+        capital_gains_tax_rate: 譲渡益税率（スカラー）
+        allocation_enabled: 資産配分有効フラグ（スカラー）
+
+    Returns:
+        (nisa_sold, cash_from_taxable, capital_gain,
+         new_stocks, new_nisa_balance, new_nisa_cost_basis, new_stocks_cost_basis)
+        すべて shape [N]
+
+    呼び出し元での現金加算:
+        最低現金型 (_manage_post_fire_cash): cash += nisa_sold + cash_from_taxable
+        支出不足型 (expense payment):        cash += cash_from_taxable のみ
+    """
+    N = len(shortage)
+
+    if not allocation_enabled:
+        sold = np.minimum(shortage, stocks)
+        return (
+            np.zeros(N),
+            sold,
+            np.zeros(N),
+            stocks - sold,
+            nisa_balance.copy(),
+            nisa_cost_basis.copy(),
+            np.maximum(0.0, stocks_cost_basis - sold),
+        )
+
+    # ── NISA 優先売却（非課税）
+    nisa_to_sell = np.minimum(shortage, np.maximum(0.0, nisa_balance))
+    safe_nisa = np.maximum(nisa_balance, 1e-10)
+    nisa_sold_cost = np.where(nisa_balance > 0,
+                               nisa_to_sell / safe_nisa * nisa_cost_basis,
+                               0.0)
+    remaining = shortage - nisa_to_sell
+
+    new_nisa_balance = np.maximum(0.0, nisa_balance - nisa_to_sell)
+    new_nisa_cost_basis = np.maximum(0.0, nisa_cost_basis - nisa_sold_cost)
+    stocks_after_nisa = stocks - nisa_to_sell
+    costs_after_nisa = np.maximum(0.0, stocks_cost_basis - nisa_sold_cost)
+
+    # ── 課税口座売却（税引後で remaining を確保）
+    taxable_stocks = np.maximum(0.0, stocks_after_nisa - new_nisa_balance)
+    has_taxable = (remaining > 0) & (taxable_stocks > 0)
+    safe_taxable = np.maximum(taxable_stocks, 1e-10)
+
+    avg_cost = np.where(
+        has_taxable,
+        (costs_after_nisa - new_nisa_cost_basis) / safe_taxable,
+        0.0,
+    )
+    gain_ratio = np.maximum(0.0, 1.0 - avg_cost)
+    eff_tax = capital_gains_tax_rate * gain_ratio
+    req_sale = np.where(
+        eff_tax < 1.0,
+        remaining / np.maximum(1.0 - eff_tax, 1e-10),
+        remaining,
+    )
+    taxable_sold = np.where(has_taxable, np.minimum(req_sale, taxable_stocks), 0.0)
+
+    sale_cost = taxable_sold * avg_cost
+    capital_gain = np.maximum(0.0, taxable_sold - sale_cost)
+    tax = capital_gain * capital_gains_tax_rate
+    cash_from_taxable = taxable_sold - tax
+
+    new_stocks = stocks_after_nisa - taxable_sold
+    new_stocks_cost = np.maximum(0.0, costs_after_nisa - sale_cost)
+
+    return (
+        nisa_to_sell,
+        cash_from_taxable,
+        capital_gain,
+        new_stocks,
+        new_nisa_balance,
+        new_nisa_cost_basis,
+        new_stocks_cost,
+    )
+
+
+def _simulate_post_fire_mc_vectorized(
+    fire_cash: float,
+    fire_stocks: float,
+    years_offset: float,
+    config: Dict[str, Any],
+    scenario: str,
+    random_returns_matrix: np.ndarray,
+    nisa_balance: float = 0,
+    nisa_cost_basis: float = 0,
+    stocks_cost_basis: float = None,
+    precomputed_expenses: np.ndarray = None,
+    precomputed_income: np.ndarray = None,
+    precomputed_base_expenses: np.ndarray = None,
+    precomputed_life_stages: np.ndarray = None,
+    precomputed_workation_costs: np.ndarray = None,
+    baseline_assets=None,
+    override_start_ages: Dict[str, int] = None,
+    extra_monthly_budget: float = 0,
+) -> np.ndarray:
+    """
+    FIRE 後 MC シミュレーションの NumPy ベクトル化版。
+
+    _simulate_post_fire_with_random_returns の 500 回ループを廃止し、
+    N_iter 個の iteration を月ループ 1 回で同時処理する。
+
+    Args:
+        fire_cash: FIRE 達成時の現金残高
+        fire_stocks: FIRE 達成時の株式残高（NISA 含む）
+        years_offset: FIRE 達成時の経過年数
+        config: 設定辞書（_apply_cash_strategy / _apply_expense_reduction 適用済み）
+        scenario: シナリオ名
+        random_returns_matrix: 月次リターン行列 shape (N_iter, remaining_months)
+        nisa_balance: NISA 残高
+        nisa_cost_basis: NISA 簿価
+        stocks_cost_basis: 株式全体の簿価
+        precomputed_expenses: 事前計算済み月次支出配列
+        precomputed_income: 事前計算済み月次収入配列
+        precomputed_base_expenses: 事前計算済み基本生活費（年額）配列
+        precomputed_life_stages: 事前計算済みライフステージ配列
+        precomputed_workation_costs: 事前計算済みワーケーション費用（月額）配列
+        baseline_assets: ベースライン資産推移（決定論的パス、list）
+        override_start_ages: 年金受給開始年齢オーバーライド（利用しない、互換性のため）
+        extra_monthly_budget: FIRE 後追加月額予算
+
+    Returns:
+        final_assets: shape (N_iter,) 各 iteration の最終資産額（破綻時は 0）
+
+    前提条件:
+        precomputed_expenses is not None（MC では必ず事前計算済みを使用）
+    """
+    assert precomputed_expenses is not None, (
+        "_simulate_post_fire_mc_vectorized requires precomputed_expenses"
+    )
+
+    N = random_returns_matrix.shape[0]
+
+    # ── 初期化（スカラー設定値を抽出）
+    init = _initialize_post_fire_simulation(
+        fire_cash, fire_stocks, years_offset, config,
+        scenario, nisa_balance, nisa_cost_basis, stocks_cost_basis,
+    )
+    remaining_months = init['remaining_months']
+    allocation_enabled = init['allocation_enabled']
+    capital_gains_tax_rate = init['capital_gains_tax_rate']
+
+    if remaining_months <= 0:
+        return np.zeros(N)
+
+    # 月次現金管理設定
+    strategy_cfg = config.get('post_fire_cash_strategy', {})
+    strategy_enabled = allocation_enabled and strategy_cfg.get('enabled', False)
+    safety_margin = strategy_cfg.get('safety_margin', 5_000_000)
+    buffer_months = strategy_cfg.get('monthly_buffer_months', 1)
+    crash_thr = strategy_cfg.get('market_crash_threshold', -0.20)
+    recovery_thr = strategy_cfg.get('recovery_threshold', -0.10)
+    emergency_floor = strategy_cfg.get('emergency_cash_floor', 250_000)
+
+    # ドローダウン閾値・削減率
+    dyn_cfg = config.get('fire', {}).get('dynamic_expense_reduction', {})
+    dd_enabled = dyn_cfg.get('enabled', False)
+    thresholds = dyn_cfg.get('drawdown_thresholds', {})
+    l1_thr = thresholds.get('level_1_warning', -0.10)
+    l2_thr = thresholds.get('level_2_concern', -0.20)
+    l3_thr = thresholds.get('level_3_crisis', -0.35)
+    rate_keys = ['level_0_normal', 'level_1_warning', 'level_2_concern', 'level_3_crisis']
+    _rr = dyn_cfg.get('reduction_rates', {})
+    reduction_rates_arr = np.array([_rr.get(k, 0.0) for k in rate_keys])
+    disc_ratios_map = config.get('fire', {}).get('discretionary_ratio_by_stage', {})
+
+    # 健康保険設定
+    si_enabled = _is_enabled(config, 'social_insurance')
+    si_cfg = config.get('social_insurance', {}) if si_enabled else None
+    annual_side_income = (
+        config['simulation'].get('shuhei_post_fire_income', 0)
+        + config['simulation'].get('sakura_post_fire_income', 0)
+    ) * 12
+
+    if si_cfg is not None:
+        _hi_basic_ded = si_cfg.get('health_insurance_basic_deduction', _HEALTH_INS_BASIC_DEDUCTION)
+        _hi_income_rate = si_cfg.get('health_insurance_income_rate', _HEALTH_INS_DEFAULT_INCOME_RATE)
+        _hi_per_person = si_cfg.get('health_insurance_per_person', 50_000)
+        _hi_members = si_cfg.get('health_insurance_members', 2)
+        _hi_per_hh = si_cfg.get('health_insurance_per_household', 30_000)
+        _hi_max = si_cfg.get('health_insurance_max_premium', 1_060_000)
+        _hi_fixed = _hi_per_person * _hi_members + _hi_per_hh
+
+    # 参照日付・年度
+    reference_date = _get_reference_date()
+    current_year_scalar = (
+        reference_date + relativedelta(months=int(years_offset * 12))
+    ).year
+
+    # ── 状態配列初期化（スカラー → [N]）
+    cash = np.full(N, init['cash'], dtype=np.float64)
+    stocks = np.full(N, init['stocks'], dtype=np.float64)
+    nisa_bal = np.full(N, init['nisa_balance'], dtype=np.float64)
+    nisa_cost = np.full(N, init['nisa_cost_basis'], dtype=np.float64)
+    stk_cost = np.full(N, init['stocks_cost_basis'], dtype=np.float64)
+    cap_gains_yr = np.zeros(N, dtype=np.float64)
+    prev_cap_gains = np.zeros(N, dtype=np.float64)
+
+    # ピーク資産履歴（循環バッファ [N, 12]）
+    peak_history = np.zeros((N, 12), dtype=np.float64)
+
+    # 破綻フラグ
+    bankrupt = np.zeros(N, dtype=bool)
+
+    # ── 月次ループ（T 回、各ステップで N iteration を同時処理）
+    T = min(remaining_months, random_returns_matrix.shape[1])
+
+    for month in range(T):
+        years = years_offset + month / 12
+        date_post = reference_date + relativedelta(months=int(years * 12))
+        date_year = date_post.year
+
+        # 1. 年度進行（year は全 iteration 共通 → スカラー判定）
+        if date_year > current_year_scalar:
+            prev_cap_gains = cap_gains_yr.copy()
+            cap_gains_yr[:] = 0.0
+            current_year_scalar = date_year
+
+        # 2. ピーク履歴更新・ドローダウン計算
+        total_assets = cash + stocks
+        peak_history[:, month % 12] = total_assets
+        peak = peak_history.max(axis=1)
+        safe_peak = np.maximum(peak, 1.0)  # ゼロ除算防止（np.where は両辺を評価するため）
+        drawdown = np.where(peak > 0.0, total_assets / safe_peak - 1.0, 0.0)
+
+        level = np.select(
+            [drawdown >= l1_thr, drawdown >= l2_thr, drawdown >= l3_thr],
+            [0, 1, 2],
+            default=3,
+        ).astype(np.intp)
+
+        # 3. 健康保険料（per-iteration prev_cap_gains を使用）
+        if si_cfg is not None:
+            total_inc = annual_side_income + prev_cap_gains
+            taxable_inc = np.maximum(0.0, total_inc - _hi_basic_ded)
+            annual_prem = np.minimum(taxable_inc * _hi_income_rate + _hi_fixed, _hi_max)
+            health_ins_monthly = annual_prem / 12.0
+        else:
+            health_ins_monthly = 0.0
+
+        # 4. 支出計算（事前計算済み base + 健康保険 + 追加予算）
+        expense = (
+            precomputed_expenses[month]
+            + health_ins_monthly
+            + extra_monthly_budget
+        )
+
+        # ドローダウンベースの裁量支出削減
+        if dd_enabled and precomputed_base_expenses is not None and precomputed_life_stages is not None:
+            stage = precomputed_life_stages[month]
+            disc_ratio = disc_ratios_map.get(stage, 0.30)
+            rate_per_iter = reduction_rates_arr[level]
+            amount_saved = (
+                precomputed_base_expenses[month] * disc_ratio * rate_per_iter / 12.0
+            )
+            expense = expense - amount_saved
+
+        # 5. ベースライン比較によるワーケーション費用削減
+        if baseline_assets is not None and month > 0 and precomputed_workation_costs is not None:
+            prev_actual = cash + stocks
+            prev_expected = baseline_assets[month - 1]
+            shortfall = np.maximum(0.0, prev_expected - prev_actual)
+            workation_mo = precomputed_workation_costs[month]
+            reduction = np.minimum(shortfall, workation_mo)
+            expense = expense - reduction
+
+        # 6. 収入加算（全 iteration 共通）
+        cash = cash + precomputed_income[month]
+
+        # 7. FIRE 後現金管理（allocation 有効時）
+        if strategy_enabled:
+            in_crash = drawdown <= crash_thr
+            is_recovering = drawdown >= recovery_thr
+            is_emergency = cash < emergency_floor
+            should_sell = (~in_crash) | is_recovering | is_emergency
+            target_cash = safety_margin + buffer_months * float(precomputed_expenses[month])
+            shortage_mgmt = np.maximum(0.0, target_cash - cash)
+            to_sell = np.where(should_sell & (stocks > 0.0), shortage_mgmt, 0.0)
+
+            if to_sell.any():
+                nisa_s, cash_t, cap_g, new_stk, new_nb, new_nc, new_sc = (
+                    _sell_stocks_vectorized(
+                        to_sell, stocks, nisa_bal, nisa_cost, stk_cost,
+                        capital_gains_tax_rate, allocation_enabled,
+                    )
+                )
+                cash += nisa_s + cash_t  # 最低現金型: 両方 cash へ
+                cap_gains_yr += cap_g
+                stocks, nisa_bal, nisa_cost, stk_cost = new_stk, new_nb, new_nc, new_sc
+
+        # 8. 支出支払い（不足時に株売却）
+        cash = cash - expense
+        deficit = np.maximum(0.0, -cash)
+        cash = np.maximum(0.0, cash)
+
+        if deficit.any():
+            nisa_s, cash_t, cap_g, new_stk, new_nb, new_nc, new_sc = (
+                _sell_stocks_vectorized(
+                    deficit, stocks, nisa_bal, nisa_cost, stk_cost,
+                    capital_gains_tax_rate, allocation_enabled,
+                )
+            )
+            cash += cash_t  # 支出不足型: cash_from_taxable のみ
+            cap_gains_yr += cap_g
+            stocks, nisa_bal, nisa_cost, stk_cost = new_stk, new_nb, new_nc, new_sc
+
+        # 9. ランダムリターン適用
+        month_ret = random_returns_matrix[:, month]
+        stocks *= 1.0 + month_ret
+        nisa_bal *= 1.0 + month_ret
+
+        # 10. 破綻判定・状態凍結
+        total_assets = cash + stocks
+        newly_bankrupt = (~bankrupt) & (total_assets <= _BANKRUPTCY_THRESHOLD)
+        if newly_bankrupt.any():
+            bankrupt |= newly_bankrupt
+            cash[bankrupt] = 0.0
+            stocks[bankrupt] = 0.0
+            nisa_bal[bankrupt] = 0.0
+            nisa_cost[bankrupt] = 0.0
+            stk_cost[bankrupt] = 0.0
+            cap_gains_yr[bankrupt] = 0.0
+
+    return np.where(bankrupt, 0.0, cash + stocks)
 
 
