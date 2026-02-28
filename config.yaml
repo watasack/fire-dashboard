@@ -33,12 +33,21 @@ simulation:
   shuhei_post_fire_income: 50000    # FIRE後の修平の副収入（月額・円）開発業務など
   sakura_post_fire_income: 200000   # FIRE後の桜の月収（個人事業主として継続）
 
-  # 産休・育休による収入変動（個人事業主のため育休給付金なし → 期間中は0円）
+  # 産休・育休による収入変動
+  # 桜（個人事業主のため育休給付金なし → 期間中は0円）
   maternity_leave:
     - child: '楓'              # education.children の name と一致させる
       months_before: 2         # 産前2ヶ月前から
       months_after: 12         # 産後12ヶ月まで（計14ヶ月）
-      monthly_income: 0        # 期間中の桜の月収（給付金がある場合は金額を入力）
+      monthly_income: 0        # 期間中の桜の月収
+
+  # 修平の育休（会社員のため育児休業給付金あり）
+  # 給付金: 最初の180日は67%、以降は50%（上限あり）
+  shuhei_parental_leave:
+    - child: '楓'              # education.children の name と一致させる
+      months_after: 12         # 産後12ヶ月間取得
+      monthly_income: 310000   # 育児休業給付金（手取り相当）: 最初6ヶ月は上限約31万円/月（非課税）
+      monthly_income_after_180days: 231000  # 181日目以降: 50%相当、上限約23万円/月（非課税）
 
   # 標準シナリオ
   standard:
@@ -208,20 +217,20 @@ fire:
     # ライフステージ別の予算配分（年額・円）
     # 各ステージの合計は base_expense_by_stage と一致するよう設計
     budgets_by_stage:
-      # 子供が0-5歳（未就学）: 合計 2,800,000円
-      # 基礎生活費 2,100,000円 (75%) / 裁量的支出 700,000円 (25%)
+      # 子供が0-5歳（未就学）: 合計 2,596,000円
+      # 基礎生活費 1,896,000円 (73%) / 裁量的支出 700,000円 (27%)
       young_child:
         food_home: 600000              # 食費（自炊）: 月5万円
         utilities_electricity: 120000   # 電気: 月1万円
         utilities_gas: 60000            # ガス: 月5千円
         utilities_water: 60000          # 水道: 月5千円
-        communication_mobile: 120000    # 携帯: 月1万円（2人分）
+        communication_mobile: 46000     # 携帯: 月3,800円（2人分格安SIM）
         communication_internet: 60000   # ネット: 月5千円
         transport_commute: 0            # 定期券: FIRE後は0円
         insurance_life: 240000          # 生命保険: 月2万円
         insurance_casualty: 120000      # 損害保険: 月1万円
         medical: 120000                 # 医療費: 月1万円
-        household_goods: 600000         # 日用品: 月5万円（おむつ・育児用品含む）
+        household_goods: 470000         # 日用品: 月3.9万円（おむつ・育児用品含む）
         food_out: 240000                # 外食: 月2万円
         transport_other: 60000          # 交通費（その他）: 月5千円
         clothing: 120000                # 被服費: 月1万円
@@ -235,20 +244,20 @@ fire:
         beauty: 24000                   # 美容: 月2千円
         other: 4000                     # その他: バッファ
 
-      # 子供が6-11歳（小学生）: 合計 3,000,000円
-      # 基礎生活費 2,100,000円 (70%) / 裁量的支出 900,000円 (30%)
+      # 子供が6-11歳（小学生）: 合計 2,814,000円
+      # 基礎生活費 1,914,000円 (68%) / 裁量的支出 900,000円 (32%)
       elementary:
         food_home: 660000              # 食費増（成長期）
         utilities_electricity: 132000   # 電気増（在宅時間増）
         utilities_gas: 66000
         utilities_water: 66000
-        communication_mobile: 120000
+        communication_mobile: 46000
         communication_internet: 60000
         transport_commute: 0
         insurance_life: 240000
         insurance_casualty: 120000
         medical: 120000
-        household_goods: 516000         # 日用品減（おむつ卒業）
+        household_goods: 404000         # 日用品減（おむつ卒業）
         food_out: 270000                # 外食増
         transport_other: 72000          # 習い事送迎等
         clothing: 120000                # 被服費増（成長で買い替え）
@@ -262,20 +271,20 @@ fire:
         beauty: 36000
         other: 10000
 
-      # 子供が12-14歳（中学生）: 合計 3,200,000円
-      # 基礎生活費 2,240,000円 (70%) / 裁量的支出 960,000円 (30%)
+      # 子供が12-14歳（中学生）: 合計 2,992,000円
+      # 基礎生活費 2,032,000円 (68%) / 裁量的支出 960,000円 (32%)
       junior_high:
         food_home: 720000              # 食費増（成長期ピーク）
         utilities_electricity: 144000
         utilities_gas: 72000
         utilities_water: 72000
-        communication_mobile: 144000    # 子供にスマホ支給
+        communication_mobile: 55000     # 子供にスマホ支給（格安SIM）
         communication_internet: 60000
         transport_commute: 0
         insurance_life: 240000
         insurance_casualty: 120000
         medical: 120000
-        household_goods: 548000
+        household_goods: 429000
         food_out: 288000                # 外食増
         transport_other: 84000          # 部活遠征等
         clothing: 120000                # 制服・部活用品
@@ -289,20 +298,20 @@ fire:
         beauty: 36000
         other: 12000
 
-      # 子供が15-17歳（高校生）: 合計 3,300,000円
-      # 基礎生活費 2,145,000円 (65%) / 裁量的支出 1,155,000円 (35%)
+      # 子供が15-17歳（高校生）: 合計 3,139,000円
+      # 基礎生活費 1,984,000円 (63%) / 裁量的支出 1,155,000円 (37%)
       high_school:
         food_home: 720000
         utilities_electricity: 144000
         utilities_gas: 72000
         utilities_water: 72000
-        communication_mobile: 144000
+        communication_mobile: 55000
         communication_internet: 60000
         transport_commute: 120000       # 高校通学定期（遠距離想定）
         insurance_life: 240000
         insurance_casualty: 120000
         medical: 120000
-        household_goods: 333000         # 日用品減
+        household_goods: 261000         # 日用品減
         food_out: 330000                # 外食増（友人と外食増加）
         transport_other: 132000         # 部活遠征・受験見学等
         clothing: 143000                # 私服増加
@@ -316,20 +325,20 @@ fire:
         beauty: 33000
         other: 17000
 
-      # 子供が18-21歳（大学生）: 合計 3,400,000円
-      # 基礎生活費 2,210,000円 (65%) / 裁量的支出 1,190,000円 (35%)
+      # 子供が18-21歳（大学生）: 合計 3,251,000円
+      # 基礎生活費 2,061,000円 (63%) / 裁量的支出 1,190,000円 (37%)
       university:
         food_home: 720000
         utilities_electricity: 144000
         utilities_gas: 72000
         utilities_water: 72000
-        communication_mobile: 144000
+        communication_mobile: 55000
         communication_internet: 60000
         transport_commute: 240000       # 大学通学定期（遠距離想定）
         insurance_life: 240000
         insurance_casualty: 120000
         medical: 120000
-        household_goods: 278000
+        household_goods: 218000
         food_out: 340000                # 外食増（大学生活）
         transport_other: 136000
         clothing: 150000
@@ -343,20 +352,20 @@ fire:
         beauty: 34000
         other: 16000
 
-      # 子供独立後（22歳以降）: 合計 2,500,000円
-      # 基礎生活費 1,500,000円 (60%) / 裁量的支出 1,000,000円 (40%)
+      # 子供独立後（22歳以降）: 合計 2,392,000円
+      # 基礎生活費 1,392,000円 (58%) / 裁量的支出 1,000,000円 (42%)
       empty_nest:
         food_home: 480000              # 食費減（二人世帯）
         utilities_electricity: 96000    # 光熱費減
         utilities_gas: 48000
         utilities_water: 48000
-        communication_mobile: 96000     # 携帯減（2人分）
+        communication_mobile: 37000     # 携帯減（2人分格安SIM）
         communication_internet: 60000
         transport_commute: 0            # 定期券不要
         insurance_life: 180000          # 保険見直し
         insurance_casualty: 120000
         medical: 144000                 # 医療費増（加齢）
-        household_goods: 228000         # 日用品減
+        household_goods: 179000         # 日用品減
         food_out: 240000                # 外食増（時間的余裕）
         transport_other: 100000         # 趣味の移動増
         clothing: 120000
@@ -379,12 +388,12 @@ fire:
   # 家計調査2024年平均（二人以上世帯）から住居費・教育費を除き、
   # 車なし世帯の交通費差分（約▲30万円/年）を反映した値
   base_expense_by_stage:
-    young_child: 2800000    # 子供が0-5歳（未就学）: 280万円/年
-    elementary: 3000000     # 子供が6-11歳（小学生）: 300万円/年
-    junior_high: 3200000    # 子供が12-14歳（中学生）: 320万円/年
-    high_school: 3300000    # 子供が15-17歳（高校生）: 330万円/年
-    university: 3400000     # 子供が18-21歳（大学生）: 340万円/年
-    empty_nest: 2500000     # 子供独立後（22歳以降）: 250万円/年
+    young_child: 2596000    # 子供が0-5歳（未就学）: 260万円/年
+    elementary: 2814000     # 子供が6-11歳（小学生）: 281万円/年
+    junior_high: 2992000    # 子供が12-14歳（中学生）: 299万円/年
+    high_school: 3139000    # 子供が15-17歳（高校生）: 314万円/年
+    university: 3251000     # 子供が18-21歳（大学生）: 325万円/年
+    empty_nest: 2392000     # 子供独立後（22歳以降）: 239万円/年
 
   # 裁量的支出の比率（ライフステージ別）
   # 基本生活費のうち、暴落時に削減可能な支出の割合
@@ -399,9 +408,15 @@ fire:
     empty_nest: 0.40       # 40%（教育費なし、旅行・趣味増）
 
   # 動的支出削減設定（暴落時の自動対応）
-  # 資産がベースラインを下回った場合、ワーケーション費用を削減して対応
+  # ドローダウンレベルに応じて裁量的支出を段階的に削減
+  # ワーケーション費用のベースライン比較削減も引き続き併用
   dynamic_expense_reduction:
-    enabled: true          # 動的削減を有効化（ワーケーション費用のみ削減）
+    enabled: true
+    reduction_rates:
+      level_0_normal: 0.0      # 平常時: 削減なし
+      level_1_warning: 0.2    # 警戒（-15%～-30%）: 裁量支出10%削減
+      level_2_concern: 0.5    # 懸念（-30%～-50%）: 裁量支出30%削減
+      level_3_crisis: 0.7     # 危機（-50%以下）: 裁量支出50%削減
 
   # 追加子供1人あたりの生活費増加（ステージ別・年額・円）
   # 第二子以降、各子供の年齢（ステージ）に応じた追加費用を加算
@@ -413,6 +428,13 @@ fire:
     high_school: 450000   # 15-17歳: 45万/年（交通費・部活・受験費用）
     university:  600000   # 18-21歳: 60万/年（生活費・通学費・教材費）
     empty_nest:       0   # 22歳以降: 0円（独立後は家計への影響なし）
+
+  # 最適化結果（optimize_pension.py が自動更新）
+  # optimal_fire_month が設定されている場合、ダッシュボードはこの月でFIREしたものとしてMCを実行する
+  # null の場合は従来通り最初にFIRE可能になった月を使用
+  optimal_fire_month: 52       # 最適化結果: 月52、成功率98.4%
+  optimal_extra_monthly_budget: 0  # 最適化結果: FIRE後追加月額予算
+  min_success_rate: 0.95       # 最適化の成功率閾値
 
   # 固定支出（一律、データが不足している場合のフォールバック）
   manual_annual_expense: null  # nullの場合はライフステージ別を使用
@@ -517,10 +539,12 @@ pension:
       avg_monthly_salary: 625615  # 平均標準報酬額（円）- 厚生年金計算用
       # 算出根拠: 年収7,507,388円（月固定556,000×12 + ボーナス417,694×2）/ 12ヶ月
       # 動的計算により、FIRE達成タイミングに応じて年金額が自動計算されます
+      override_start_age: 75      # 最適化結果: 75歳繰下げ（+84.0%増額）
     - name: '桜'
       birthdate: '1991/04/20'     # 生年月日（YYYY/MM/DD形式）
       pension_type: 'national'    # 国民年金のみ
       # 動的計算により、国民年金満額: 約81.6万円/年
+      override_start_age: 75      # 最適化結果: 75歳繰下げ（+84.0%増額）
   # 注: annual_amountを指定すると、動的計算をスキップして固定値を使用（後方互換性）
 
 # 社会保険料設定（FIRE後の支出）
@@ -589,11 +613,11 @@ post_fire_cash_strategy:
   enabled: true                # FIRE後の現金管理戦略を有効化
 
   # 基本設定
-  safety_margin: 5000000       # 安全マージン: 500万円（常時確保）
+  safety_margin: 3000000       # 安全マージン: 500万円（常時確保）
   monthly_buffer_months: 1     # 生活費バッファ: 1ヶ月分
 
   # 暴落時の株式売却停止ルール
-  market_crash_threshold: -0.20    # ドローダウン-20%以下で暴落と判定
+  market_crash_threshold: -0.2    # ドローダウン-20%以下で暴落と判定
   recovery_threshold: -0.10        # ドローダウン-10%以上で回復と判定
   emergency_cash_floor: 250000     # 緊急時最低現金（25万円、これを下回ったら強制売却）
 
