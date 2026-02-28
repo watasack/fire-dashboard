@@ -3917,26 +3917,55 @@ def run_monte_carlo_simulation(
     monthly_p84 = np.percentile(all_timeseries_array, 84, axis=0)   # 1σ上限
     monthly_p975 = np.percentile(all_timeseries_array, 97.5, axis=0) # 2σ上限
 
+    # 追加リスクメトリクス
+    percentile_5 = float(np.percentile(final_assets_list, 5))
+    bankruptcy_count = sum(1 for ts in all_timeseries if min(ts) <= _BANKRUPTCY_THRESHOLD)
+    bankruptcy_rate = bankruptcy_count / iterations
+
+    running_max = np.maximum.accumulate(all_timeseries_array, axis=1)
+    safe_peak = np.maximum(running_max, 1)
+    drawdowns = (running_max - all_timeseries_array) / safe_peak
+    max_drawdowns_per_iter = np.max(drawdowns, axis=1)
+    max_drawdown_median = float(np.median(max_drawdowns_per_iter))
+    max_drawdown_p95 = float(np.percentile(max_drawdowns_per_iter, 95))
+
+    monthly_p5 = np.percentile(all_timeseries_array, 5, axis=0)
+
+    depletion_month_p5 = None
+    for m_idx, val in enumerate(monthly_p5):
+        if val <= _BANKRUPTCY_THRESHOLD:
+            depletion_month_p5 = m_idx
+            break
+
     print(f"[OK] Monte Carlo simulation complete!")
     print(f"  Success rate: {success_rate*100:.1f}%")
     print(f"  Median final assets: JPY{np.median(final_assets_list):,.0f}")
+    print(f"  P5 final assets: JPY{percentile_5:,.0f}")
     print(f"  10th percentile: JPY{np.percentile(final_assets_list, 10):,.0f}")
     print(f"  90th percentile: JPY{np.percentile(final_assets_list, 90):,.0f}")
     print(f"  Mean final assets: JPY{np.mean(final_assets_list):,.0f}")
+    print(f"  Bankruptcy rate: {bankruptcy_rate*100:.1f}%")
+    print(f"  Max drawdown (median): {max_drawdown_median*100:.1f}%")
 
     return {
         'success_rate': success_rate,
         'median_final_assets': np.median(final_assets_list),
         'mean_final_assets': np.mean(final_assets_list),
+        'percentile_5': percentile_5,
         'percentile_10': np.percentile(final_assets_list, 10),
         'percentile_90': np.percentile(final_assets_list, 90),
+        'bankruptcy_rate': bankruptcy_rate,
+        'max_drawdown_median': max_drawdown_median,
+        'max_drawdown_p95': max_drawdown_p95,
+        'depletion_month_p5': depletion_month_p5,
         'all_results': results,
-        'fire_month': fire_month,  # FIRE達成時の月数
-        'monthly_p50': monthly_p50,     # 月ごとの中央値
-        'monthly_p025': monthly_p025,   # 月ごとの2.5パーセンタイル（2σ下限相当）
-        'monthly_p16': monthly_p16,     # 月ごとの16パーセンタイル（1σ下限相当）
-        'monthly_p84': monthly_p84,     # 月ごとの84パーセンタイル（1σ上限相当）
-        'monthly_p975': monthly_p975    # 月ごとの97.5パーセンタイル（2σ上限相当）
+        'fire_month': fire_month,
+        'monthly_p50': monthly_p50,
+        'monthly_p5': monthly_p5,
+        'monthly_p025': monthly_p025,
+        'monthly_p16': monthly_p16,
+        'monthly_p84': monthly_p84,
+        'monthly_p975': monthly_p975,
     }
 
 
