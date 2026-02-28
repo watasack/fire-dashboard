@@ -161,10 +161,10 @@ def main():
             scenario='standard',
             monthly_income=monthly_income,
             monthly_expense=trends['monthly_avg_expense'],
-            min_success_rate=0.95,
+            min_success_rate=0.90,
             top_k=50,
-            mc_iterations=500,
-            fire_month_search_range=36,
+            mc_iterations=1000,
+            fire_month_search_range=72,
             fire_month_step=6,
             extra_budget_candidates=[0, 50000, 100000, 150000, 200000],
             cash_strategy_candidates=[
@@ -175,9 +175,10 @@ def main():
                 {'safety_margin': 5_000_000, 'market_crash_threshold': -0.30},
             ],
             expense_reduction_candidates=[
-                {},
-                {'level_1_warning': 0.10, 'level_2_concern': 0.30, 'level_3_crisis': 0.50},
+                {'level_1_warning': 0.0,  'level_2_concern': 0.0,  'level_3_crisis': 0.0},
                 {'level_1_warning': 0.20, 'level_2_concern': 0.50, 'level_3_crisis': 0.70},
+                {'level_1_warning': 0.30, 'level_2_concern': 0.65, 'level_3_crisis': 0.85},
+                {'level_1_warning': 0.40, 'level_2_concern': 0.80, 'level_3_crisis': 0.95},
             ],
         )
 
