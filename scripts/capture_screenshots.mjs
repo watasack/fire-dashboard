@@ -28,20 +28,24 @@ async function main() {
 
   console.log("Loading dashboard...");
   await page.goto(fileUrl, { waitUntil: "networkidle", timeout: 60000 });
-  await page.waitForSelector(".secondary-kpi", { timeout: 10000 });
-  await new Promise((r) => setTimeout(r, 1000));
+  await page.waitForSelector(".plotly-graph-div", { timeout: 10000 });
+  await new Promise((r) => setTimeout(r, 2000));
 
-  // v7_risk_cards.png - Risk metrics cards (4 cards below hero KPI)
-  console.log("Capturing: Risk metrics cards...");
+  // Top portion: hero KPI + risk metrics cards
+  console.log("Capturing: Hero KPI + Risk metrics cards...");
   await page.evaluate(() => window.scrollTo(0, 0));
   await new Promise((r) => setTimeout(r, 300));
-  const riskCards = page.locator(".secondary-kpi").first();
-  await riskCards.scrollIntoViewIfNeeded();
-  await new Promise((r) => setTimeout(r, 300));
-  await riskCards.screenshot({ path: path.join(outputDir, "v7_risk_cards.png") });
+  const clipHeight = await page.evaluate(() => {
+    const el = document.querySelector(".secondary-kpi");
+    return el ? el.getBoundingClientRect().bottom : 900;
+  });
+  await page.screenshot({
+    path: path.join(outputDir, "top_section.png"),
+    clip: { x: 0, y: 0, width: VIEWPORT_WIDTH, height: clipHeight },
+  });
 
   await browser.close();
-  console.log(`\nScreenshot saved to: ${outputDir}/v7_risk_cards.png`);
+  console.log(`\nScreenshot saved to: ${outputDir}/top_section.png`);
 }
 
 main().catch((e) => {
