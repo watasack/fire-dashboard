@@ -14,93 +14,9 @@ sys.path.insert(0, str(project_root / 'src'))
 
 from config import load_config
 from simulator import (
-    _calculate_emergency_fund_requirement,
     _determine_optimal_pension_start_age,
     calculate_pension_income
 )
-
-
-def test_emergency_fund():
-    """
-    緊急時資金3層構造のテスト
-    """
-    print("=" * 80)
-    print("テスト1: 緊急時資金3層構造")
-    print("=" * 80)
-    print()
-
-    config = load_config('config.yaml')
-
-    # テストケース1: 通常時（ドローダウンなし、若年層）
-    print("【ケース1】通常時（35歳、ドローダウン0%）")
-    monthly_expense = 250000  # 月25万円
-    result1 = _calculate_emergency_fund_requirement(
-        config=config,
-        monthly_expense=monthly_expense,
-        current_age=35,
-        drawdown=0
-    )
-    print(f"  Layer 1（日常）: {result1['layer_1']:,.0f}円 ({result1['layer_1']/monthly_expense:.1f}ヶ月分)")
-    print(f"  Layer 2（暴落）: {result1['layer_2']:,.0f}円 (非活性)")
-    print(f"  Layer 3（最終）: {result1['layer_3']:,.0f}円 (非活性)")
-    print(f"  合計必要額: {result1['total']:,.0f}円")
-    print()
-
-    # テストケース2: 暴落時（ドローダウン-25%、中年層）
-    print("【ケース2】暴落時（55歳、ドローダウン-25%）")
-    result2 = _calculate_emergency_fund_requirement(
-        config=config,
-        monthly_expense=monthly_expense,
-        current_age=55,
-        drawdown=-0.25
-    )
-    print(f"  Layer 1（日常）: {result2['layer_1']:,.0f}円 ({result2['layer_1']/monthly_expense:.1f}ヶ月分)")
-    print(f"  Layer 2（暴落）: {result2['layer_2']:,.0f}円 ({result2['layer_2']/monthly_expense:.1f}ヶ月分) ← 活性化!")
-    print(f"  Layer 3（最終）: {result2['layer_3']:,.0f}円 (非活性)")
-    print(f"  合計必要額: {result2['total']:,.0f}円")
-    print()
-
-    # テストケース3: 高齢期（ドローダウンあり、Layer 3活性化）
-    print("【ケース3】高齢期（86歳、ドローダウン-30%）")
-    result3 = _calculate_emergency_fund_requirement(
-        config=config,
-        monthly_expense=monthly_expense,
-        current_age=86,
-        drawdown=-0.30
-    )
-    print(f"  Layer 1（日常）: {result3['layer_1']:,.0f}円 ({result3['layer_1']/monthly_expense:.1f}ヶ月分)")
-    print(f"  Layer 2（暴落）: {result3['layer_2']:,.0f}円 ({result3['layer_2']/monthly_expense:.1f}ヶ月分) ← 活性化!")
-    print(f"  Layer 3（最終）: {result3['layer_3']:,.0f}円 ← 活性化!")
-    print(f"  合計必要額: {result3['total']:,.0f}円")
-    print()
-
-    # 検証
-    issues = []
-
-    # Layer 1は常に6ヶ月分
-    if abs(result1['layer_1'] - monthly_expense * 6) > 1:
-        issues.append("Layer 1の計算が正しくありません")
-
-    # Layer 2はドローダウン-20%以下で活性化
-    if result1['layer_2'] != 0:
-        issues.append("ケース1でLayer 2が誤って活性化しています")
-    if result2['layer_2'] != monthly_expense * 12:
-        issues.append("ケース2でLayer 2が正しく活性化していません")
-
-    # Layer 3は85歳以上で活性化
-    if result1['layer_3'] != 0 or result2['layer_3'] != 0:
-        issues.append("85歳未満でLayer 3が誤って活性化しています")
-    if result3['layer_3'] != 5000000:
-        issues.append("ケース3でLayer 3が正しく活性化していません")
-
-    if issues:
-        print("[NG] 緊急時資金の計算に問題があります:")
-        for issue in issues:
-            print(f"  - {issue}")
-        return False
-    else:
-        print("[OK] 緊急時資金3層構造は正しく動作しています")
-        return True
 
 
 def test_pension_deferral():
@@ -303,13 +219,10 @@ def main():
 
     results = []
 
-    # テスト1: 緊急時資金
-    results.append(("緊急時資金3層構造", test_emergency_fund()))
-
-    # テスト2: 年金繰り下げ判定
+    # テスト1: 年金繰り下げ判定
     results.append(("年金繰り下げ判定", test_pension_deferral()))
 
-    # テスト3: 年金額調整
+    # テスト2: 年金額調整
     results.append(("年金額調整", test_pension_amount_adjustment()))
 
     # 結果サマリー

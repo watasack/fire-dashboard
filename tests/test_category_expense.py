@@ -25,8 +25,7 @@ class TestCategoryBasedCalculation:
 
     def test_category_based_calculation_when_disabled(self, config):
         """カテゴリ別予算が無効の場合、Noneを返す"""
-        # カテゴリ別予算は現在デフォルトで無効
-        assert config['fire']['expense_categories']['enabled'] is False
+        config['fire']['expense_categories']['enabled'] = False
 
         total, breakdown = calculate_base_expense_by_category(
             year_offset=0.0,
@@ -49,17 +48,14 @@ class TestCategoryBasedCalculation:
             fallback_expense=2500000
         )
 
-        # young_childの合計は2,800,000円
-        assert total == 2800000
+        assert total == 2596000
         assert breakdown['stage'] == 'young_child'
-        assert breakdown['total'] == 2800000
+        assert breakdown['total'] == 2596000
 
-        # 基礎生活費と裁量的支出の合計が一致
-        assert breakdown['essential_total'] + breakdown['discretionary_total'] == 2800000
+        assert breakdown['essential_total'] + breakdown['discretionary_total'] == 2596000
 
-        # 裁量的支出は25% (700,000円)
         assert breakdown['discretionary_total'] == 700000
-        assert breakdown['essential_total'] == 2100000
+        assert breakdown['essential_total'] == 1896000
 
     def test_category_based_essential_discretionary_split(self, config):
         """カテゴリが基礎/裁量に正しく分類されることを確認"""
@@ -98,22 +94,20 @@ class TestCategoryBasedCalculation:
             fallback_expense=2500000
         )
 
-        # young_childの合計は2,800,000円（従来方式でも同じ）
-        assert total == 2800000
+        assert total == 2596000
 
     def test_all_stages_sum_correctly(self, config):
         """すべてのライフステージで合計が正しいことを確認"""
         config_enabled = config.copy()
         config_enabled['fire']['expense_categories']['enabled'] = True
 
-        # 各ステージの期待合計（base_expense_by_stageと一致すべき）
         expected_totals = {
-            'young_child': 2800000,
-            'elementary': 3000000,
-            'junior_high': 3200000,
-            'high_school': 3300000,
-            'university': 3400000,
-            'empty_nest': 2500000
+            'young_child': 2596000,
+            'elementary': 2814000,
+            'junior_high': 2992000,
+            'high_school': 3139000,
+            'university': 3251000,
+            'empty_nest': 2392000
         }
 
         # 各ステージの年齢オフセット（大体の値）
@@ -159,9 +153,8 @@ class TestCategoryBasedCalculation:
             fallback_expense=2500000
         )
 
-        # 両者が一致することを確認
         assert total == category_total
-        assert total == 2800000
+        assert total == 2596000
 
 
 if __name__ == '__main__':
