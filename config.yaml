@@ -344,107 +344,111 @@ fire:
         other: 212000
 
       # 子供独立後フォールバック（parent_age 不明時用、empty_nest_active と同値）
+      # 参照: 家計調査2023年 65歳以上夫婦のみ世帯 月258,824円 / 持ち家・車なし補正後
       empty_nest:
-        food_home: 624000              # 食費減（二人世帯）
-        utilities_electricity: 72000    # 電気: 月6,000円（二人世帯-太陽光売電）
-        utilities_gas: 40000
+        food_home: 624000              # 食費（二人世帯・月5.2万）
+        utilities_electricity: 120000   # 電気: 月1万円（一般的二人世帯・太陽光恒久前提にしない）
+        utilities_gas: 55000            # ガス: 月4,600円（家計調査水準）
         utilities_water: 34000
-        communication_mobile: 37000     # 携帯減（2人分格安SIM）
+        communication_mobile: 37000     # 携帯（2人分格安SIM）
         communication_internet: 57000
         transport_commute: 0            # 定期券不要
-        insurance_life: 0               # 生命保険: 未契約
-        insurance_casualty: 0           # 損害保険: 未契約
-        medical: 6000                   # 医療費（加齢考慮）
-        household_goods: 183000         # 日用品減
-        food_out: 280000                # 外食（時間的余裕）
-        transport_other: 240000         # 趣味の移動（子ども送迎なし・月2万円）
-        clothing: 110000
-        entertainment_movies: 33000
-        entertainment_other: 27000
-        travel: 350000                  # 旅行（ワーケーション70万別途計上のため抑制）
-        hobby: 67000                    # 趣味充実
-        education_books: 33000
-        education_courses: 150000       # 生涯学習（オンライン講座中心）
-        beauty: 50000
-        other: 180000
+        insurance_life: 120000          # 医療保険・生命保険: 月1万円（60〜70代一般的）
+        insurance_casualty: 60000       # 火災・地震保険: 月5,000円（持ち家継続）
+        medical: 180000                 # 医療費: 月1.5万円（家計調査65+平均）
+        household_goods: 183000         # 日用品
+        food_out: 185000                # 外食: 月15,455円（家計調査水準）
+        transport_other: 168000         # 趣味の移動: 月14,000円（家計調査公共交通費）
+        clothing: 104000                # 被服: 月8,700円（家計調査水準）
+        entertainment_movies: 24000     # 映画等: 月2,000円
+        entertainment_other: 24000      # スポーツ観戦等: 月2,000円
+        travel: 180000                  # 旅行: 月1.5万円（ワーケーション70万別途計上）
+        hobby: 48000                    # 趣味: 月4,000円
+        education_books: 30000          # 書籍: 月2,500円（家計調査水準）
+        education_courses: 60000        # 習い事: 月5,000円（一般的な趣味教室程度）
+        beauty: 36000                   # 理美容: 月3,000円（家計調査水準）
+        other: 252000                   # 交際費等: 月21,000円（家計調査交際費水準）
 
-      # 子供独立後・アクティブ期（親〜69歳）: 合計 2,573,000円
-      # 基礎生活費 1,053,000円 (41%) / 裁量的支出 1,520,000円 (59%)
+      # 子供独立後・アクティブ期（親〜69歳）: 合計 2,581,000円
+      # 基礎生活費 1,470,000円 (57%) / 裁量的支出 1,111,000円 (43%)
+      # 参照: 家計調査2023年 65歳以上夫婦のみ世帯 月258,824円 / 持ち家・車なし補正後
       empty_nest_active:
         food_home: 624000              # 食費（二人世帯・月5.2万）
-        utilities_electricity: 72000
-        utilities_gas: 40000
+        utilities_electricity: 120000  # 電気: 月1万円（一般的二人世帯・太陽光恒久前提にしない）
+        utilities_gas: 55000           # ガス: 月4,600円（家計調査水準）
         utilities_water: 34000
         communication_mobile: 37000
         communication_internet: 57000
         transport_commute: 0
-        insurance_life: 0
-        insurance_casualty: 0
-        medical: 6000
+        insurance_life: 120000         # 医療保険・生命保険: 月1万円（60〜70代一般的）
+        insurance_casualty: 60000      # 火災・地震保険: 月5,000円（持ち家継続）
+        medical: 180000                # 医療費: 月1.5万円（家計調査65+平均）
         household_goods: 183000
-        food_out: 280000               # 外食（時間的余裕）
-        transport_other: 240000        # 趣味の移動（月2万）
-        clothing: 110000
-        entertainment_movies: 33000
-        entertainment_other: 27000
-        travel: 350000                 # 旅行（ワーケーション70万別途計上のため抑制）
-        hobby: 67000
-        education_books: 33000
-        education_courses: 150000      # 生涯学習（オンライン講座中心）
-        beauty: 50000
-        other: 180000
+        food_out: 185000               # 外食: 月15,455円（家計調査水準）
+        transport_other: 168000        # 趣味の移動: 月14,000円（家計調査公共交通費）
+        clothing: 104000               # 被服: 月8,700円（家計調査水準）
+        entertainment_movies: 24000    # 映画等: 月2,000円
+        entertainment_other: 24000     # スポーツ観戦等: 月2,000円
+        travel: 180000                 # 旅行: 月1.5万円（ワーケーション70万別途計上）
+        hobby: 48000                   # 趣味: 月4,000円
+        education_books: 30000         # 書籍: 月2,500円（家計調査水準）
+        education_courses: 60000       # 習い事: 月5,000円（一般的な趣味教室程度）
+        beauty: 36000                  # 理美容: 月3,000円（家計調査水準）
+        other: 252000                  # 交際費等: 月21,000円（家計調査交際費水準）
 
-      # 子供独立後・シニア期（親70〜79歳）: 合計 2,224,000円
-      # 基礎生活費 1,124,000円 (51%) / 裁量的支出 1,100,000円 (49%)
+      # 子供独立後・シニア期（親70〜79歳）: 合計 2,243,000円
+      # 基礎生活費 1,367,000円 (61%) / 裁量的支出 876,000円 (39%)
+      # 参照: 家計調査2023年 70代夫婦世帯の水準で調整
       empty_nest_senior:
         food_home: 580000              # 食欲減退（月4.8万）
-        utilities_electricity: 72000
-        utilities_gas: 40000
+        utilities_electricity: 120000  # 電気: 月1万円（家計調査水準）
+        utilities_gas: 55000           # ガス: 月4,600円（家計調査水準）
         utilities_water: 34000
         communication_mobile: 37000
         communication_internet: 57000
         transport_commute: 0
-        insurance_life: 0
-        insurance_casualty: 0
-        medical: 144000                # 月1.2万（70代平均・高額療養費後）
+        insurance_life: 60000          # 医療保険: 月5,000円（70代は縮小・掛け捨て中心）
+        insurance_casualty: 60000      # 火災・地震保険: 月5,000円（継続）
+        medical: 204000                # 月1.7万（70代: 通院頻度増加・高額療養費後）
         household_goods: 160000        # 消費量減少
-        food_out: 200000               # 外出頻度低下
-        transport_other: 160000        # 行動範囲縮小
-        clothing: 80000
-        entertainment_movies: 25000
-        entertainment_other: 20000
-        travel: 240000                 # 遠距離旅行減少
-        hobby: 55000
-        education_books: 30000
-        education_courses: 100000      # 活動縮小
-        beauty: 40000
-        other: 150000
+        food_out: 150000               # 外食: 月12,500円（外出頻度低下）
+        transport_other: 120000        # 行動範囲縮小: 月1万円
+        clothing: 70000                # 被服: 月5,800円
+        entertainment_movies: 18000    # 映画等: 月1,500円
+        entertainment_other: 18000     # スポーツ観戦等: 月1,500円
+        travel: 150000                 # 近場中心: 月1.25万円
+        hobby: 40000                   # 趣味: 月3,333円
+        education_books: 24000         # 書籍: 月2,000円
+        education_courses: 36000       # 習い事: 月3,000円（活動縮小）
+        beauty: 30000                  # 理美容: 月2,500円
+        other: 220000                  # 交際費等: 月18,333円
 
-      # 子供独立後・高齢期（親80歳〜）: 合計 1,848,000円
-      # 基礎生活費 1,140,000円 (62%) / 裁量的支出 708,000円 (38%)
+      # 子供独立後・高齢期（親80歳〜）: 合計 1,931,000円
+      # 基礎生活費 1,323,000円 (69%) / 裁量的支出 608,000円 (31%)
+      # 参照: 家計調査2023年 80代夫婦世帯の水準で調整
       empty_nest_elderly:
         food_home: 520000              # 食欲さらに減退（月4.3万）
-        utilities_electricity: 72000
-        utilities_gas: 40000
+        utilities_electricity: 120000  # 電気: 月1万円（家計調査水準）
+        utilities_gas: 55000           # ガス: 月4,600円（家計調査水準）
         utilities_water: 34000
         communication_mobile: 37000
         communication_internet: 57000
         transport_commute: 0
-        insurance_life: 0
-        insurance_casualty: 0
-        medical: 240000                # 月2万（80代平均・高額療養費後）
+        insurance_life: 0              # 生命保険: 80代以降は新規加入困難・不要
+        insurance_casualty: 60000      # 火災・地震保険: 月5,000円（継続）
+        medical: 300000                # 月2.5万（80代: 慢性疾患管理・高額療養費後）
         household_goods: 140000
-        food_out: 120000               # 外食大幅減少
-        transport_other: 80000         # 移動大幅縮小
-        clothing: 50000
-        entertainment_movies: 12000
-        entertainment_other: 10000
-        travel: 100000                 # 近場のみ
-        hobby: 40000
-        education_books: 24000
-        education_courses: 48000
-        beauty: 24000
-        other: 200000                  # 介護関連費・緊急対応費
+        food_out: 120000               # 外食: 月1万円（大幅減少）
+        transport_other: 60000         # 移動大幅縮小: 月5,000円
+        clothing: 40000                # 被服: 月3,333円
+        entertainment_movies: 8000     # 映画等: 月667円
+        entertainment_other: 8000      # 娯楽: 月667円
+        travel: 72000                  # 近場のみ: 月6,000円
+        hobby: 36000                   # 趣味: 月3,000円
+        education_books: 18000         # 書籍: 月1,500円
+        education_courses: 18000       # 習い事: 月1,500円（大幅縮小）
+        beauty: 18000                  # 理美容: 月1,500円
+        other: 210000                  # 介護関連費・交際費: 月17,500円
 
   # ==========================================
   # ライフステージ別合計値（シミュレーション計算用）
@@ -460,10 +464,10 @@ fire:
     junior_high: 3468000    # 子供が12-14歳（中学生）: 347万円/年（同上）
     high_school: 3830000    # 子供が15-17歳（高校生）: 383万円/年（同上）
     university: 3957000     # 子供が18-21歳（大学生）: 396万円/年（同上）
-    empty_nest: 2573000          # 子供独立後フォールバック: 257万円/年
-    empty_nest_active: 2573000   # 子供独立後・アクティブ期（親〜69歳）: 257万円/年
-    empty_nest_senior: 2224000   # 子供独立後・シニア期（親70〜79歳）: 222万円/年
-    empty_nest_elderly: 1848000  # 子供独立後・高齢期（親80歳〜）: 185万円/年
+    empty_nest: 2581000          # 子供独立後フォールバック: 258万円/年（家計調査2023ベース）
+    empty_nest_active: 2581000   # 子供独立後・アクティブ期（親〜69歳）: 258万円/年
+    empty_nest_senior: 2243000   # 子供独立後・シニア期（親70〜79歳）: 224万円/年
+    empty_nest_elderly: 1931000  # 子供独立後・高齢期（親80歳〜）: 193万円/年
 
   # 裁量的支出の比率（ライフステージ別、シミュレーション計算用）
   # 基本生活費のうち、暴落時に削減可能な支出の割合（expense_categories の discretionary 合計 / 全体合計）
@@ -475,10 +479,10 @@ fire:
     junior_high: 0.50      # 50%
     high_school: 0.56      # 56%
     university: 0.56       # 56%
-    empty_nest: 0.59           # 59%（フォールバック）
-    empty_nest_active: 0.59    # 59%（アクティブ期）
-    empty_nest_senior: 0.49    # 49%（シニア期: 医療費増により非裁量比率上昇）
-    empty_nest_elderly: 0.38   # 38%（高齢期: 医療費・介護費が中心）
+    empty_nest: 0.43           # 43%（フォールバック: 家計調査ベース・保険・医療が非裁量として増加）
+    empty_nest_active: 0.43    # 43%（アクティブ期）
+    empty_nest_senior: 0.39    # 39%（シニア期: 医療費増により非裁量比率がさらに上昇）
+    empty_nest_elderly: 0.31   # 31%（高齢期: 医療費・介護費が中心）
 
   # 子供独立後サブステージの年齢境界
   empty_nest_sub_stages:
