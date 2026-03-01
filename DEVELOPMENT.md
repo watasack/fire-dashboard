@@ -12,6 +12,7 @@
 │   └── transactions.csv        # 取引履歴
 ├── src/
 │   ├── simulator.py            # シミュレーションエンジン（本体）
+│   ├── pension_optimizer.py    # FIRE時期最適化エンジン（MC評価・並列処理）
 │   ├── data_loader.py          # データ読み込み
 │   ├── data_processor.py       # データ処理
 │   ├── analyzer.py             # 現状分析
@@ -22,7 +23,8 @@
 │   ├── test_simulation_convergence.py  # 統合テスト（主要）
 │   └── test_mc_standard_comparison.py  # MC vs 標準の詳細診断
 ├── scripts/
-│   └── generate_dashboard.py   # ダッシュボード生成スクリプト
+│   ├── generate_dashboard.py   # ダッシュボード生成スクリプト
+│   └── optimize_pension.py     # FIRE時期最適化スクリプト（MC評価）
 ├── dashboard/
 │   ├── index.html              # 生成されたダッシュボード
 │   └── assets/
@@ -149,9 +151,9 @@ python scripts/validate_category_budgets.py
 | ドローダウン | レベル | 削減率 | 基礎生活費 | 裁量的支出（例: 外食24万円） |
 |------------|--------|--------|-----------|---------------------------|
 | -10%以上   | 正常   | 0%     | 削減なし   | 24万円（削減なし）           |
-| -10% ~ -20% | 警戒   | 50%    | 削減なし   | 12万円（50%削減）           |
+| -10% ~ -20% | 警戒   | 40%    | 削減なし   | 14.4万円（40%削減）         |
 | -20% ~ -35% | 深刻   | 80%    | 削減なし   | 4.8万円（80%削減）          |
-| -35%以下    | 危機   | 100%   | 削減なし   | 0円（完全停止）             |
+| -35%以下    | 危機   | 95%    | 削減なし   | 1.2万円（95%削減）          |
 
 #### テスト
 
@@ -719,15 +721,13 @@ simulation:
    - レベル2: -30% → -20%
    - レベル3: -50% → -35%
 
-2. 削減率を積極化
-   - レベル1: 30% → 50%
-   - レベル2: 60% → 80%
-   - レベル3: 90% → 100%（完全削減）
+2. 削減率を調整（最終値）
+   - レベル1: 40%（警戒）
+   - レベル2: 80%（深刻）
+   - レベル3: 95%（危機、実質ほぼ全削減だが0円ではない）
 
-3. 副収入増加機能を追加
-   - レベル1: 月5万円（週末副業等）
-   - レベル2: 月10万円（本格副業）
-   - レベル3: 月15万円（最大限の副業）
+3. 副収入増加機能（削除済み）
+   - 当初実装したが、現実的な行動可能性の懸念から削除
 
 **達成された効果（モンテカルロ1000回シミュレーション）:**
 
@@ -773,16 +773,10 @@ fire:
 
     # 削減率
     reduction_rates:
-      level_1_warning: 0.50   # 50%削減
+      level_0_normal: 0.0     # 削減なし
+      level_1_warning: 0.40   # 40%削減
       level_2_concern: 0.80   # 80%削減
-      level_3_crisis: 1.00    # 100%削減
-
-    # 副収入増加
-    income_boost:
-      enabled: true
-      level_1_warning: 50000  # 月5万円
-      level_2_concern: 100000 # 月10万円
-      level_3_crisis: 150000  # 月15万円
+      level_3_crisis: 0.95    # 95%削減
 ```
 
 **コミット:**
@@ -794,6 +788,93 @@ fire:
 - この機能は、暴落時に実際に支出を削減し、副業で収入を増やすことを前提としています
 - 実際の行動可能性（副業の実現性、生活水準の許容度）を考慮して有効化してください
 - 無効化（enabled: false）の場合、従来通り固定支出でシミュレーションされます
+
+### 2026-02-28〜03-01: 年金インフレ調整・サブステージ対応・支出設定更新
+
+**背景:**
+- 基本生活費はインフレ連動（2%/年）するが、年金収入は固定（名目額不変）だった
+- 子供独立後の支出が単一値で、70歳・80歳以降の医療費増を反映できていなかった
+- 支出設定が2025年実績と乖離していた
+
+**実施内容:**
+
+1. **年金インフレ調整（`pension_growth_rate`）**
+   - `config.yaml` に `simulation.standard.pension_growth_rate: 0.01` を追加
+   - `calculate_pension_income()` に `inflation_factor = (1 + rate) ^ 経過年数` を適用
+   - マクロ経済スライド相当（1%/年）で年金額が名目増加
+
+2. **子供独立後サブステージ対応**
+   - `empty_nest` を3段階に分割:
+     - `empty_nest_active`: 〜69歳（2,573,000円/年）
+     - `empty_nest_senior`: 70〜79歳（2,224,000円/年、医療費増）
+     - `empty_nest_elderly`: 80歳〜（1,848,000円/年、介護費・医療費が中心）
+   - 年齢境界: `senior_from_age: 70`, `elderly_from_age: 80`
+   - `_get_life_stage()`, `_get_age_at_offset()`, `calculate_base_expense()` 等に対応
+
+3. **支出設定の2025年実績反映**
+   - 旅行: `travel_domestic` + `travel_international` → `travel`（統合）
+   - 保険: `insurance_life`, `insurance_casualty` → 0円（未契約）
+   - 裁量的支出比率の更新（young_child: 25% → 44%、empty_nest: 40% → 59% 等）
+   - 削減率の調整: L1=40%, L2=80%, L3=95%
+
+4. **年金計算の過去実績対応**
+   - `past_pension_base_annual: 236929` / `past_contribution_months: 177` を設定
+   - 過去加入分（低報酬時代）と将来加入分（現在報酬）を分けて正確に計算
+
+**コミット:**
+- `258e531` - スクリーンショットキャプチャスクリプトの改善
+- `c3700ba` - テストを計算ロジック修正後の設定値・APIに合わせて更新
+- `3344ef4` - 計算ロジック修正に伴うドキュメント更新
+- `6ed7b6d` - シミュレーション計算ロジックの重要バグ9件を修正
+
+**影響範囲:**
+- config.yaml（年金・サブステージ・支出設定・削減率）
+- src/simulator.py（`calculate_pension_income`, `_get_life_stage`, 支出計算）
+
+---
+
+### 2026-03-01: MCシミュレーション高速化（バッチ生成・並列評価）
+
+**背景:**
+- `scripts/optimize_pension.py` の Phase 3 (MC評価) が計算時間の 80%+ を占めていた
+- 50候補 × 3削減戦略 × 1000回ループ × 660ヶ月 = 約 10億回の Python スカラー演算
+- 最適化スクリプトの実行時間が実用上問題になっていた
+
+**実施内容:**
+
+1. **バッチリターン生成（~100x高速化）**
+   - `generate_random_returns_batch(n_paths)`: N本の乱数リターン列を行列 `(N, T)` で一括生成
+   - `generate_returns_enhanced_batch(n_paths)`: GARCH+非対称平均回帰のN並列版
+   - Python ループ（N回×T月）→ NumPy 行列演算（T月×N parallel）
+
+2. **候補並列評価（~16x高速化）**
+   - `_evaluate_single_candidate(args: dict)`: 1候補×全削減戦略を評価するワーカー関数
+   - `_init_worker(project_root)`: Windowsスポーン方式対応のワーカー初期化
+   - `ProcessPoolExecutor` で50候補を CPU コア数分並列実行
+   - `as_completed()` で完了次第結果を回収
+
+3. **最適化パラメータ拡張**
+   - `mc_iterations`: 500 → 1000
+   - `fire_month_search_range`: 36 → 72（6年分の探索幅）
+   - `min_success_rate`: 0.95 → 0.90
+   - `expense_reduction_candidates`: 3パターン追加
+
+**技術的注意点（Windowsスポーン方式）:**
+- `ProcessPoolExecutor` のワーカーは新しい Python プロセスとして spawn される
+- ワーカープロセスには `sys.path` が引き継がれないため `_init_worker()` で設定必須
+- `if __name__ == '__main__':` ガードが必要（`scripts/optimize_pension.py` に実装済み）
+- stdin からの実行（`python -`）は不可。必ず .py ファイルから実行すること
+
+**コミット:**
+- `984a6c3` - ビジュアルテスト手法とMCシミュレーション仕様を文書化
+- (別途) feat+perf(simulator): バッチリターン生成追加
+- (別途) perf(optimizer): ProcessPoolExecutor並列評価追加
+- (別途) chore(script): 最適化スクリプトの探索パラメータ拡張
+
+**影響範囲:**
+- src/simulator.py（`generate_random_returns_batch`, `generate_returns_enhanced_batch`）
+- src/pension_optimizer.py（`_evaluate_single_candidate`, `_init_worker`, `_run_mc_evaluation`）
+- scripts/optimize_pension.py（パラメータ拡張）
 
 ---
 
