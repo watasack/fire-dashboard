@@ -38,7 +38,13 @@ ignore_all_files_in_gitignore: true
 # list of additional paths to ignore in this project.
 # Same syntax as gitignore, so you can use * and **.
 # Note: global ignored_paths from serena_config.yml are also applied additively.
-ignored_paths: []
+ignored_paths:
+  - data/**           # 実績CSVデータ（金融データ、コードではない）
+  - dashboard/**      # generate_dashboard.py の生成物
+  - dashboard_screenshots/**  # ビジュアルテスト用スクリーンショット（一時ファイル）
+  - .pytest_cache/**
+  - .plans/**         # 設計ドキュメント（検索ノイズになる場合）
+  - "**/__pycache__/**"
 
 # whether the project is in read-only mode
 # If set to true, all editing tools will be disabled and attempts to use them will result in an error
@@ -110,8 +116,25 @@ default_modes:
 
 # initial prompt for the project. It will always be given to the LLM upon activating the project
 # (contrary to the memories, which are loaded on demand).
-initial_prompt: ""
+initial_prompt: |
+  これは個人のFIRE（経済的自立・早期退職）シミュレーターです。
+  家族（修平・桜・颯・楓）に特化した月次シミュレーションを実行し、dashboard/index.html を生成します。
+  主要ファイル:
+  - config.yaml: 全パラメータ（支出・年金・資産配分・MCパラメータ等）
+  - src/simulator.py: シミュレーションエンジン本体（最大・最重要）
+  - src/pension_optimizer.py: FIRE時期最適化（ProcessPoolExecutor並列）
+  - scripts/generate_dashboard.py: メインエントリポイント
+  - scripts/optimize_pension.py: 年金最適化→config.yaml更新
+  重要な不変条件: nisa_balance <= stocks（常に成立必須）
+  コード変更後は必ず python tests/test_simulation_convergence.py を実行すること。
 
 # override of the corresponding setting in serena_config.yml, see the documentation there.
 # If null or missing, the value from the global config is used.
 symbol_info_budget:
+
+# The language backend to use for this project.
+# If not set, the global setting from serena_config.yml is used.
+# Valid values: LSP, JetBrains
+# Note: the backend is fixed at startup. If a project with a different backend
+# is activated post-init, an error will be returned.
+language_backend:
