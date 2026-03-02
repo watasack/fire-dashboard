@@ -44,16 +44,14 @@ def _build_risk_metrics_html(
     if not monte_carlo:
         return ''
 
-    p5 = monte_carlo.get('percentile_5', 0)
+    p2_5 = monte_carlo.get('percentile_2_5', 0)
+    p97_5 = monte_carlo.get('percentile_97_5', 0)
     median_final = monte_carlo.get('median_final_assets', 0)
-    p10 = monte_carlo.get('percentile_10', 0)
-    p90 = monte_carlo.get('percentile_90', 0)
     max_dd_median = monte_carlo.get('max_drawdown_median', 0)
     max_dd_p95 = monte_carlo.get('max_drawdown_p95', 0)
 
-    p5_text = _format_man_yen(p5) if p5 > 0 else '¥0万'
     median_text = _format_man_yen(median_final)
-    range_text = f'{_format_man_yen(p10)}〜{_format_man_yen(p90)}'
+    range_text = f'{_format_man_yen(p2_5)}〜{_format_man_yen(p97_5)}'
 
     # ドローダウンの具体例（FIRE時点の資産をベースに1行で表示）
     fire_assets = 0
@@ -69,7 +67,6 @@ def _build_risk_metrics_html(
     )
 
     # 条件付きカラーリング
-    p5_level = 'good' if p5 > 20_000_000 else ('warn' if p5 > 0 else 'bad')
     median_level = 'good' if median_final > 50_000_000 else ('warn' if median_final > 0 else 'bad')
     dd_level = 'good' if max_dd_median < 0.30 else ('warn' if max_dd_median < 0.50 else 'bad')
 
@@ -80,20 +77,15 @@ def _build_risk_metrics_html(
         <div class="kpi-value">{median_text}</div>
         <div class="kpi-sub">最も起こりやすい結果</div>
       </div>
-      <div class="kpi-card {_risk_color(p5_level)}">
-        <div class="kpi-label">P5残存資産（90歳時点）</div>
-        <div class="kpi-value">{p5_text}</div>
-        <div class="kpi-sub">最悪5%ケースでの最終資産</div>
-      </div>
       <div class="kpi-card {_risk_color(dd_level)}">
         <div class="kpi-label">ピークからの最大下落</div>
         <div class="kpi-value">-{max_dd_median*100:.1f}%</div>
         <div class="kpi-sub">{dd_sub}</div>
       </div>
       <div class="kpi-card">
-        <div class="kpi-label">結果のばらつき（P10-P90）</div>
+        <div class="kpi-label">結果のばらつき（95%信頼区間）</div>
         <div class="kpi-value kpi-value--range">{range_text}</div>
-        <div class="kpi-sub">80%の確率でこの範囲に収まる</div>
+        <div class="kpi-sub">95%の確率でこの範囲に収まる</div>
       </div>
     </section>'''
 

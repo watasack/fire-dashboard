@@ -197,7 +197,7 @@ def optimize_pension_start_ages(
 
     feasible_sorted = feasible.sort_values(
         ['fire_month', 'extra_budget', 'final_assets'],
-        ascending=[True, False, False]
+        ascending=[True, True, False]
     )
 
     coarse_top = _select_diverse_top_k(feasible_sorted, min(top_k, len(feasible_sorted)), person_names)
@@ -238,7 +238,7 @@ def optimize_pension_start_ages(
     feasible_all = all_screening[all_screening['final_assets'] > 0]
     feasible_all_sorted = feasible_all.sort_values(
         ['fire_month', 'extra_budget', 'final_assets'],
-        ascending=[True, False, False]
+        ascending=[True, True, False]
     )
 
     top_candidates = _select_diverse_top_k(feasible_all_sorted, top_k, person_names)
@@ -300,30 +300,194 @@ def _simulate_pre_fire_trajectory(
     return df
 
 
-def _compute_pension_income_array(
+def _compute_child_allowance_monthly_array(
+    years_offset: float,
+    remaining_months: int,
+    config: Dict[str, Any],
+) -> np.ndarray:
+    """児童手当の月次配列を計算する（fire_monthごとに1回だけ呼び出す）。"""
+    from src.simulator import calculate_child_allowance
+    arr = np.empty(remaining_months)
+    for m in range(remaining_months):
+        arr[m] = calculate_child_allowance(years_offset + m / 12.0, config) / 12.0
+    return arr
+
+
+def _compute_pension_income_array_vectorized(
     years_offset: float,
     remaining_months: int,
     config: Dict[str, Any],
     post_fire_income: float,
     override_start_ages: Dict[str, int],
+    child_allowance_monthly: np.ndarray,
 ) -> np.ndarray:
-    """年金開始年齢に依存する月次収入配列を計算する。"""
-    from src.simulator import (
-        calculate_pension_income, calculate_child_allowance
+    """年金収入配列をベクトル化計算する（月ループを排除）。
+
+    各人物の年金受給開始月を計算し、numpyスライスで配列を構築する。
+    _calculate_person_pension を月数ではなく人数分（2回程度）だけ呼び出す。
+    """
+    import math
+    from src.simulator import _calculate_person_pension
+
+    pension_config = config.get('pension', {})
+    default_start_age = pension_config.get('start_age', 65)
+    deferral_config = config.get('pension_deferral', {})
+    start_age_config = config['simulation'].get('start_age', 35)
+    increase_rate = deferral_config.get('deferral_increase_rate', 0.084)
+    decrease_rate = deferral_config.get('early_decrease_rate', 0.048)
+    pension_growth_rate = (
+        config.get('simulation', {}).get('standard', {}).get('pension_growth_rate', 0.0)
     )
-    income = np.zeros(remaining_months)
-    for month_idx in range(remaining_months):
-        years = years_offset + month_idx / 12
-        annual_pension = calculate_pension_income(
-            years, config, fire_achieved=True, fire_year_offset=years_offset,
-            current_assets=None, fire_target_assets=None,
-            override_start_ages=override_start_ages
+
+    years_array = years_offset + np.arange(remaining_months) / 12.0
+    if pension_growth_rate != 0.0:
+        inflation_array = np.power(1.0 + pension_growth_rate, years_array)
+    else:
+        inflation_array = np.ones(remaining_months)
+
+    # 年金収入ベース（インフレ前）: 各人の受給開始月以降に定額を加算
+    pension_income_base = np.zeros(remaining_months)
+    for person in pension_config.get('people', []):
+        person_name = person.get('name', '')
+        if not person.get('birthdate'):
+            continue
+        person_start_age = override_start_ages.get(person_name, default_start_age)
+
+        months_until = (person_start_age - start_age_config - years_offset) * 12.0
+        start_month = max(0, math.ceil(months_until))
+        if start_month >= remaining_months:
+            continue
+
+        # 年金ベース額を1回だけ計算（月ループなし）
+        year_at_start = years_offset + start_month / 12.0
+        base = _calculate_person_pension(
+            person, year_at_start, person_start_age, True, years_offset
         )
-        monthly_pension = annual_pension / 12
-        effective_labor = 0 if monthly_pension > 0 else post_fire_income
-        annual_child = calculate_child_allowance(years, config)
-        income[month_idx] = effective_labor + monthly_pension + annual_child / 12
-    return income
+        if base <= 0.0:
+            continue
+
+        age_diff = person_start_age - default_start_age
+        if age_diff > 0:
+            adj = 1.0 + increase_rate * age_diff
+        elif age_diff < 0:
+            adj = 1.0 - decrease_rate * abs(age_diff)
+        else:
+            adj = 1.0
+
+        pension_income_base[start_month:] += base * adj / 12.0
+
+    pension_income = pension_income_base * inflation_array
+    labor_income = np.where(pension_income_base > 0, 0.0, post_fire_income)
+    return pension_income + child_allowance_monthly + labor_income
+
+
+def _screening_worker_fire_month(args: dict) -> List[dict]:
+    """
+    Phase 2確定的スクリーニング: 1つのfire_monthを処理するワーカー（並列化用）。
+
+    ベクトル化した年金収入計算と児童手当の事前計算を使い、
+    age_combos × extra_budgets × strategies の全組み合わせを評価して返す。
+    """
+    import numpy as np
+    from src.simulator import (
+        _simulate_post_fire_with_random_returns,
+        _precompute_monthly_cashflows,
+        calculate_child_allowance,
+    )
+
+    fire_month               = args['fire_month']
+    pre_fire_row             = args['pre_fire_row']
+    config                   = args['config']
+    scenario                 = args['scenario']
+    age_combos               = args['age_combos']
+    person_names             = args['person_names']
+    extra_budget_candidates  = args['extra_budget_candidates']
+    cash_strategy_candidates = args['cash_strategy_candidates']
+    monthly_return_rate      = args['monthly_return_rate']
+    life_expectancy          = args['life_expectancy']
+    start_age                = args['start_age']
+    post_fire_income         = args['post_fire_income']
+    default_safety           = args['default_safety']
+    default_crash            = args['default_crash']
+
+    fire_cash        = pre_fire_row['cash']
+    fire_stocks      = pre_fire_row['stocks']
+    fire_nisa        = pre_fire_row['nisa_balance']
+    fire_nisa_cost   = pre_fire_row.get('nisa_cost_basis', fire_nisa)
+    fire_stocks_cost = pre_fire_row['stocks_cost_basis']
+    years_offset     = fire_month / 12.0
+
+    remaining_years  = life_expectancy - (start_age + years_offset)
+    remaining_months = int(remaining_years * 12)
+    if remaining_months <= 0:
+        return []
+
+    fixed_returns = np.full(remaining_months, monthly_return_rate)
+
+    base_precomputed = _precompute_monthly_cashflows(
+        years_offset, remaining_months, config, post_fire_income,
+        override_start_ages=None
+    )
+    shared_expenses        = base_precomputed[0]
+    shared_base_expenses   = base_precomputed[2]
+    shared_life_stages     = base_precomputed[3]
+    shared_workation_costs = base_precomputed[4]
+
+    # 児童手当をfire_monthごとに1回だけ計算してキャッシュ
+    child_allowance_monthly = _compute_child_allowance_monthly_array(
+        years_offset, remaining_months, config
+    )
+
+    strategy_configs = [
+        (cs, _apply_cash_strategy(config, cs))
+        for cs in cash_strategy_candidates
+    ]
+
+    results = []
+    for ages in age_combos:
+        override = dict(zip(person_names, ages))
+
+        # ベクトル化版で月ループを排除
+        income_array = _compute_pension_income_array_vectorized(
+            years_offset, remaining_months, config,
+            post_fire_income, override, child_allowance_monthly,
+        )
+
+        for extra_budget in extra_budget_candidates:
+            for cs, cfg in strategy_configs:
+                final = _simulate_post_fire_with_random_returns(
+                    current_cash=fire_cash,
+                    current_stocks=fire_stocks,
+                    years_offset=years_offset,
+                    config=cfg,
+                    scenario=scenario,
+                    random_returns=fixed_returns,
+                    nisa_balance=fire_nisa,
+                    nisa_cost_basis=fire_nisa_cost,
+                    stocks_cost_basis=fire_stocks_cost,
+                    return_timeseries=False,
+                    precomputed_expenses=shared_expenses,
+                    precomputed_income=income_array,
+                    precomputed_base_expenses=shared_base_expenses,
+                    precomputed_life_stages=shared_life_stages,
+                    precomputed_workation_costs=shared_workation_costs,
+                    baseline_assets=None,
+                    override_start_ages=override,
+                    extra_monthly_budget=extra_budget,
+                )
+
+                entry = {
+                    'fire_month':            fire_month,
+                    'extra_budget':          extra_budget,
+                    'cash_safety_margin':    cs.get('safety_margin', default_safety),
+                    'cash_crash_threshold':  cs.get('market_crash_threshold', default_crash),
+                    'final_assets':          final,
+                }
+                for i, name in enumerate(person_names):
+                    entry[f'age_{name}'] = ages[i]
+                results.append(entry)
+
+    return results
 
 
 def _run_deterministic_screening(
@@ -339,7 +503,8 @@ def _run_deterministic_screening(
     """
     Phase 2: 全候補を確定的シミュレーションで高速評価する。
 
-    同じFIRE月の支出配列を共有し、年金収入のみ差し替えることで高速化。
+    fire_monthレベルで ProcessPoolExecutor を使って並列化し、
+    各ワーカー内では年金収入配列をベクトル化計算する。
     """
     if extra_budget_candidates is None:
         extra_budget_candidates = [0]
@@ -350,105 +515,61 @@ def _run_deterministic_screening(
     default_safety = default_strategy.get('safety_margin', 5_000_000)
     default_crash = default_strategy.get('market_crash_threshold', -0.20)
 
-    strategy_configs = [
-        (cs, _apply_cash_strategy(config, cs))
-        for cs in cash_strategy_candidates
-    ]
-
-    results = []
-    age_combos = list(product(pension_ages, repeat=len(person_names)))
-    total = (len(fire_month_candidates) * len(age_combos)
-             * len(extra_budget_candidates) * len(cash_strategy_candidates))
-    done = 0
-
     params = config['simulation'][scenario]
-    monthly_return_rate = (1 + params['annual_return_rate']) ** (1/12) - 1
-
+    monthly_return_rate = (1 + params['annual_return_rate']) ** (1 / 12) - 1
     life_expectancy = config['simulation'].get('life_expectancy', 90)
     start_age = config['simulation'].get('start_age', 35)
-
     post_fire_income = (
         config['simulation'].get('shuhei_post_fire_income', 0)
         + config['simulation'].get('sakura_post_fire_income', 0)
     )
 
+    age_combos = list(product(pension_ages, repeat=len(person_names)))
+
+    # fire_monthごとの引数を準備
+    all_args = []
     for fire_month in fire_month_candidates:
         if fire_month >= len(pre_fire_df):
             continue
-
         row = pre_fire_df.iloc[fire_month]
-        fire_cash = row['cash']
-        fire_stocks = row['stocks']
-        fire_nisa = row['nisa_balance']
-        fire_nisa_cost = row.get('nisa_cost_basis', fire_nisa)
-        fire_stocks_cost = row['stocks_cost_basis']
-        years_offset = fire_month / 12
+        all_args.append({
+            'fire_month':               fire_month,
+            'pre_fire_row':             row.to_dict(),
+            'config':                   config,
+            'scenario':                 scenario,
+            'age_combos':               age_combos,
+            'person_names':             person_names,
+            'extra_budget_candidates':  extra_budget_candidates,
+            'cash_strategy_candidates': cash_strategy_candidates,
+            'monthly_return_rate':      monthly_return_rate,
+            'life_expectancy':          life_expectancy,
+            'start_age':                start_age,
+            'post_fire_income':         post_fire_income,
+            'default_safety':           default_safety,
+            'default_crash':            default_crash,
+        })
 
-        fire_age = start_age + years_offset
-        remaining_years = life_expectancy - fire_age
-        remaining_months = int(remaining_years * 12)
-        if remaining_months <= 0:
-            continue
+    n_workers = min(multiprocessing.cpu_count(), len(all_args))
+    n_total = len(all_args)
+    all_results: List[dict] = []
+    done = 0
 
-        fixed_returns = np.full(remaining_months, monthly_return_rate)
+    with ProcessPoolExecutor(
+        max_workers=n_workers,
+        initializer=_init_worker,
+        initargs=(_PROJECT_ROOT,),
+    ) as executor:
+        futures = {
+            executor.submit(_screening_worker_fire_month, args): args['fire_month']
+            for args in all_args
+        }
+        for future in as_completed(futures):
+            all_results.extend(future.result())
+            done += 1
+            if done % max(1, n_total // 5) == 0 or done == n_total:
+                print(f"  Progress: {done}/{n_total} fire_months完了")
 
-        base_precomputed = _precompute_monthly_cashflows(
-            years_offset, remaining_months, config, post_fire_income,
-            override_start_ages=None
-        )
-        shared_expenses = base_precomputed[0]
-        shared_base_expenses = base_precomputed[2]
-        shared_life_stages = base_precomputed[3]
-        shared_workation_costs = base_precomputed[4]
-
-        for ages in age_combos:
-            override = dict(zip(person_names, ages))
-
-            income_array = _compute_pension_income_array(
-                years_offset, remaining_months, config,
-                post_fire_income, override
-            )
-
-            for extra_budget in extra_budget_candidates:
-                for cs, cfg in strategy_configs:
-                    final = _simulate_post_fire_with_random_returns(
-                        current_cash=fire_cash,
-                        current_stocks=fire_stocks,
-                        years_offset=years_offset,
-                        config=cfg,
-                        scenario=scenario,
-                        random_returns=fixed_returns,
-                        nisa_balance=fire_nisa,
-                        nisa_cost_basis=fire_nisa_cost,
-                        stocks_cost_basis=fire_stocks_cost,
-                        return_timeseries=False,
-                        precomputed_expenses=shared_expenses,
-                        precomputed_income=income_array,
-                        precomputed_base_expenses=shared_base_expenses,
-                        precomputed_life_stages=shared_life_stages,
-                        precomputed_workation_costs=shared_workation_costs,
-                        baseline_assets=None,
-                        override_start_ages=override,
-                        extra_monthly_budget=extra_budget,
-                    )
-
-                    entry = {
-                        'fire_month': fire_month,
-                        'extra_budget': extra_budget,
-                        'cash_safety_margin': cs.get('safety_margin', default_safety),
-                        'cash_crash_threshold': cs.get('market_crash_threshold', default_crash),
-                        'final_assets': final,
-                    }
-                    for i, name in enumerate(person_names):
-                        entry[f'age_{name}'] = ages[i]
-
-                    results.append(entry)
-
-                    done += 1
-                    if done % 500 == 0:
-                        print(f"  Progress: {done}/{total} ({done*100/total:.0f}%)")
-
-    return pd.DataFrame(results)
+    return pd.DataFrame(all_results)
 
 
 def _select_diverse_top_k(
@@ -845,7 +966,7 @@ def _print_result(result: Dict[str, Any]) -> None:
 
     if optimal is None:
         min_rate = result.get('min_success_rate', DEFAULT_MIN_SUCCESS_RATE)
-        print(f"\n  成功率 ≥ {min_rate*100:.0f}% を満たす解が見つかりませんでした。")
+        print(f"\n  成功率 >= {min_rate*100:.0f}% を満たす解が見つかりませんでした。")
         print("  許容成功率を下げるか、探索範囲を広げてください。")
     else:
         fire_age = config_start_age + optimal['fire_month'] / 12
@@ -887,11 +1008,11 @@ def _print_result(result: Dict[str, Any]) -> None:
             for name in person_names:
                 print(f"    ルールベース年金({name}): {baseline['pension_ages'][name]}歳")
             if month_diff > 0:
-                print(f"    → 最適化により FIRE時期を {month_diff}ヶ月前倒し")
+                print(f"    [最適化] FIRE時期を {month_diff}ヶ月前倒し")
             elif month_diff < 0:
-                print(f"    → 最適化後のFIRE時期は {-month_diff}ヶ月後ろ倒し（成功率制約のため）")
+                print(f"    [最適化] FIRE時期は {-month_diff}ヶ月後ろ倒し（成功率制約のため）")
             else:
-                print(f"    → FIRE時期は同一（年金戦略の最適化のみ）")
+                print(f"    [最適化] FIRE時期は同一（年金戦略の最適化のみ）")
 
     # パレート参考情報
     pareto = result.get('pareto_info')

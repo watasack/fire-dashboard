@@ -103,7 +103,8 @@ def main():
         for scenario in ['standard']:
             print(f"  Simulating {scenario} scenario...")
             simulations[scenario] = simulate_future_assets(
-                current_assets=current_status['net_assets'],
+                current_cash=current_status['cash_deposits'],
+                current_stocks=current_status['investment_trusts'],
                 monthly_income=monthly_income,
                 monthly_expense=trends['monthly_avg_expense'],
                 config=config,

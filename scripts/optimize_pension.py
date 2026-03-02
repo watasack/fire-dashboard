@@ -86,7 +86,7 @@ def _update_config_with_result(config_path: str, result: dict) -> None:
 
     for person_name, age in pension_ages.items():
         pattern = (
-            rf'(- name: {re.escape(person_name)}\s*\n'
+            rf"(- name: '{re.escape(person_name)}'.*\n"
             rf'(?:.*\n)*?'
             rf'\s*override_start_age:)\s*\d+'
         )
@@ -165,7 +165,7 @@ def main():
             top_k=50,
             mc_iterations=1000,
             fire_month_search_range=72,
-            fire_month_step=6,
+            fire_month_step=3,
             extra_budget_candidates=[0, 50000, 100000, 150000, 200000],
             cash_strategy_candidates=[
                 {'safety_margin': 5_000_000, 'market_crash_threshold': -0.20},
