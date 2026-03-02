@@ -42,6 +42,7 @@ from src.simulator import (
 from src.visualizer import (
     create_fire_timeline_chart,
     create_income_expense_stream_chart,
+    create_pareto_frontier_chart,
     extract_life_events,
 )
 from src.html_generator import generate_dashboard_html
@@ -216,6 +217,7 @@ def main():
                     override_start_ages=override_start_ages,
                     min_fire_month=0,
                     extra_monthly_budget=extra_monthly_budget,
+                    post_fire_income_override=0,
                 )
                 print("[OK] Immediate FIRE simulation complete\n")
             except Exception as e:
@@ -223,6 +225,26 @@ def main():
 
         # 8. グラフ生成
         print("[8/10] Creating visualizations...")
+
+        import json
+        pareto_path = Path('dashboard/data/pareto_frontier.json')
+        pareto_json = None
+        if pareto_path.exists():
+            try:
+                pareto_json = json.loads(pareto_path.read_text(encoding='utf-8'))
+                print(f"  Loaded Pareto frontier data ({len(pareto_json.get('pareto_frontier', []))} points)")
+            except Exception as e:
+                print(f"  [WARN] Failed to load Pareto data: {e}")
+
+        pareto_chart = None
+        if pareto_json and pareto_json.get('pareto_frontier'):
+            pareto_chart = create_pareto_frontier_chart(
+                pareto_data=pareto_json['pareto_frontier'],
+                optimal=pareto_json.get('optimal'),
+                config=config,
+                min_baseline_final_assets=pareto_json.get('min_baseline_final_assets', 3_000_000),
+            )
+
         charts = {
             'fire_timeline': create_fire_timeline_chart(
                 current_status, fire_target, fire_achievement, simulations, config,
@@ -231,6 +253,7 @@ def main():
             'income_expense_stream': create_income_expense_stream_chart(
                 simulations, fire_achievement, config
             ),
+            'pareto_frontier': pareto_chart,
         }
 
         # ライフイベント（財務インパクト表用）

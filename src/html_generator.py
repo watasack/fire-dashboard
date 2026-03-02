@@ -288,6 +288,12 @@ def generate_dashboard_html(
             full_html=False, include_plotlyjs=False, config={'responsive': True}
         )
 
+    pareto_frontier_html = ''
+    if charts.get('pareto_frontier'):
+        pareto_frontier_html = charts['pareto_frontier'].to_html(
+            full_html=False, include_plotlyjs=False, config={'responsive': True}
+        )
+
     # FIRE達成情報
     if fire_achievement:
         if fire_achievement.get('achieved'):
@@ -322,8 +328,15 @@ def generate_dashboard_html(
         immediate_fire_text = '―'
         immediate_fire_detail = ''
 
+    # FIRE後副収入の合計（セミFIRE前提の表示用）
+    sim_cfg = config.get('simulation', {})
+    post_fire_income_monthly = (
+        sim_cfg.get('shuhei_post_fire_income', 0)
+        + sim_cfg.get('sakura_post_fire_income', 0)
+    )
+
     # 前提条件の短縮表示
-    std_cfg = config.get('simulation', {}).get('standard', {})
+    std_cfg = sim_cfg.get('standard', {})
     return_rate = std_cfg.get('annual_return_rate', 0.05)
     inflation = std_cfg.get('inflation_rate', 0.02)
     achievement_basis = f"年率{return_rate*100:.0f}%・インフレ{inflation*100:.0f}%前提"
@@ -411,13 +424,13 @@ def generate_dashboard_html(
       </div>
       <div class="kpi-divider"></div>
       <div class="kpi-primary">
-        <div class="kpi-label">FIRE成功確率</div>
+        <div class="kpi-label">セミFIRE成功率<br><small style="font-weight:normal;color:var(--text-secondary)">(副収入{post_fire_income_monthly/10000:.0f}万円/月)</small></div>
         <div class="kpi-value kpi-value--large">{success_text}</div>
         <div class="kpi-detail">{success_detail}</div>
       </div>
       <div class="kpi-divider"></div>
       <div class="kpi-primary">
-        <div class="kpi-label">今すぐFIRE成功率</div>
+        <div class="kpi-label">今すぐ完全FIRE成功率<br><small style="font-weight:normal;color:var(--text-secondary)">(副収入なし)</small></div>
         <div class="kpi-value kpi-value--large">{immediate_fire_text}</div>
         <div class="kpi-detail">{immediate_fire_detail}</div>
       </div>
@@ -479,6 +492,8 @@ def generate_dashboard_html(
       {assumptions_html}
       {optimization_html}
     </section>
+
+    {'<section class="chart-panel" style="margin-top:1.5rem"><h2 class="chart-title"><span class="title-accent title-accent--teal"></span>FIRE年齢 vs ベースライン最終資産</h2>' + pareto_frontier_html + '</section>' if pareto_frontier_html else ''}
 
   </div>
 

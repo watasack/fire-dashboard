@@ -4,7 +4,6 @@ Plotlyでインタラクティブグラフを生成
 """
 
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import pandas as pd
 from typing import Dict, Any, List
 from datetime import datetime
@@ -999,5 +998,110 @@ def create_monte_carlo_distribution_chart(
     })
 
     fig.update_layout(layout)
+
+    return fig
+
+
+def create_pareto_frontier_chart(
+    pareto_data: List[Dict[str, Any]],
+    optimal: Dict[str, Any],
+    config: Dict[str, Any],
+    min_baseline_final_assets: float = 3_000_000,
+) -> go.Figure:
+    """
+    パレートフロンティアチャート（FIRE年齢 vs ベースライン最終資産）を作成。
+    """
+    if not pareto_data:
+        return go.Figure()
+
+    def _build_hover(d: Dict[str, Any]) -> str:
+        pa_str = ', '.join(f'{k}: {v}歳' for k, v in d.get('pension_ages', {}).items())
+        eb = d.get('extra_budget', 0)
+        eb_str = f'{eb/10000:.0f}万/月' if eb > 0 else 'なし'
+        fa = d.get('final_assets', 0)
+        fa_str = f'{fa/10000:.0f}万円' if fa > 0 else '破綻（0円）'
+        return (
+            f"FIRE年齢: {d['fire_age']:.1f}歳<br>"
+            f"ベースライン最終資産: {fa_str}<br>"
+            f"追加予算: {eb_str}<br>"
+            f"年金開始: {pa_str}"
+        )
+
+    ages = [d['fire_age'] for d in pareto_data]
+    finals = [max(0, d.get('final_assets', 0)) / 10000 for d in pareto_data]
+    margin_man = min_baseline_final_assets / 10000
+
+    base_layout = get_common_layout(config)
+    fig = go.Figure()
+
+    # ベースライン最終資産（棒グラフ）
+    fig.add_trace(
+        go.Bar(
+            x=ages, y=finals,
+            name='ベースライン最終資産（万円）',
+            marker_color=[
+                'rgba(249,115,22,0.35)' if f < margin_man
+                else 'rgba(14,165,233,0.35)'
+                for f in finals
+            ],
+            marker_line=dict(
+                color=[
+                    'rgba(249,115,22,0.7)' if f < margin_man
+                    else 'rgba(14,165,233,0.6)'
+                    for f in finals
+                ],
+                width=1,
+            ),
+            hovertext=[_build_hover(d) for d in pareto_data],
+            hoverinfo='text',
+            width=0.06,
+        )
+    )
+
+    # 最適解マーカー
+    if optimal:
+        opt_age = optimal['fire_age']
+        opt_fa = optimal.get('final_assets', 0) / 10000
+        fig.add_trace(go.Scatter(
+            x=[opt_age], y=[opt_fa],
+            mode='markers',
+            name='最適解',
+            marker=dict(size=14, color='#f59e0b', symbol='star',
+                        line=dict(width=2, color='#d97706')),
+            hovertext=f"★ 最適解<br>FIRE年齢: {opt_age:.1f}歳<br>最終資産: {opt_fa:.0f}万円",
+            hoverinfo='text',
+        ))
+
+    # 安全マージンライン
+    fig.add_hline(
+        y=margin_man,
+        line=dict(color='#ef4444', width=1.5, dash='dash'),
+        annotation_text=f'安全マージン {margin_man:.0f}万円',
+        annotation_position='top left',
+        annotation_font=dict(color='#ef4444', size=11),
+    )
+
+    max_fa = max(finals) if finals else 1000
+    base_layout.update({
+        'xaxis': dict(
+            title='FIRE年齢（歳）',
+            gridcolor='rgba(203, 213, 225, 0.3)',
+            dtick=1,
+        ),
+        'yaxis': dict(
+            title='ベースライン最終資産（万円）',
+            gridcolor='rgba(203, 213, 225, 0.3)',
+            range=[0, max_fa * 1.15],
+        ),
+        'hovermode': 'closest',
+        'height': 420,
+        'showlegend': True,
+        'legend': dict(
+            orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1,
+            font=dict(size=10),
+        ),
+        'bargap': 0.05,
+    })
+    fig.update_layout(base_layout)
 
     return fig
