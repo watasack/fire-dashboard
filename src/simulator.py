@@ -1484,8 +1484,8 @@ def calculate_national_health_insurance_premium(
     si = config['social_insurance']
 
     # --- 所得の算出 ---
-    # 副業収入（修平 + 桜の年額合計）- 線形逓減モデル適用
-    annual_side_income = _compute_tapered_post_fire_income(years_since_fire, config) * 12
+    # 副業収入（修平 + 桜の年額合計）- FIRE後固定額
+    annual_side_income = _compute_post_fire_income(config) * 12
 
     # 前年の株式譲渡益（キャピタルゲイン）
     # 国民健康保険の所得割は分離課税の譲渡所得も含む
@@ -2226,8 +2226,8 @@ def _sakura_income_for_month(date: datetime, sakura_income_base: float, config: 
 
 def _shuhei_income_for_month(date: datetime, shuhei_income_grown: float, config: dict) -> float:
     """
-    指定月の修平の月収を返す。育休期間中は育児休業給付金を使用する。
-    180日以降は減額された給付金額を適用。
+    指定月の修平の月収を返す。
+    育休期間中は育児休業給付金、時短勤務期間中は減額した給与を適用。
 
     Args:
         date: 判定する月の日付
@@ -2237,9 +2237,11 @@ def _shuhei_income_for_month(date: datetime, shuhei_income_grown: float, config:
     Returns:
         その月の修平の月収（円）
     """
-    leave_list = config.get('simulation', {}).get('shuhei_parental_leave', [])
+    sim = config.get('simulation', {})
     children = config.get('education', {}).get('children', [])
 
+    # 育休判定（優先）
+    leave_list = sim.get('shuhei_parental_leave', [])
     for leave in leave_list:
         child_name = leave.get('child')
         months_after = leave.get('months_after', 12)
@@ -2263,27 +2265,40 @@ def _shuhei_income_for_month(date: datetime, shuhei_income_grown: float, config:
                 return income_first
             return income_later
 
+    # 時短勤務判定
+    reduced_list = sim.get('shuhei_reduced_hours', [])
+    for rh in reduced_list:
+        child_name = rh.get('child')
+        start_months = rh.get('start_months_after', 12)
+        end_months = rh.get('end_months_after', 36)
+        ratio = rh.get('income_ratio', 0.75)
+
+        birthdate_str = next(
+            (c.get('birthdate') for c in children if c.get('name') == child_name),
+            None,
+        )
+        if birthdate_str is None:
+            continue
+
+        birthdate = datetime.strptime(birthdate_str, '%Y/%m/%d')
+        rh_start = birthdate + relativedelta(months=start_months)
+        rh_end = birthdate + relativedelta(months=end_months)
+
+        if rh_start <= date <= rh_end:
+            return shuhei_income_grown * ratio
+
     return shuhei_income_grown
 
 
-def _compute_tapered_post_fire_income(years_since_fire: float, config: Dict[str, Any]) -> float:
-    """FIRE後の労働収入を線形逓減モデルで計算する。
+def _compute_post_fire_income(config: Dict[str, Any]) -> float:
+    """FIRE後の労働収入（固定額）を返す。
 
-    taper_years が 0 または未設定の場合は逓減なし（固定値を返す）。
-    taper_years が設定されている場合、FIRE後 taper_years 年で 0 に線形逓減する。
+    年金受給開始までの間、設定された固定額の収入を得る。
     """
     sim = config.get('simulation', {})
     shuhei_base = sim.get('shuhei_post_fire_income', 0)
     sakura_base = sim.get('sakura_post_fire_income', 0)
-    shuhei_taper = sim.get('shuhei_post_fire_income_taper_years', 0)
-    sakura_taper = sim.get('sakura_post_fire_income_taper_years', 0)
-
-    def _taper(base: float, taper_years: float) -> float:
-        if taper_years <= 0:
-            return base
-        return base * max(0.0, 1.0 - years_since_fire / taper_years)
-
-    return _taper(shuhei_base, shuhei_taper) + _taper(sakura_base, sakura_taper)
+    return shuhei_base + sakura_base
 
 
 def _calculate_monthly_income(
@@ -2335,27 +2350,13 @@ def _calculate_monthly_income(
     monthly_child_allowance = calculate_child_allowance(years, config) / 12
 
     if fire_achieved:
-        # 年金受給開始後は完全リタイア（労働収入なし）
         if monthly_pension_income > 0:
             shuhei_post_fire_income = 0
             sakura_post_fire_income = 0
         else:
-            # 線形逓減モデルを適用
-            _fire_offset = fire_year_offset if fire_year_offset is not None else 0.0
-            _years_since_fire = max(0.0, years - _fire_offset)
             sim = config.get('simulation', {})
-            def _taper(base: float, taper_years: float) -> float:
-                if taper_years <= 0:
-                    return base
-                return base * max(0.0, 1.0 - _years_since_fire / taper_years)
-            shuhei_post_fire_income = _taper(
-                sim.get('shuhei_post_fire_income', 0),
-                sim.get('shuhei_post_fire_income_taper_years', 0)
-            )
-            sakura_post_fire_income = _taper(
-                sim.get('sakura_post_fire_income', 0),
-                sim.get('sakura_post_fire_income_taper_years', 0)
-            )
+            shuhei_post_fire_income = sim.get('shuhei_post_fire_income', 0)
+            sakura_post_fire_income = sim.get('sakura_post_fire_income', 0)
         labor_income = shuhei_post_fire_income + sakura_post_fire_income
         return {
             'total_income': monthly_pension_income + monthly_child_allowance + labor_income,
@@ -2662,13 +2663,13 @@ def simulate_post_fire_assets(
 
     # 月次シミュレーション
     for month in range(remaining_months):
-        _tapered_income = _compute_tapered_post_fire_income(month / 12, config)
+        _post_fire_income = _compute_post_fire_income(config)
         cycle_result = _process_post_fire_monthly_cycle(
             month, cash, stocks, stocks_cost_basis, nisa_balance, nisa_cost_basis,
             current_year_post, capital_gains_this_year_post, prev_year_capital_gains_post,
             years_offset, config, current_date_post,
             monthly_return_rate, allocation_enabled,
-            capital_gains_tax_rate, min_cash_balance, _tapered_income,
+            capital_gains_tax_rate, min_cash_balance, _post_fire_income,
             override_start_ages=override_start_ages,
             peak_assets_history=peak_assets_history,
             extra_monthly_budget=extra_monthly_budget,
@@ -2771,11 +2772,10 @@ def _precompute_monthly_cashflows(
         )
         monthly_pension = annual_pension / 12
 
-        # 年金受給開始後は労働収入なし（線形逓減モデル適用）
         if monthly_pension > 0:
             effective_labor_income = 0
         else:
-            effective_labor_income = _compute_tapered_post_fire_income(month_idx / 12, config)
+            effective_labor_income = _compute_post_fire_income(config)
 
         annual_child_allow = calculate_child_allowance(years, config)
         monthly_child_allow = annual_child_allow / 12
@@ -3003,8 +3003,8 @@ def _simulate_post_fire_with_random_returns(
             )
             monthly_pension_income = annual_pension_income / 12
 
-            _tapered_pf_income = _compute_tapered_post_fire_income(month / 12, config)
-            effective_post_fire_income = 0 if monthly_pension_income > 0 else _tapered_pf_income
+            _post_fire_income = _compute_post_fire_income(config)
+            effective_post_fire_income = 0 if monthly_pension_income > 0 else _post_fire_income
 
             annual_child_allowance = calculate_child_allowance(years, config)
             monthly_child_allowance = annual_child_allowance / 12
@@ -3965,11 +3965,10 @@ def _process_withdrawal_monthly_cycle(
         annual_workation_cost = calculate_workation_cost(years_elapsed, config)
         monthly_workation_cost = annual_workation_cost / 12
 
-    # FIRE後の収入（年金受給前のみ: 線形逓減モデル適用）
+    # FIRE後の収入（年金受給前のみ: 固定額）
     monthly_post_fire_income = 0
     if config is not None and monthly_pension_income == 0:
-        _years_since_fire = month / 12
-        monthly_post_fire_income = _compute_tapered_post_fire_income(_years_since_fire, config)
+        monthly_post_fire_income = _compute_post_fire_income(config)
 
     # 社会保険料を追加（FIRE後のみ、configが提供されている場合）
     monthly_pension_premium = 0
@@ -4260,13 +4259,6 @@ def run_monte_carlo_simulation(
     bankruptcy_count = sum(1 for ts in all_timeseries if min(ts) <= _BANKRUPTCY_THRESHOLD)
     bankruptcy_rate = bankruptcy_count / iterations
 
-    running_max = np.maximum.accumulate(all_timeseries_array, axis=1)
-    safe_peak = np.maximum(running_max, 1)
-    drawdowns = (running_max - all_timeseries_array) / safe_peak
-    max_drawdowns_per_iter = np.max(drawdowns, axis=1)
-    max_drawdown_median = float(np.median(max_drawdowns_per_iter))
-    max_drawdown_p95 = float(np.percentile(max_drawdowns_per_iter, 95))
-
     monthly_p5 = np.percentile(all_timeseries_array, 5, axis=0)
 
     depletion_month_p5 = None
@@ -4283,7 +4275,6 @@ def run_monte_carlo_simulation(
     print(f"  97.5th percentile: JPY{np.percentile(final_assets_list, 97.5):,.0f}")
     print(f"  Mean final assets: JPY{np.mean(final_assets_list):,.0f}")
     print(f"  Bankruptcy rate: {bankruptcy_rate*100:.1f}%")
-    print(f"  Max drawdown (median): {max_drawdown_median*100:.1f}%")
 
     return {
         'success_rate': success_rate,
@@ -4293,8 +4284,6 @@ def run_monte_carlo_simulation(
         'percentile_2_5': float(np.percentile(final_assets_list, 2.5)),
         'percentile_97_5': float(np.percentile(final_assets_list, 97.5)),
         'bankruptcy_rate': bankruptcy_rate,
-        'max_drawdown_median': max_drawdown_median,
-        'max_drawdown_p95': max_drawdown_p95,
         'depletion_month_p5': depletion_month_p5,
         'all_results': results,
         'fire_month': fire_month,
@@ -4539,11 +4528,9 @@ def _simulate_post_fire_mc_vectorized(
     # ── 月次ループ（T 回、各ステップで N iteration を同時処理）
     T = min(remaining_months, random_returns_matrix.shape[1])
 
-    # 健康保険の所得割計算用: 逓減収入の事前計算（月ごとに異なる）
-    tapered_annual_side_income_arr = np.array([
-        _compute_tapered_post_fire_income(m / 12, config) * 12
-        for m in range(T)
-    ])
+    # 健康保険の所得割計算用: FIRE後固定収入
+    _fixed_post_fire_annual = _compute_post_fire_income(config) * 12
+    post_fire_annual_side_income_arr = np.full(T, _fixed_post_fire_annual)
 
     for month in range(T):
         years = years_offset + month / 12
@@ -4587,7 +4574,7 @@ def _simulate_post_fire_mc_vectorized(
 
         # 3. 健康保険料（per-iteration prev_cap_gains を使用）
         if si_cfg is not None:
-            total_inc = tapered_annual_side_income_arr[month] + prev_cap_gains
+            total_inc = post_fire_annual_side_income_arr[month] + prev_cap_gains
             taxable_inc = np.maximum(0.0, total_inc - _hi_basic_ded)
             annual_prem = np.minimum(taxable_inc * _hi_income_rate + _hi_fixed, _hi_max)
             health_ins_monthly = annual_prem / 12.0

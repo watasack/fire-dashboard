@@ -30,12 +30,10 @@ simulation:
   shuhei_income: 465875  # 修平の手取り月額（円）: 年収7,507,388→社保・税引後
   sakura_income: 500000  # 桜の手取り月額（円）: 個人事業主の想定手取り
   initial_labor_income: 965875 # 世帯手取り合計（shuhei_income + sakura_income）
-  # FIRE後収入（線形逓減モデル）
-  # taper_years年かけて初期値から0へ線形に減少。0の場合は逓減なし（固定）。
-  shuhei_post_fire_income: 100000              # FIRE直後の修平の副収入（月額・円）: 開発業務など
-  shuhei_post_fire_income_taper_years: 10      # 修平: FIRE後10年でゼロに（約49歳）
-  sakura_post_fire_income: 500000              # FIRE直後の桜の月収（現行水準を維持）
-  sakura_post_fire_income_taper_years: 25      # 桜: FIRE後25年でゼロに（約66歳）
+  # FIRE後収入（固定額モデル）
+  # FIRE後は年金受給開始まで、設定した固定額の収入を得る。
+  shuhei_post_fire_income: 100000               # 修平のFIRE後副収入（月額・円）: 開発業務など
+  sakura_post_fire_income: 300000              # 桜のFIRE後月収（個人事業を縮小して継続）
 
   # 産休・育休による収入変動
   # 桜（個人事業主のため育休給付金なし → 期間中は0円）
@@ -52,6 +50,15 @@ simulation:
       months_after: 12         # 産後12ヶ月間取得
       monthly_income: 310000   # 育児休業給付金（手取り相当）: 最初6ヶ月は上限約31万円/月（非課税）
       monthly_income_after_180days: 231000  # 181日目以降: 50%相当、上限約23万円/月（非課税）
+
+  # 修平の時短勤務（育休復帰後）
+  # 育児短時間勤務制度: 子が3歳まで利用可能（育児・介護休業法）
+  # 6時間勤務/8時間 = 給与75%
+  shuhei_reduced_hours:
+    - child: '楓'
+      start_months_after: 12   # 育休復帰（産後12ヶ月後）から開始
+      end_months_after: 36     # 子が3歳まで（法定上限）
+      income_ratio: 0.75       # 通常給与の75%（6時間/8時間）
 
   # 標準シナリオ
   standard:
@@ -504,9 +511,9 @@ fire:
       level_3_crisis: -0.35    # -35%で危機
     reduction_rates:
       level_0_normal: 0.0      # 平常時: 削減なし
-      level_1_warning: 0.4    # 警戒（-15%～-30%）: 裁量支出40%削減
-      level_2_concern: 0.8    # 懸念（-30%～-50%）: 裁量支出80%削減
-      level_3_crisis: 0.95     # 危機（-50%以下）: 裁量支出95%削減
+      level_1_warning: 0.3    # 警戒（-15%～-30%）: 裁量支出40%削減
+      level_2_concern: 0.65    # 懸念（-30%～-50%）: 裁量支出80%削減
+      level_3_crisis: 0.85     # 危機（-50%以下）: 裁量支出95%削減
     # 対称的ガードレール: 上ぶれ時は裁量支出を増加（MC中央値を決定論的ラインに引き戻す）
     spending_boost_enabled: true
     spending_boost_thresholds:
@@ -514,9 +521,9 @@ fire:
       level_neg2_upside: 0.20    # +20%で中程度の増加
       level_neg3_upside: 0.35    # +35%で大幅増加
     boost_rates:
-      level_neg1: 0.8    # +10%超: 裁量支出80%増
-      level_neg2: 1.5    # +20%超: 裁量支出150%増
-      level_neg3: 3.0    # +35%超: 裁量支出300%増（目標: 月次P97.5ピーク≈1.2億）
+      level_neg1: 0.3    # +10%超: 裁量支出80%増
+      level_neg2: 0.5    # +20%超: 裁量支出150%増
+      level_neg3: 1.4    # +35%超: 裁量支出300%増（目標: 月次P97.5ピーク≈1.2億）
 
   # 追加子供1人あたりの生活費増加（ステージ別・年額・円）
   # 第二子以降、各子供の年齢（ステージ）に応じた追加費用を加算
@@ -532,7 +539,7 @@ fire:
   # 最適化結果（optimize_pension.py が自動更新）
   # optimal_fire_month が設定されている場合、ダッシュボードはこの月でFIREしたものとしてMCを実行する
   # null の場合は従来通り最初にFIRE可能になった月を使用
-  optimal_fire_month: 49       # 最適化結果: 月49、成功率99.8%
+  optimal_fire_month: 40       # 最適化結果: 月40、成功率100.0%
   optimal_extra_monthly_budget: 0  # 最適化結果: FIRE後追加月額予算
   min_success_rate: 0.90       # 最適化の成功率閾値
 
