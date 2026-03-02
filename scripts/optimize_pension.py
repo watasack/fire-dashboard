@@ -162,10 +162,10 @@ def main():
             monthly_income=monthly_income,
             monthly_expense=trends['monthly_avg_expense'],
             min_success_rate=0.90,
-            top_k=50,
+            top_k=150,
             mc_iterations=1000,
             fire_month_search_range=72,
-            fire_month_step=3,
+            fire_month_step=1,
             extra_budget_candidates=[0, 50000, 100000, 150000, 200000],
             cash_strategy_candidates=[
                 {'safety_margin': 5_000_000, 'market_crash_threshold': -0.20},

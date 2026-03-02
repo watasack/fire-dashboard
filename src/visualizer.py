@@ -528,17 +528,18 @@ def extract_life_events(config: Dict[str, Any], fire_achievement: Dict[str, Any]
 
     # 年金受給開始
     pension_people = config.get('pension', {}).get('people', [])
-    pension_start_age = config.get('pension', {}).get('start_age', 65)
+    pension_default_age = config.get('pension', {}).get('start_age', 65)
     for person in pension_people:
         birthdate_str = person.get('birthdate')
         name = person.get('name', '')
         if birthdate_str:
             birthdate = datetime.strptime(birthdate_str, '%Y/%m/%d')
-            pension_date = birthdate + relativedelta(years=pension_start_age)
+            start_age = person.get('override_start_age', pension_default_age)
+            pension_date = birthdate + relativedelta(years=start_age)
             if pension_date > current_date:
                 events.append({
                     'date': pension_date,
-                    'label': f'{name} 年金開始',
+                    'label': f'{name} 年金開始（{start_age}歳）',
                     'category': 'pension',
                     'color': '#0891b2'
                 })
