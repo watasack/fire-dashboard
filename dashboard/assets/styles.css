@@ -81,7 +81,7 @@ body {
 /* === Hero KPI === */
 .hero-kpi {
   display: grid;
-  grid-template-columns: 1fr auto 1fr auto 1fr;
+  grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr;
   gap: 24px;
   padding: 24px 32px;
   background: linear-gradient(135deg, #0f766e 0%, #0e7490 50%, #1e40af 100%);
@@ -146,13 +146,6 @@ body {
   transition: width 0.5s ease;
 }
 
-/* === セカンダリKPI（リスクメトリクス） === */
-.secondary-kpi {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-}
-
 .kpi-card {
   padding: 16px 18px;
   background: var(--color-surface);
@@ -191,23 +184,6 @@ body {
   margin-top: 4px;
 }
 
-
-.kpi-card .kpi-value--range {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--color-brand);
-  letter-spacing: -0.01em;
-}
-
-/* Conditional colors for risk cards */
-.kpi-card--good { border-top-color: #10b981; }
-.kpi-card--good .kpi-value { color: #059669; }
-
-.kpi-card--warn { border-top-color: #f59e0b; }
-.kpi-card--warn .kpi-value { color: #d97706; }
-
-.kpi-card--bad { border-top-color: #ef4444; }
-.kpi-card--bad .kpi-value { color: #dc2626; }
 
 /* === チャートパネル === */
 .main-chart { min-height: 380px; }
@@ -511,9 +487,6 @@ details[open] > .info-summary::after {
   .dual-content { grid-template-columns: 1fr; }
 }
 
-@media (max-width: 900px) {
-  .secondary-kpi { grid-template-columns: repeat(2, 1fr); }
-}
 
 @media (max-width: 768px) {
   .hero-kpi {
@@ -522,7 +495,6 @@ details[open] > .info-summary::after {
     padding: 20px 24px;
   }
   .kpi-divider { display: none; }
-  .secondary-kpi { grid-template-columns: 1fr 1fr; }
   .kpi-value--large { font-size: 32px; }
   .info-panels { grid-template-columns: 1fr; }
   .dual-content { grid-template-columns: 1fr; }

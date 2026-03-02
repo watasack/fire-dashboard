@@ -30,65 +30,6 @@ def _build_kpi_detail_evidence(
     return f'{iterations:,}回中{success_count:,}回成功'
 
 
-def _risk_color(level: str) -> str:
-    """リスクレベルに応じたCSSクラス名を返す"""
-    return {'good': 'kpi-card--good', 'warn': 'kpi-card--warn', 'bad': 'kpi-card--bad'}.get(level, '')
-
-
-def _build_risk_metrics_html(
-    monte_carlo: Dict[str, Any],
-    config: Dict[str, Any],
-    fire_target: Dict[str, Any] = None,
-) -> str:
-    """リスクメトリクス（セカンダリKPI）のHTMLを生成"""
-    if not monte_carlo:
-        return ''
-
-    p2_5 = monte_carlo.get('percentile_2_5', 0)
-    p97_5 = monte_carlo.get('percentile_97_5', 0)
-    median_final = monte_carlo.get('median_final_assets', 0)
-    max_dd_median = monte_carlo.get('max_drawdown_median', 0)
-    max_dd_p95 = monte_carlo.get('max_drawdown_p95', 0)
-
-    median_text = _format_man_yen(median_final)
-    range_text = f'{_format_man_yen(p2_5)}〜{_format_man_yen(p97_5)}'
-
-    # ドローダウンの具体例（FIRE時点の資産をベースに1行で表示）
-    fire_assets = 0
-    if fire_target:
-        fire_assets = fire_target.get('recommended_target', 0)
-    if fire_assets <= 0:
-        fire_assets = median_final * 0.5
-    trough = fire_assets * (1 - max_dd_median)
-    trough_p95 = fire_assets * (1 - max_dd_p95)
-    dd_sub = (
-        f'{_format_man_yen(fire_assets)} → 一時的に{_format_man_yen(trough)}'
-        f'（最悪5%: {_format_man_yen(trough_p95)}）'
-    )
-
-    # 条件付きカラーリング
-    median_level = 'good' if median_final > 50_000_000 else ('warn' if median_final > 0 else 'bad')
-    dd_level = 'good' if max_dd_median < 0.30 else ('warn' if max_dd_median < 0.50 else 'bad')
-
-    return f'''
-    <section class="secondary-kpi">
-      <div class="kpi-card {_risk_color(median_level)}">
-        <div class="kpi-label">中央値資産（90歳時点）</div>
-        <div class="kpi-value">{median_text}</div>
-        <div class="kpi-sub">最も起こりやすい結果</div>
-      </div>
-      <div class="kpi-card {_risk_color(dd_level)}">
-        <div class="kpi-label">ピークからの最大下落</div>
-        <div class="kpi-value">-{max_dd_median*100:.1f}%</div>
-        <div class="kpi-sub">{dd_sub}</div>
-      </div>
-      <div class="kpi-card">
-        <div class="kpi-label">結果のばらつき（95%信頼区間）</div>
-        <div class="kpi-value kpi-value--range">{range_text}</div>
-        <div class="kpi-sub">95%の確率でこの範囲に収まる</div>
-      </div>
-    </section>'''
-
 
 def _build_assumptions_html(config: Dict[str, Any], monte_carlo: Dict[str, Any]) -> str:
     """前提条件パネルのHTMLを生成（折りたたみ式）"""
@@ -371,6 +312,16 @@ def generate_dashboard_html(
         success_text = '―'
         success_detail = 'MC未実行'
 
+    # 今すぐFIREした場合の成功率
+    immediate_fire_mc = summary_data.get('immediate_fire_mc')
+    if immediate_fire_mc and 'success_rate' in immediate_fire_mc:
+        imm_rate = immediate_fire_mc['success_rate']
+        immediate_fire_text = f"{imm_rate*100:.1f}%"
+        immediate_fire_detail = _build_kpi_detail_evidence(immediate_fire_mc, fire_target, config)
+    else:
+        immediate_fire_text = '―'
+        immediate_fire_detail = ''
+
     # 前提条件の短縮表示
     std_cfg = config.get('simulation', {}).get('standard', {})
     return_rate = std_cfg.get('annual_return_rate', 0.05)
@@ -414,7 +365,6 @@ def generate_dashboard_html(
     family_info_json = json.dumps(family_info, ensure_ascii=False)
 
     # セクション構築
-    risk_metrics_html = _build_risk_metrics_html(monte_carlo, config, fire_target)
     assumptions_html = _build_assumptions_html(config, monte_carlo)
     optimization_html = _build_optimization_html(config)
     life_events_table_html = _build_life_events_table(life_events, simulations, config)
@@ -465,10 +415,13 @@ def generate_dashboard_html(
         <div class="kpi-value kpi-value--large">{success_text}</div>
         <div class="kpi-detail">{success_detail}</div>
       </div>
+      <div class="kpi-divider"></div>
+      <div class="kpi-primary">
+        <div class="kpi-label">今すぐFIRE成功率</div>
+        <div class="kpi-value kpi-value--large">{immediate_fire_text}</div>
+        <div class="kpi-detail">{immediate_fire_detail}</div>
+      </div>
     </section>
-
-    <!-- リスクメトリクス -->
-    {risk_metrics_html}
 
     <!-- メイングラフ（資産シミュレーション） -->
     <section class="main-chart">
