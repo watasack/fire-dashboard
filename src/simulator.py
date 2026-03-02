@@ -1292,7 +1292,12 @@ def calculate_pension_income(
             person_name = person.get('name', '')
             person_start_age = override_start_ages.get(person_name, default_start_age)
 
-            if current_age < person_start_age:
+            birthdate_str = person.get('birthdate')
+            if birthdate_str:
+                person_age = _get_age_at_offset(birthdate_str, year_offset)
+                if person_age < person_start_age:
+                    continue
+            elif current_age < person_start_age:
                 continue
 
             base = _calculate_person_pension(
@@ -2696,7 +2701,8 @@ def _precompute_monthly_cashflows(
     total_months: int,
     config: Dict[str, Any],
     post_fire_income: float = 0,  # 後方互換性のため残す（内部では使用しない）
-    override_start_ages: Dict[str, int] = None
+    override_start_ages: Dict[str, int] = None,
+    post_fire_income_override: float = None,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     モンテカルロ用に月次支出・収入を事前計算
@@ -2774,6 +2780,8 @@ def _precompute_monthly_cashflows(
 
         if monthly_pension > 0:
             effective_labor_income = 0
+        elif post_fire_income_override is not None:
+            effective_labor_income = post_fire_income_override
         else:
             effective_labor_income = _compute_post_fire_income(config)
 
@@ -2852,6 +2860,9 @@ def _simulate_post_fire_with_random_returns(
 
     # 月ごとの資産を記録（return_timeseries=Trueの場合）
     timeseries = [] if return_timeseries else None
+    _last_positive_baseline_scalar = float(baseline_assets[0]) if baseline_assets is not None and len(baseline_assets) > 0 and baseline_assets[0] > 0 else 0.0
+    _initial_total_scalar = current_cash + current_stocks
+    _boost_suppress_thr_scalar = _initial_total_scalar * 0.30
 
     # 月次シミュレーション
     for month in range(remaining_months):
@@ -2868,17 +2879,24 @@ def _simulate_post_fire_with_random_returns(
 
         # 計画資産比ドローダウン計算（ベースラインがない場合は削減なし）
         current_total_assets = cash + stocks
-        _planned = (
-            float(baseline_assets[month])
-            if baseline_assets is not None and month < len(baseline_assets)
-            else None
-        )
+        _ba_val_scalar = 0.0
+        if baseline_assets is not None and month < len(baseline_assets):
+            _ba_val_scalar = float(baseline_assets[month])
+            if _ba_val_scalar > 0:
+                _last_positive_baseline_scalar = _ba_val_scalar
+        _planned = _last_positive_baseline_scalar if _last_positive_baseline_scalar > 0 else None
         drawdown, drawdown_level = calculate_drawdown_level(
             current_assets=current_total_assets,
             peak_assets_history=[],
             config=config,
             planned_assets=_planned,
         )
+        # ベースラインが初期資産の30%を下回った場合、上振れ（ブースト）を抑制
+        if baseline_assets is not None and _ba_val_scalar < _boost_suppress_thr_scalar:
+            if drawdown > 0:
+                drawdown = 0.0
+            if drawdown_level < 0:
+                drawdown_level = 0
 
         # 支出・収入計算（事前計算済みの場合は配列から取得）
         if precomputed_expenses is not None and precomputed_income is not None:
@@ -4004,6 +4022,23 @@ def _process_withdrawal_monthly_cycle(
     }
 
 
+def _apply_baseline_floor(baseline_assets: list, initial_total: float, remaining_months: int) -> list:
+    """ベースラインに線形償却フロアを適用する。
+
+    ベースラインが破綻（0以下）した場合、線形スケジュール
+    initial_total * (remaining - month) / remaining を最低参照値として使用し、
+    ドローダウン検知が途切れることを防ぐ。
+    """
+    if not baseline_assets or initial_total <= 0 or remaining_months <= 0:
+        return baseline_assets
+    result = list(baseline_assets)
+    for m in range(len(result)):
+        linear_floor = initial_total * max(0, remaining_months - m) / remaining_months
+        if result[m] < linear_floor:
+            result[m] = linear_floor
+    return result
+
+
 def run_monte_carlo_simulation(
     current_cash: float,
     current_stocks: float,
@@ -4015,6 +4050,7 @@ def run_monte_carlo_simulation(
     override_start_ages: Dict[str, int] = None,
     min_fire_month: int = None,
     extra_monthly_budget: float = 0,
+    post_fire_income_override: float = None,
 ) -> Dict[str, Any]:
     """
     モンテカルロシミュレーションを実行し、FIRE成功確率を計算
@@ -4104,10 +4140,13 @@ def run_monte_carlo_simulation(
     print(f"  Simulating {remaining_months} months post-FIRE with random returns...")
 
     # ステップ3: 支出・収入の事前計算（全イテレーションで共通）
-    post_fire_income = (
-        config['simulation'].get('shuhei_post_fire_income', 0)
-        + config['simulation'].get('sakura_post_fire_income', 0)
-    )
+    if post_fire_income_override is not None:
+        post_fire_income = post_fire_income_override
+    else:
+        post_fire_income = (
+            config['simulation'].get('shuhei_post_fire_income', 0)
+            + config['simulation'].get('sakura_post_fire_income', 0)
+        )
 
     # override_start_ages が未指定の場合:
     # 1. config に override_start_age が設定されていればそれを使用（決定論的と一致）
@@ -4130,7 +4169,8 @@ def run_monte_carlo_simulation(
 
     precomputed_expenses, precomputed_income, precomputed_base_expenses, precomputed_life_stages, precomputed_workation_costs = _precompute_monthly_cashflows(
         years_offset, remaining_months, config, post_fire_income,
-        override_start_ages=override_start_ages
+        override_start_ages=override_start_ages,
+        post_fire_income_override=post_fire_income_override,
     )
 
     # ステップ3.5: ベースラインの資産パスを計算（補填の基準として使用）
@@ -4160,6 +4200,8 @@ def run_monte_carlo_simulation(
         override_start_ages=override_start_ages,
         extra_monthly_budget=extra_monthly_budget,
     )
+    # 線形償却フロアを適用: ベースラインが破綻した場合でもドローダウン検知を継続する
+    baseline_assets = _apply_baseline_floor(baseline_assets, fire_cash + fire_stocks, remaining_months)
 
     print(f"  Baseline final assets: JPY{baseline_assets[-1]:,.0f}")
     print(f"  Baseline initial (FIRE): JPY{fire_cash + fire_stocks:,.0f}")
@@ -4409,6 +4451,7 @@ def _simulate_post_fire_mc_vectorized(
     baseline_assets=None,
     override_start_ages: Dict[str, int] = None,
     extra_monthly_budget: float = 0,
+    post_fire_income_override: float = None,
 ) -> np.ndarray:
     """
     FIRE 後 MC シミュレーションの NumPy ベクトル化版。
@@ -4527,9 +4570,15 @@ def _simulate_post_fire_mc_vectorized(
 
     # ── 月次ループ（T 回、各ステップで N iteration を同時処理）
     T = min(remaining_months, random_returns_matrix.shape[1])
+    _last_positive_baseline = float(baseline_assets[0]) if baseline_assets is not None and len(baseline_assets) > 0 and baseline_assets[0] > 0 else 0.0
+    _initial_total = fire_cash + fire_stocks
+    _boost_suppress_threshold = _initial_total * 0.30
 
     # 健康保険の所得割計算用: FIRE後固定収入
-    _fixed_post_fire_annual = _compute_post_fire_income(config) * 12
+    if post_fire_income_override is not None:
+        _fixed_post_fire_annual = post_fire_income_override * 12
+    else:
+        _fixed_post_fire_annual = _compute_post_fire_income(config) * 12
     post_fire_annual_side_income_arr = np.full(T, _fixed_post_fire_annual)
 
     for month in range(T):
@@ -4545,9 +4594,17 @@ def _simulate_post_fire_mc_vectorized(
 
         # 2. 計画資産比ドローダウン計算
         total_assets = cash + stocks
-        if baseline_assets is not None and month < len(baseline_assets) and baseline_assets[month] > 0:
-            planned = float(baseline_assets[month])
-            drawdown = total_assets / planned - 1.0
+        if baseline_assets is not None and month < len(baseline_assets):
+            ba_val = float(baseline_assets[month])
+            if ba_val > 0:
+                _last_positive_baseline = ba_val
+            if _last_positive_baseline > 0:
+                drawdown = total_assets / _last_positive_baseline - 1.0
+            else:
+                drawdown = np.zeros(N, dtype=np.float64)
+            # ベースラインが初期資産の30%を下回った場合、上振れ（ブースト）を抑制
+            if ba_val < _boost_suppress_threshold:
+                drawdown = np.minimum(drawdown, 0.0)
         else:
             drawdown = np.zeros(N, dtype=np.float64)
 
