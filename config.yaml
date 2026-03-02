@@ -28,12 +28,12 @@ simulation:
   life_expectancy: 90          # 想定寿命
   # 労働収入（夫婦別設定）
   shuhei_income: 465875  # 修平の手取り月額（円）: 年収7,507,388→社保・税引後
-  sakura_income: 500000  # 桜の手取り月額（円）: 個人事業主の想定手取り
+  sakura_income: 450000  # 桜の手取り月額（円）: 個人事業主の想定手取り
   initial_labor_income: 965875 # 世帯手取り合計（shuhei_income + sakura_income）
   # FIRE後収入（固定額モデル）
   # FIRE後は年金受給開始まで、設定した固定額の収入を得る。
   shuhei_post_fire_income: 100000               # 修平のFIRE後副収入（月額・円）: 開発業務など
-  sakura_post_fire_income: 300000              # 桜のFIRE後月収（個人事業を縮小して継続）
+  sakura_post_fire_income: 200000              # 桜のFIRE後月収（個人事業を縮小して継続）
 
   # 産休・育休による収入変動
   # 桜（個人事業主のため育休給付金なし → 期間中は0円）
@@ -506,14 +506,14 @@ fire:
   dynamic_expense_reduction:
     enabled: true
     drawdown_thresholds:
-      level_1_warning: -0.10   # -10%で警戒
-      level_2_concern: -0.20   # -20%で深刻
-      level_3_crisis: -0.35    # -35%で危機
+      level_1_warning: -0.15   # -10%で警戒
+      level_2_concern: -0.25   # -20%で深刻
+      level_3_crisis: -0.4    # -35%で危機
     reduction_rates:
       level_0_normal: 0.0      # 平常時: 削減なし
-      level_1_warning: 0.3    # 警戒（-15%～-30%）: 裁量支出40%削減
-      level_2_concern: 0.65    # 懸念（-30%～-50%）: 裁量支出80%削減
-      level_3_crisis: 0.85     # 危機（-50%以下）: 裁量支出95%削減
+      level_1_warning: 0.2    # 警戒（-15%～-30%）: 裁量支出40%削減
+      level_2_concern: 0.5    # 懸念（-30%～-50%）: 裁量支出80%削減
+      level_3_crisis: 0.7     # 危機（-50%以下）: 裁量支出95%削減
     # 対称的ガードレール: 上ぶれ時は裁量支出を増加（MC中央値を決定論的ラインに引き戻す）
     spending_boost_enabled: true
     spending_boost_thresholds:
@@ -539,7 +539,7 @@ fire:
   # 最適化結果（optimize_pension.py が自動更新）
   # optimal_fire_month が設定されている場合、ダッシュボードはこの月でFIREしたものとしてMCを実行する
   # null の場合は従来通り最初にFIRE可能になった月を使用
-  optimal_fire_month: 40       # 最適化結果: 月40、成功率100.0%
+  optimal_fire_month: 49       # 最適化結果: 月49、最終資産615万円
   optimal_extra_monthly_budget: 0  # 最適化結果: FIRE後追加月額予算
   min_success_rate: 0.90       # 最適化の成功率閾値
 
@@ -653,7 +653,7 @@ pension:
       birthdate: '1991/04/20'     # 生年月日（YYYY/MM/DD形式）
       pension_type: 'national'    # 国民年金のみ
       # 動的計算により、国民年金満額: 約81.6万円/年
-      override_start_age: 62      # 最適化結果: 62歳早期受給（桜）
+      override_start_age: 74      # 最適化結果: 62歳早期受給（桜）
   # 注: annual_amountを指定すると、動的計算をスキップして固定値を使用（後方互換性）
 
 # 社会保険料設定（FIRE後の支出）
@@ -727,8 +727,8 @@ post_fire_cash_strategy:
 
   # 暴落時の株式売却停止ルール
   market_crash_threshold: -0.2    # ドローダウン-20%以下で暴落と判定
-  recovery_threshold: -0.10        # ドローダウン-10%以上で回復と判定
-  emergency_cash_floor: 250000     # 緊急時最低現金（25万円、これを下回ったら強制売却）
+  recovery_threshold: -0.15        # ドローダウン-10%以上で回復と判定
+  emergency_cash_floor: 100000     # 緊急時最低現金（25万円、これを下回ったら強制売却）
 
   description: 'FIRE後専用の現金管理戦略。平常時は500万円+生活費1ヶ月分を確保し、月初に株式を売却して生活費を賄う。暴落時（ドローダウン-20%以下）は株式売却を停止し、安全マージンから取り崩す。回復（-10%以上）または現金25万円未満で株式売却を再開。'
 
