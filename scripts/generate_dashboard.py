@@ -184,6 +184,7 @@ def main():
 
         # 7.5. モンテカルロシミュレーション（有効な場合のみ）
         mc_results = None
+        immediate_fire_mc = None
         mc_config = config['simulation'].get('monte_carlo', {})
         if mc_config.get('enabled', False):
             print("[7.5/10] Running Monte Carlo simulation...")
@@ -201,6 +202,24 @@ def main():
                 extra_monthly_budget=extra_monthly_budget,
             )
             print("[OK] Monte Carlo simulation complete\n")
+
+            print("[7.6/10] Running immediate FIRE Monte Carlo simulation...")
+            try:
+                immediate_fire_mc = run_monte_carlo_simulation(
+                    current_cash=current_status['cash_deposits'],
+                    current_stocks=current_status['investment_trusts'],
+                    config=config,
+                    scenario='standard',
+                    iterations=mc_iterations,
+                    monthly_income=monthly_income,
+                    monthly_expense=trends['monthly_avg_expense'],
+                    override_start_ages=override_start_ages,
+                    min_fire_month=0,
+                    extra_monthly_budget=extra_monthly_budget,
+                )
+                print("[OK] Immediate FIRE simulation complete\n")
+            except Exception as e:
+                print(f"[WARN] Immediate FIRE simulation failed: {e}\n")
 
         # 8. グラフ生成
         print("[8/10] Creating visualizations...")
@@ -230,6 +249,7 @@ def main():
                 'trends': trends,
                 'expense_breakdown': expense_breakdown,
                 'monte_carlo': mc_results,
+                'immediate_fire_mc': immediate_fire_mc,
                 'life_events': life_events,
                 'simulations': simulations,
                 'update_time': datetime.now()
