@@ -3,7 +3,7 @@
 年金受給開始年齢の最適化スクリプト
 
 FIRE達成時期と年金受給開始年齢（62〜75歳）を同時に最適化する。
-成功率 ≥ 95% を制約として、最も早いFIRE達成月を求める。
+決定論的ベースラインの最終資産 >= 安全マージンを制約として、最も早いFIRE達成月を求める。
 
 使用方法:
     python scripts/optimize_pension.py
@@ -11,6 +11,7 @@ FIRE達成時期と年金受給開始年齢（62〜75歳）を同時に最適化
 
 import sys
 import re
+import json
 from pathlib import Path
 from datetime import datetime
 
@@ -36,7 +37,7 @@ def _update_config_with_result(config_path: str, result: dict) -> None:
     text = Path(config_path).read_text(encoding='utf-8')
 
     fire_month = result.get('optimal_fire_month')
-    success_rate = result.get('best_success_rate', 0)
+    final_assets = result.get('final_assets', 0)
     pension_ages = result.get('optimal_ages', {})
     extra_budget = result.get('optimal_extra_monthly_budget', 0)
 
@@ -46,7 +47,7 @@ def _update_config_with_result(config_path: str, result: dict) -> None:
 
     text = re.sub(
         r'(optimal_fire_month:).*',
-        rf'\1 {fire_month}       # 最適化結果: 月{fire_month}、成功率{success_rate:.1%}',
+        rf'\1 {fire_month}       # 最適化結果: 月{fire_month}、最終資産{final_assets/10000:.0f}万円',
         text,
     )
 
@@ -73,16 +74,17 @@ def _update_config_with_result(config_path: str, result: dict) -> None:
                 text,
             )
 
-    reduction_rates = result.get('optimal_reduction_rates', {})
-    if reduction_rates:
-        for level_key in ['level_0_normal', 'level_1_warning', 'level_2_concern', 'level_3_crisis']:
-            val = reduction_rates.get(level_key)
+    pre_fire_strategy = result.get('optimal_pre_fire_strategy', {})
+    if pre_fire_strategy:
+        pf_mappings = {
+            'cash_buffer_months': (r'(cash_buffer_months:)\s*\d+', lambda v: str(int(v))),
+            'auto_invest_threshold': (r'(auto_invest_threshold:)\s*[\d.]+', lambda v: str(v)),
+            'min_cash_balance': (r'(min_cash_balance:)\s*\d+', lambda v: str(int(v))),
+        }
+        for key, (pattern, fmt) in pf_mappings.items():
+            val = pre_fire_strategy.get(key)
             if val is not None:
-                text = re.sub(
-                    rf'({re.escape(level_key)}:)\s*[\d.]+',
-                    rf'\1 {val}',
-                    text,
-                )
+                text = re.sub(pattern, rf'\1 {fmt(val)}', text)
 
     for person_name, age in pension_ages.items():
         pattern = (
@@ -104,14 +106,61 @@ def _update_config_with_result(config_path: str, result: dict) -> None:
             cs_str += f", safety_margin={int(sm/10000)}万"
         if ct is not None:
             cs_str += f", crash_threshold={ct*100:.0f}%"
-    rr_str = ""
-    if reduction_rates:
-        l1 = reduction_rates.get('level_1_warning', 0)
-        l2 = reduction_rates.get('level_2_concern', 0)
-        l3 = reduction_rates.get('level_3_crisis', 0)
-        if l1 > 0 or l2 > 0 or l3 > 0:
-            rr_str = f", reduction={l1*100:.0f}/{l2*100:.0f}/{l3*100:.0f}%"
-    print(f"  [OK] config.yaml 更新: fire_month={fire_month}, pension={ages_str}{budget_str}{cs_str}{rr_str}")
+    pf_str = ""
+    if pre_fire_strategy:
+        cbm = pre_fire_strategy.get('cash_buffer_months')
+        ait = pre_fire_strategy.get('auto_invest_threshold')
+        mcb = pre_fire_strategy.get('min_cash_balance')
+        parts = []
+        if cbm is not None:
+            parts.append(f"buffer={cbm}ヶ月")
+        if ait is not None:
+            parts.append(f"invest_thr={ait}")
+        if mcb is not None:
+            parts.append(f"min_cash={int(mcb/10000)}万")
+        if parts:
+            pf_str = ", " + ", ".join(parts)
+    print(f"  [OK] config.yaml 更新: fire_month={fire_month}, pension={ages_str}{budget_str}{cs_str}{pf_str}")
+
+
+def _save_pareto_frontier(result: dict, config: dict) -> None:
+    """パレートフロンティアデータをJSONファイルに保存する"""
+    pareto_df = result.get('pareto_info')
+    if pareto_df is None or len(pareto_df) == 0:
+        return
+
+    start_age = config.get('simulation', {}).get('start_age', 35)
+    person_names = result.get('person_names', [])
+    optimal = result.get('optimal')
+
+    pareto_data = []
+    for _, row in pareto_df.iterrows():
+        fm = int(row['fire_month'])
+        entry = {
+            'fire_month': fm,
+            'fire_age': round(start_age + fm / 12, 2),
+            'final_assets': round(float(row.get('final_assets', 0))),
+            'extra_budget': round(float(row.get('extra_budget', 0))),
+            'pension_ages': {n: int(row.get(f'age_{n}', 65)) for n in person_names},
+        }
+        pareto_data.append(entry)
+
+    output = {
+        'pareto_frontier': pareto_data,
+        'optimal': {
+            'fire_month': optimal['fire_month'],
+            'fire_age': round(start_age + optimal['fire_month'] / 12, 2),
+            'final_assets': round(optimal.get('final_assets', 0)),
+        } if optimal else None,
+        'min_baseline_final_assets': result.get('min_baseline_final_assets', 3_000_000),
+        'generated_at': datetime.now().isoformat(),
+    }
+
+    out_dir = Path('dashboard/data')
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / 'pareto_frontier.json'
+    out_path.write_text(json.dumps(output, ensure_ascii=False, indent=2), encoding='utf-8')
+    print(f"  [OK] パレートフロンティアデータ保存: {out_path}")
 
 
 def main():
@@ -154,6 +203,8 @@ def main():
 
         # 4. 最適化実行
         print("[4/4] Running pension optimization...")
+        safety_margin = config.get('post_fire_cash_strategy', {}).get('safety_margin', 3_000_000)
+
         result = optimize_pension_start_ages(
             current_cash=current_status['cash_deposits'],
             current_stocks=current_status['investment_trusts'],
@@ -161,9 +212,7 @@ def main():
             scenario='standard',
             monthly_income=monthly_income,
             monthly_expense=trends['monthly_avg_expense'],
-            min_success_rate=0.90,
-            top_k=150,
-            mc_iterations=1000,
+            min_baseline_final_assets=safety_margin,
             fire_month_search_range=72,
             fire_month_step=1,
             extra_budget_candidates=[0, 50000, 100000, 150000, 200000],
@@ -174,11 +223,16 @@ def main():
                 {'safety_margin': 8_000_000, 'market_crash_threshold': -0.15},
                 {'safety_margin': 5_000_000, 'market_crash_threshold': -0.30},
             ],
-            expense_reduction_candidates=[
-                {'level_1_warning': 0.0,  'level_2_concern': 0.0,  'level_3_crisis': 0.0},
-                {'level_1_warning': 0.20, 'level_2_concern': 0.50, 'level_3_crisis': 0.70},
-                {'level_1_warning': 0.30, 'level_2_concern': 0.65, 'level_3_crisis': 0.85},
-                {'level_1_warning': 0.40, 'level_2_concern': 0.80, 'level_3_crisis': 0.95},
+            pre_fire_investment_candidates=[
+                {},
+                {'cash_buffer_months': 3, 'auto_invest_threshold': 1.2, 'min_cash_balance': 3_000_000},
+                {'cash_buffer_months': 6, 'auto_invest_threshold': 1.5, 'min_cash_balance': 5_000_000},
+                {'cash_buffer_months': 9, 'auto_invest_threshold': 1.5, 'min_cash_balance': 5_000_000},
+                {'cash_buffer_months': 12, 'auto_invest_threshold': 2.0, 'min_cash_balance': 8_000_000},
+                {'cash_buffer_months': 3, 'auto_invest_threshold': 1.5, 'min_cash_balance': 5_000_000},
+                {'cash_buffer_months': 6, 'auto_invest_threshold': 1.2, 'min_cash_balance': 3_000_000},
+                {'cash_buffer_months': 6, 'auto_invest_threshold': 2.0, 'min_cash_balance': 8_000_000},
+                {'cash_buffer_months': 9, 'auto_invest_threshold': 1.2, 'min_cash_balance': 3_000_000},
             ],
         )
 
@@ -192,12 +246,16 @@ def main():
             print("\n[5/5] Updating config.yaml with optimization result...")
             _update_config_with_result('config.yaml', {
                 'optimal_fire_month': optimal['fire_month'],
-                'best_success_rate': optimal['success_rate'],
+                'final_assets': optimal.get('final_assets', 0),
                 'optimal_ages': optimal['pension_ages'],
                 'optimal_extra_monthly_budget': optimal.get('extra_monthly_budget', 0),
                 'optimal_cash_strategy': optimal.get('cash_strategy', {}),
-                'optimal_reduction_rates': optimal.get('reduction_rates', {}),
+                'optimal_pre_fire_strategy': result.get('pre_fire_strategy', {}),
             })
+
+        # 6. パレートフロンティアデータを保存
+        print("\n[6] Saving Pareto frontier data...")
+        _save_pareto_frontier(result, config)
 
         print("\n[OK] 最適化完了")
         return 0
