@@ -909,21 +909,25 @@ class TestIncomeTimeline:
                 assert row['sakura_income'] == 0 or row['sakura_income'] == 500000, \
                     f"Expected 0 (during leave) or 500000 (before/after), got {row['sakura_income']}"
 
-    def test_fire_post_income_values(self, full_df):
+    def test_fire_post_income_values(self, full_df, real_config):
         """FIRE後の修平/桜の収入が config の固定値と一致（遷移月を除く）"""
         fire_rows = full_df[full_df['fire_achieved'] == True]
         if len(fire_rows) < 2:
             pytest.skip("Not enough FIRE months")
+
+        sim = real_config['simulation']
+        expected_shuhei = sim.get('shuhei_post_fire_income', 0)
+        expected_sakura = sim.get('sakura_post_fire_income', 0)
 
         # FIRE遷移月を除外（pre-FIRE収入で記録されるため）
         fire_stable = fire_rows.iloc[1:]
         fire_no_pension = fire_stable[fire_stable['pension_income'] == 0]
         if len(fire_no_pension) > 0:
             row = fire_no_pension.iloc[0]
-            assert row['shuhei_income'] == 100000 or row['shuhei_income'] == 50000, \
-                f"Post-FIRE shuhei income: {row['shuhei_income']}"
-            assert row['sakura_income'] == 300000 or row['sakura_income'] == 250000, \
-                f"Post-FIRE sakura income: {row['sakura_income']}"
+            assert row['shuhei_income'] == expected_shuhei, \
+                f"Post-FIRE shuhei income: {row['shuhei_income']} (expected {expected_shuhei})"
+            assert row['sakura_income'] == expected_sakura, \
+                f"Post-FIRE sakura income: {row['sakura_income']} (expected {expected_sakura})"
 
     def test_final_assets_positive(self, full_df):
         """シミュレーション終了時の資産がプラス"""

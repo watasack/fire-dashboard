@@ -111,10 +111,12 @@ def _build_optimization_html(config: Dict[str, Any]) -> str:
     """最適化結果サマリーパネルのHTMLを生成（折りたたみ式、デフォルト展開）"""
     fire_cfg = config.get('fire', {})
     pension_cfg = config.get('pension', {})
+    cash_strategy = config.get('post_fire_cash_strategy', {})
 
     optimal_month = fire_cfg.get('optimal_fire_month')
     extra_budget = fire_cfg.get('optimal_extra_monthly_budget', 0)
-    min_success = fire_cfg.get('min_success_rate', 0.95)
+    safety_margin = cash_strategy.get('safety_margin', 3_000_000)
+    safety_margin_man = safety_margin / 10000
 
     people = pension_cfg.get('people', [])
     pension_rows = ''
@@ -139,7 +141,7 @@ def _build_optimization_html(config: Dict[str, Any]) -> str:
     else:
         fire_text = '未設定'
 
-    summary_badge = f"FIRE {fire_text} / 成功率{min_success*100:.0f}%"
+    summary_badge = f"FIRE {fire_text} / 安全マージン{safety_margin_man:.0f}万円"
 
     return f'''
     <details class="info-detail" open>
@@ -152,14 +154,14 @@ def _build_optimization_html(config: Dict[str, Any]) -> str:
         <table class="assumptions-table">
           <tbody>
             <tr><td>最適FIRE時期</td><td>{fire_text}</td></tr>
-            <tr><td>成功率閾値</td><td>{min_success*100:.0f}%</td></tr>
+            <tr><td>安全マージン</td><td>¥{safety_margin_man:.0f}万（ベースライン最終資産 ≥ この額）</td></tr>
             <tr><td>FIRE後追加予算</td><td>¥{extra_budget/10000:.1f}万/月</td></tr>
             <tr class="sep"><td colspan="2"></td></tr>{pension_rows}
           </tbody>
         </table>
         <div class="optimization-note">
-          最適化により、成功率{min_success*100:.0f}%を維持しながら最も早いFIRE時期と
-          最適な年金受給開始年齢の組み合わせを探索しています。
+          最適化により、ベースライン最終資産が安全マージン（{safety_margin_man:.0f}万円）以上を
+          維持しながら最も早いFIRE時期と最適な年金受給開始年齢の組み合わせを探索しています。
         </div>
       </div>
     </details>'''

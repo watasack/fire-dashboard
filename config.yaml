@@ -75,8 +75,6 @@ simulation:
     return_std_dev: 0.06       # 年率リターンの標準偏差（6% = 長期平均回帰を考慮）
     mean_reversion_speed: 0.3  # 平均回帰の速度（0.0-1.0、0.3が推奨値）
                                # 0.0=回帰なし、0.3=現実的、0.5=中程度、1.0=完全回帰
-    show_distribution: true    # 結果分布グラフを表示
-
     # 拡張モデル（GARCH + 非対称多期間平均回帰）
     enhanced_model:
       enabled: true            # 拡張モデルを有効化（ユーザー受け入れテスト）
@@ -541,7 +539,6 @@ fire:
   # null の場合は従来通り最初にFIRE可能になった月を使用
   optimal_fire_month: 49       # 最適化結果: 月49、最終資産615万円
   optimal_extra_monthly_budget: 0  # 最適化結果: FIRE後追加月額予算
-  min_success_rate: 0.90       # 最適化の成功率閾値
 
   # 固定支出（一律、データが不足している場合のフォールバック）
   manual_annual_expense: null  # nullの場合はライフステージ別を使用
@@ -616,8 +613,6 @@ mortgage:
 # 住宅メンテナンス費用設定
 house_maintenance:
   enabled: true                # 住宅メンテナンス費用を有効化
-  # 建設年（参考情報。実際の周期計算はitems.first_yearを使用）
-  construction_year: 2025
   # 定期メンテナンス項目のリスト
   items:
     - name: '白アリ対策'
@@ -730,7 +725,6 @@ post_fire_cash_strategy:
   recovery_threshold: -0.15        # ドローダウン-10%以上で回復と判定
   emergency_cash_floor: 100000     # 緊急時最低現金（25万円、これを下回ったら強制売却）
 
-  description: 'FIRE後専用の現金管理戦略。平常時は500万円+生活費1ヶ月分を確保し、月初に株式を売却して生活費を賄う。暴落時（ドローダウン-20%以下）は株式売却を停止し、安全マージンから取り崩す。回復（-10%以上）または現金25万円未満で株式売却を再開。'
 
 # 年金繰り下げ受給戦略
 pension_deferral:
@@ -752,7 +746,6 @@ pension_deferral:
   min_start_age: 62            # 繰り上げ受給の下限
   max_start_age: 75            # 繰り下げ受給の上限（2022年4月から75歳まで可能）
 
-  description: '資産状況に応じて年金受給開始時期を最適化'
 
 # 可視化設定
 visualization:
