@@ -53,7 +53,7 @@ def _build_assumptions_html(config: Dict[str, Any], monte_carlo: Dict[str, Any])
     shuhei_post = sim.get('shuhei_post_fire_income', 0)
     sakura_post = sim.get('sakura_post_fire_income', 0)
 
-    safety_margin = post_fire_cash.get('safety_margin', 0)
+    safety_margin = post_fire_cash.get('safety_margin', 3_000_000)
     crash_threshold = post_fire_cash.get('market_crash_threshold', 0)
 
     der = fire_cfg.get('dynamic_expense_reduction', {})

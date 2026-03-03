@@ -523,7 +523,7 @@ def _run_deterministic_screening(
         cash_strategy_candidates = [{}]
 
     default_strategy = config.get('post_fire_cash_strategy', {})
-    default_safety = default_strategy.get('safety_margin', 5_000_000)
+    default_safety = default_strategy.get('safety_margin', 3_000_000)
     default_crash = default_strategy.get('market_crash_threshold', -0.20)
 
     params = config['simulation'][scenario]
@@ -665,7 +665,7 @@ def _find_optimal_solution(
         'fire_month': int(best['fire_month']),
         'extra_monthly_budget': float(best.get('extra_budget', 0)),
         'cash_strategy': {
-            'safety_margin': float(best.get('cash_safety_margin', 5_000_000)),
+            'safety_margin': float(best.get('cash_safety_margin', 3_000_000)),
             'market_crash_threshold': float(best.get('cash_crash_threshold', -0.20)),
         },
         'final_assets': float(best['final_assets']),
@@ -723,7 +723,7 @@ def _print_result(result: Dict[str, Any]) -> None:
         if extra_budget > 0:
             print(f"    FIRE後追加予算:     月{extra_budget/10000:.0f}万円（年{extra_budget*12/10000:.0f}万円）")
         if cs:
-            print(f"    現金安全マージン:    {cs.get('safety_margin', 5_000_000)/10000:.0f}万円")
+            print(f"    現金安全マージン:    {cs.get('safety_margin', 3_000_000)/10000:.0f}万円")
             print(f"    暴落判定閾値:       {cs.get('market_crash_threshold', -0.20)*100:.0f}%")
         final_assets = optimal.get('final_assets', 0)
         print(f"    ベースライン最終資産: {final_assets/10000:.0f}万円（安全マージン: {min_bl/10000:.0f}万円）")

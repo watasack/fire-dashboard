@@ -717,7 +717,7 @@ post_fire_cash_strategy:
   enabled: true                # FIRE後の現金管理戦略を有効化
 
   # 基本設定
-  safety_margin: 3000000       # 安全マージン: 500万円（常時確保）
+  safety_margin: 3000000       # 安全マージン: 300万円（常時確保）
   monthly_buffer_months: 1     # 生活費バッファ: 1ヶ月分
 
   # 暴落時の株式売却停止ルール

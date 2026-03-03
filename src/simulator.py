@@ -2023,7 +2023,7 @@ def _manage_post_fire_cash(
             'stocks_sold_for_monthly': 0,
         }
     
-    safety_margin = strategy_config.get('safety_margin', 5000000)
+    safety_margin = strategy_config.get('safety_margin', 3_000_000)
     monthly_buffer_months = strategy_config.get('monthly_buffer_months', 1)
     crash_threshold = strategy_config.get('market_crash_threshold', -0.20)
     recovery_threshold = strategy_config.get('recovery_threshold', -0.10)
@@ -4505,7 +4505,7 @@ def _simulate_post_fire_mc_vectorized(
     # 月次現金管理設定
     strategy_cfg = config.get('post_fire_cash_strategy', {})
     strategy_enabled = allocation_enabled and strategy_cfg.get('enabled', False)
-    safety_margin = strategy_cfg.get('safety_margin', 5_000_000)
+    safety_margin = strategy_cfg.get('safety_margin', 3_000_000)
     buffer_months = strategy_cfg.get('monthly_buffer_months', 1)
     crash_thr = strategy_cfg.get('market_crash_threshold', -0.20)
     recovery_thr = strategy_cfg.get('recovery_threshold', -0.10)
