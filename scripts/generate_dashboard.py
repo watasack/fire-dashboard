@@ -86,7 +86,7 @@ def main():
         
         # 初期労働収入の設定確認
         monthly_income = trends['monthly_avg_income_forecast']
-        initial_labor_income = config['simulation'].get('initial_labor_income')
+        initial_labor_income = config['simulation']['initial_labor_income']
         if initial_labor_income is not None:
             print(f"  Using fixed initial labor income: JPY{initial_labor_income:,.0f}/month")
             monthly_income = initial_labor_income
@@ -95,8 +95,9 @@ def main():
         if override_start_ages:
             print(f"  Pension override: {override_start_ages}")
 
-        optimal_fire_month = config.get('fire', {}).get('optimal_fire_month')
-        extra_monthly_budget = config.get('fire', {}).get('optimal_extra_monthly_budget', 0)
+        fire_cfg = config['fire']
+        optimal_fire_month = fire_cfg.get('optimal_fire_month')
+        extra_monthly_budget = fire_cfg.get('optimal_extra_monthly_budget') or 0
         if extra_monthly_budget:
             print(f"  Extra monthly budget: JPY{extra_monthly_budget:,.0f}")
 
@@ -186,10 +187,10 @@ def main():
         # 7.5. モンテカルロシミュレーション（有効な場合のみ）
         mc_results = None
         immediate_fire_mc = None
-        mc_config = config['simulation'].get('monte_carlo', {})
-        if mc_config.get('enabled', False):
+        mc_config = config['simulation']['monte_carlo']
+        if mc_config['enabled']:
             print("[7.5/10] Running Monte Carlo simulation...")
-            mc_iterations = mc_config.get('iterations', 1000)
+            mc_iterations = mc_config['iterations']
             mc_results = run_monte_carlo_simulation(
                 current_cash=current_status['cash_deposits'],
                 current_stocks=current_status['investment_trusts'],
@@ -242,7 +243,7 @@ def main():
                 pareto_data=pareto_json['pareto_frontier'],
                 optimal=pareto_json.get('optimal'),
                 config=config,
-                min_baseline_final_assets=pareto_json.get('min_baseline_final_assets', 3_000_000),
+                min_baseline_final_assets=config['post_fire_cash_strategy']['safety_margin'],
             )
 
         charts = {

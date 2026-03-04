@@ -59,11 +59,11 @@ def _update_config_with_result(config_path: str, result: dict) -> None:
 
     cash_strategy = result.get('optimal_cash_strategy', {})
     if cash_strategy:
-        sm = cash_strategy.get('safety_margin')
-        if sm is not None:
+        tcr = cash_strategy.get('target_cash_reserve')
+        if tcr is not None:
             text = re.sub(
-                r'(safety_margin:)\s*\d+',
-                rf'\1 {int(sm)}',
+                r'(target_cash_reserve:)\s*\d+',
+                rf'\1 {int(tcr)}',
                 text,
             )
         ct = cash_strategy.get('market_crash_threshold')
@@ -100,10 +100,10 @@ def _update_config_with_result(config_path: str, result: dict) -> None:
     budget_str = f", extra_budget={int(extra_budget/10000)}万/月" if extra_budget > 0 else ""
     cs_str = ""
     if cash_strategy:
-        sm = cash_strategy.get('safety_margin')
+        tcr = cash_strategy.get('target_cash_reserve')
         ct = cash_strategy.get('market_crash_threshold')
-        if sm is not None:
-            cs_str += f", safety_margin={int(sm/10000)}万"
+        if tcr is not None:
+            cs_str += f", 現金確保目標={int(tcr/10000)}万"
         if ct is not None:
             cs_str += f", crash_threshold={ct*100:.0f}%"
     pf_str = ""
@@ -129,7 +129,7 @@ def _save_pareto_frontier(result: dict, config: dict) -> None:
     if pareto_df is None or len(pareto_df) == 0:
         return
 
-    start_age = config.get('simulation', {}).get('start_age', 35)
+    start_age = config['simulation']['start_age']
     person_names = result.get('person_names', [])
     optimal = result.get('optimal')
 
@@ -152,8 +152,6 @@ def _save_pareto_frontier(result: dict, config: dict) -> None:
             'fire_age': round(start_age + optimal['fire_month'] / 12, 2),
             'final_assets': round(optimal.get('final_assets', 0)),
         } if optimal else None,
-        'min_baseline_final_assets': result.get('min_baseline_final_assets', 3_000_000),
-        'generated_at': datetime.now().isoformat(),
     }
 
     out_dir = Path('dashboard/data')
@@ -190,7 +188,7 @@ def main():
         trends = analyze_income_expense_trends(cashflow_df, transaction_df, config)
 
         monthly_income = trends['monthly_avg_income_forecast']
-        initial_labor_income = config['simulation'].get('initial_labor_income')
+        initial_labor_income = config['simulation']['initial_labor_income']
         if initial_labor_income is not None:
             monthly_income = initial_labor_income
 
@@ -203,7 +201,7 @@ def main():
 
         # 4. 最適化実行
         print("[4/4] Running pension optimization...")
-        safety_margin = config.get('post_fire_cash_strategy', {}).get('safety_margin', 3_000_000)
+        safety_margin = config['post_fire_cash_strategy']['safety_margin']
 
         result = optimize_pension_start_ages(
             current_cash=current_status['cash_deposits'],
@@ -217,11 +215,11 @@ def main():
             fire_month_step=1,
             extra_budget_candidates=[0, 50000, 100000, 150000, 200000],
             cash_strategy_candidates=[
-                {'safety_margin': 5_000_000, 'market_crash_threshold': -0.20},
-                {'safety_margin': 3_000_000, 'market_crash_threshold': -0.20},
-                {'safety_margin': 3_000_000, 'market_crash_threshold': -0.30},
-                {'safety_margin': 8_000_000, 'market_crash_threshold': -0.15},
-                {'safety_margin': 5_000_000, 'market_crash_threshold': -0.30},
+                {'target_cash_reserve': 5_000_000, 'market_crash_threshold': -0.20},
+                {'target_cash_reserve': 3_000_000, 'market_crash_threshold': -0.20},
+                {'target_cash_reserve': 3_000_000, 'market_crash_threshold': -0.30},
+                {'target_cash_reserve': 8_000_000, 'market_crash_threshold': -0.15},
+                {'target_cash_reserve': 5_000_000, 'market_crash_threshold': -0.30},
             ],
             pre_fire_investment_candidates=[
                 {},
