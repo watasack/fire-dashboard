@@ -1,26 +1,30 @@
 """
 設定管理モジュール
-config.yamlの読み込みと検証を担当
+config.yamlの読み込みとPydanticスキーマによる厳密なバリデーションを担当
 """
 
 import yaml
 from pathlib import Path
 from typing import Dict, Any
 
+from pydantic import ValidationError
+
+from src.config_schema import AppConfig
+
 
 def load_config(config_path: str = 'config.yaml') -> Dict[str, Any]:
     """
-    設定ファイルを読み込む
+    設定ファイルを読み込み、Pydanticスキーマで全フィールドを検証する。
 
     Args:
         config_path: 設定ファイルのパス
 
     Returns:
-        設定辞書
+        検証済み設定辞書（全キーが存在することが保証される）
 
     Raises:
         FileNotFoundError: 設定ファイルが見つからない場合
-        ValueError: 必須パラメータが不足している場合
+        ValueError: 必須パラメータが不足・型不正の場合
     """
     config_file = Path(config_path)
 
@@ -28,51 +32,16 @@ def load_config(config_path: str = 'config.yaml') -> Dict[str, Any]:
         raise FileNotFoundError(f"Configuration file not found: {config_path}")
 
     with open(config_file, 'r', encoding='utf-8') as f:
-        config = yaml.safe_load(f)
+        raw = yaml.safe_load(f)
 
-    # 設定の検証
-    _validate_config(config)
+    try:
+        validated = AppConfig(**raw)
+    except ValidationError as e:
+        raise ValueError(
+            f"Config validation failed ({config_path}):\n{e}"
+        ) from e
 
-    return config
-
-
-def _validate_config(config: Dict[str, Any]) -> None:
-    """
-    設定の妥当性を検証
-
-    Args:
-        config: 設定辞書
-
-    Raises:
-        ValueError: 必須パラメータが不足している場合
-    """
-    # 必須セクションの確認
-    required_sections = ['data', 'simulation', 'fire', 'visualization', 'output']
-    for section in required_sections:
-        if section not in config:
-            raise ValueError(f"Missing required section: {section}")
-
-    # データ設定の確認
-    data_config = config['data']
-    if 'asset_file' not in data_config:
-        raise ValueError("Missing required parameter: data.asset_file")
-    if 'transaction_pattern' not in data_config:
-        raise ValueError("Missing required parameter: data.transaction_pattern")
-
-    # シミュレーション設定の確認
-    sim_config = config['simulation']
-
-    # 標準シナリオのみ必須
-    if 'standard' not in sim_config:
-        raise ValueError("Missing required scenario: simulation.standard")
-
-    scenario_config = sim_config['standard']
-    required_params = ['annual_return_rate', 'inflation_rate',
-                      'income_growth_rate', 'expense_growth_rate']
-    for param in required_params:
-        if param not in scenario_config:
-            raise ValueError(f"Missing parameter: simulation.standard.{param}")
-
+    return validated.model_dump()
 
 
 def get_scenario_config(config: Dict[str, Any], scenario: str = 'standard') -> Dict[str, Any]:

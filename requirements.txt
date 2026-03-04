@@ -5,6 +5,9 @@ numpy>=1.24.0
 # 可視化
 plotly>=5.18.0
 
+# 設定管理・バリデーション
+pydantic>=2.0
+
 # ユーティリティ
 pyyaml>=6.0
 python-dateutil>=2.8.0
