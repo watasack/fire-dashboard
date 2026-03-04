@@ -78,27 +78,6 @@ python scripts/sensitivity_analysis.py
 **重要:** パラメータの分類（コントロール可能 vs 外部要因）を理解してから実行することを推奨。
 詳細は [.plans/fire-optimization-parameters.md](.plans/fire-optimization-parameters.md) を参照。
 
-### 動的支出削減の効果分析
-
-暴落時の自動支出削減あり/なしでFIRE成功確率を比較：
-
-```bash
-python scripts/dynamic_reduction_analysis.py
-```
-
-**分析内容:**
-- 動的削減なし（ベースライン）vs 動的削減あり（暴落対応プロトコル）の比較
-- 成功率、破産率、資産分布（P10/P50/P90）の改善効果を定量測定
-- 最悪シナリオ（P10）での破産回避効果を評価
-
-**主要な効果（1000回MCシミュレーション）:**
-- 成功率: 53.4% → 99.8%（**+46.4ポイント改善**）
-- 破産率: 16.0% → 0.2%（**▲15.8ポイント改善**）
-- P10: 0円（破産） → 33.6万円（破産回避）
-
-**注:** config.yamlで `dynamic_expense_reduction.enabled: true` に設定すると、
-全シミュレーションで暴落時の支出削減が適用されます。（副収入増加機能は削除済み）
-
 ### カテゴリ別予算管理（詳細版）
 
 基本生活費を23カテゴリに細分化して管理する機能です。暴落時にどのカテゴリを削減するかを明確化できます。
@@ -243,59 +222,31 @@ python -m pytest tests/test_category_dynamic_reduction.py -v
 全ての主要な不変条件と整合性を検証します：
 
 ```bash
-python tests/test_simulation_convergence.py
+python -m tests.test_simulation_convergence
 ```
 
 **検証内容:**
-1. 標準シミュレーションとMC中央値の収束性（許容誤差10%）
+1. 標準シミュレーションとMC中央値の収束性（xfail: 大きな乖離が発生している場合はスキップ）
 2. NISA残高 ≤ 株式残高（不変条件）
 3. NISA年間投資枠（360万円）の遵守
 4. 資産推移の異常検知（極端な減少の検出）
 
 **期待される実行時間:** 約2-3分（MC 1000イテレーション）
 
-**期待される出力:**
+### 包括的テストスイート
+
+シミュレーション全体の整合性を169件のテストで検証します：
+
+```bash
+python -m pytest tests/test_simulation_integrity.py -v
 ```
-============================================================
-統合テスト: シミュレーション整合性検証
-============================================================
 
-=== シミュレーション整合性テスト ===
-標準シミュレーション最終資産: 9,042,056円
-  - 現金: 5,000,000円
-  - 株式: 4,042,056円
-
-MCシミュレーション分布:
-  平均値:  14,536,587円
-  中央値:  8,178,493円
-  10%ile:  0円
-  90%ile:  39,332,215円
-
-乖離分析:
-  標準 vs MC中央値: 9.55%
-  標準 vs MC平均値: 60.77%
-  MC中央値/平均値: 0.563 (対数正規分布では<1.0が正常)
-
-[OK] テスト合格: 標準シミュレーションとMC中央値の整合性OK
-
-=== NISA残高不変条件テスト ===
-全661ヶ月中の違反: 0件
-[OK] テスト合格: NISA残高は常に株式残高以下
-
-=== NISA年間投資枠チェック ===
-年間投資枠上限: 3,600,000円
-超過年: 0年
-[OK] テスト合格: NISA年間投資枠を遵守しています
-
-=== 資産推移異常検知テスト ===
-全期間: 661ヶ月
-極端な株式減少（>50%）: 0件 (0.0%)
-[OK] テスト合格: 異常な資産減少は検出されませんでした
-
-============================================================
-全テスト合格 [OK]
-============================================================
-```
+**検証内容:**
+- FIRE前・FIRE後の月次計算の整合性
+- NISA不変条件（全月・全シナリオ）
+- 収入・支出・年金計算の個別テスト
+- 現金管理戦略・安全マージン維持
+- 統一計算ロジック（FIRE前後で共通関数を使用）
 
 ### 詳細診断テスト
 
@@ -836,9 +787,8 @@ fire:
 ### 2026-03-01: MCシミュレーション高速化（バッチ生成・並列評価）
 
 **背景:**
-- `scripts/optimize_pension.py` の Phase 3 (MC評価) が計算時間の 80%+ を占めていた
-- 50候補 × 3削減戦略 × 1000回ループ × 660ヶ月 = 約 10億回の Python スカラー演算
-- 最適化スクリプトの実行時間が実用上問題になっていた
+- `scripts/optimize_pension.py` の探索ループが計算時間の大部分を占めていた
+- 大量の候補を高速に評価する仕組みが必要だった
 
 **実施内容:**
 
@@ -847,33 +797,20 @@ fire:
    - `generate_returns_enhanced_batch(n_paths)`: GARCH+非対称平均回帰のN並列版
    - Python ループ（N回×T月）→ NumPy 行列演算（T月×N parallel）
 
-2. **候補並列評価（~16x高速化）**
-   - `_evaluate_single_candidate(args: dict)`: 1候補×全削減戦略を評価するワーカー関数
+2. **候補並列評価**
+   - Phase 2確定的スクリーニングで `ProcessPoolExecutor` を使ってfire_month候補を並列評価
    - `_init_worker(project_root)`: Windowsスポーン方式対応のワーカー初期化
-   - `ProcessPoolExecutor` で50候補を CPU コア数分並列実行
-   - `as_completed()` で完了次第結果を回収
-
-3. **最適化パラメータ拡張**
-   - `mc_iterations`: 500 → 1000
-   - `fire_month_search_range`: 36 → 72（6年分の探索幅）
-   - `min_success_rate`: 0.95 → 0.90
-   - `expense_reduction_candidates`: 3パターン追加
-
-**技術的注意点（Windowsスポーン方式）:**
-- `ProcessPoolExecutor` のワーカーは新しい Python プロセスとして spawn される
-- ワーカープロセスには `sys.path` が引き継がれないため `_init_worker()` で設定必須
-- `if __name__ == '__main__':` ガードが必要（`scripts/optimize_pension.py` に実装済み）
-- stdin からの実行（`python -`）は不可。必ず .py ファイルから実行すること
+   - `if __name__ == '__main__':` ガードが必要（`scripts/optimize_pension.py` に実装済み）
+   - stdin からの実行（`python -`）は不可。必ず .py ファイルから実行すること
 
 **コミット:**
 - `984a6c3` - ビジュアルテスト手法とMCシミュレーション仕様を文書化
 - (別途) feat+perf(simulator): バッチリターン生成追加
-- (別途) perf(optimizer): ProcessPoolExecutor並列評価追加
 - (別途) chore(script): 最適化スクリプトの探索パラメータ拡張
 
 **影響範囲:**
 - src/simulator.py（`generate_random_returns_batch`, `generate_returns_enhanced_batch`）
-- src/pension_optimizer.py（`_evaluate_single_candidate`, `_init_worker`, `_run_mc_evaluation`）
+- src/pension_optimizer.py（Phase 2並列評価）
 - scripts/optimize_pension.py（パラメータ拡張）
 
 ---
@@ -903,6 +840,45 @@ fire:
 3. **CI/CDパイプライン構築**
    - GitHub Actionsでテスト自動化
    - コミット前の自動チェック
+
+### 2026-03-02〜03-04: 最適化エンジン刷新・ダッシュボード改善・インフラ整備
+
+**実施内容（主要変更）:**
+
+1. **FIRE後収入モデルの変更（`ce1e8f2`）**
+   - 線形逓減モデル（`taper_years`年で0に減少）を廃止
+   - 年金受給開始まで設定額を固定で得るモデルに統一
+   - 修平: 50,000円/月 → 100,000円/月
+
+2. **pension_optimizer Phase 3 MC評価削除（`811b6b7`）**
+   - Phase 3（MCシミュレーションによる精密評価）を削除
+   - **決定論的ベースライン最終資産 ≥ 安全マージン** でFIRE月を判定するシンプルな方式に変更
+   - Phase 0: FIRE前投資戦略スクリーニングを新規追加
+   - パレートフロンティアJSON出力機能を追加（`dashboard/data/pareto_frontier.json`）
+
+3. **ダッシュボード改善（`6707d48`, `50ab9b2`, `e305379`）**
+   - セカンダリKPI（リスクメトリクス4カード）を削除
+   - Hero KPIを4指標に拡張: FIRE達成率 / 達成予想 / セミFIRE成功率 / 今すぐ完全FIRE成功率
+   - パレートフロンティアチャート（FIRE年齢 vs 最小パス資産）を追加
+
+4. **Pydanticスキーマによるconfig.yamlバリデーション導入（`7ff2c37`）**
+   - `src/config_schema.py` に AppConfig スキーマを定義
+   - 設定値の型チェック・必須フィールドチェックを起動時に実行
+
+5. **FIRE後シミュレーション共通関数化（`38ab3cf`）**
+   - FIRE後計算パスを共通関数に統合し、コード重複を削減
+   - `e15b81f` にて FIRE後計算パスの整合性検証テストを追加
+
+6. **包括的テストスイート追加（`58206e0`）**
+   - `tests/test_simulation_integrity.py`（169件）を新規追加
+   - `tests/test_unified_calculation.py`, `tests/test_post_fire_cash_strategy.py` 等も追加
+
+**影響範囲:**
+- src/simulator.py、src/pension_optimizer.py（モデル変更・共通関数化）
+- src/html_generator.py、src/visualizer.py（ダッシュボード構成変更）
+- src/config_schema.py（新規: Pydanticスキーマ）
+- tests/（テスト大幅追加）
+- config.yaml（FIRE後収入・安全マージン値変更）
 
 ---
 
