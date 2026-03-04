@@ -7,7 +7,7 @@
 python scripts/generate_dashboard.py
 # → dashboard/index.html に出力
 
-# 年金受給年齢の最適化（config.yaml を上書き更新する）
+# 年金受給年齢の最適化（config.yaml と dashboard/data/pareto_frontier.json を更新）
 python scripts/optimize_pension.py
 
 # FIRE達成時期の感度分析（収入・支出・リターンの変化影響を定量化）
@@ -21,14 +21,18 @@ python scripts/validate_category_budgets.py
 
 ```bash
 # 統合テスト（コード変更後は必ず実行、約2-3分）
-python tests/test_simulation_convergence.py
+python -m tests.test_simulation_convergence
+
+# 包括的テストスイート（169件、シミュレーション整合性全般）
+python -m pytest tests/test_simulation_integrity.py -v
 
 # MC vs 標準の詳細診断（乖離が大きい場合のデバッグ用）
-python tests/test_mc_standard_comparison.py
+python -m tests.test_mc_standard_comparison
 
 # pytestで特定テスト実行
 python -m pytest tests/test_category_expense.py -v
 python -m pytest tests/test_category_dynamic_reduction.py -v
+python -m pytest tests/test_unified_calculation.py -v
 ```
 
 ## Git
@@ -50,5 +54,6 @@ python --version
 ```
 
 ## 注意事項
+- テストは `python tests/xxx.py` の直実行ではなく `python -m tests.xxx` で実行すること（`src` モジュール解決のため）
 - `optimize_pension.py` は ProcessPoolExecutor を使うため、必ず .py ファイルから実行すること（`python -` stdin実行は不可）
 - ダッシュボードはCDN経由でPlotly.jsを読み込むため、スクリーンショット取得時はネットワーク接続必要

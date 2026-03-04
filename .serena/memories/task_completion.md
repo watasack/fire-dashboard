@@ -4,7 +4,7 @@
 
 ```bash
 # 統合テストを実行（約2-3分）
-python tests/test_simulation_convergence.py
+python -m tests.test_simulation_convergence
 ```
 
 **期待される出力:**
@@ -13,6 +13,9 @@ python tests/test_simulation_convergence.py
 全テスト合格 [OK]
 ============================================================
 ```
+
+※ 標準 vs MC中央値の収束テストは `[XFAIL]` になっている場合があります（既知の乖離）。
+   `[ERROR]` が出た場合はCSVファイルのエンコーディングやパスを確認してください。
 
 ## 月次処理ロジックを変更した場合（追加チェック）
 
@@ -23,6 +26,7 @@ python tests/test_simulation_convergence.py
   ```
 - [ ] 類似処理が他の月次関数にも存在しないか？（`_process_post_fire_monthly_cycle`, `_process_future_monthly_cycle`）
 - [ ] 不変条件アサーション `assert nisa_balance <= stocks` が維持されているか？
+- [ ] FIRE前後で共通化された計算関数（`_apply_monthly_investment_returns`, `_process_monthly_expense`）を使っているか？
 
 ## config.yaml を変更した場合
 
@@ -38,7 +42,10 @@ python scripts/generate_dashboard.py
 
 ```bash
 # 詳細診断
-python tests/test_mc_standard_comparison.py
+python -m tests.test_mc_standard_comparison
+
+# 包括的テスト（FIRE前後の整合性確認）
+python -m pytest tests/test_simulation_integrity.py -v
 ```
 
 - **標準 vs MC中央値の乖離 > 10%** → NISA運用リターン適用漏れを疑う
