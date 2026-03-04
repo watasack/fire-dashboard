@@ -502,13 +502,14 @@ def generate_dashboard_html(
       {life_events_table_html}
     </section>
 
-    <!-- 前提条件 + 最適化結果（折りたたみ） -->
-    <section class="info-panels">
-      {assumptions_html}
-      {optimization_html}
+    <!-- パレートチャート + 前提条件・最適化結果 -->
+    <section class="bottom-layout">
+      {'<div class="chart-panel"><h2 class="chart-title"><span class="title-accent title-accent--teal"></span>FIRE年齢 vs ベースライン最終資産</h2>' + pareto_frontier_html + '</div>' if pareto_frontier_html else '<div></div>'}
+      <div class="info-panels-stacked">
+        {assumptions_html}
+        {optimization_html}
+      </div>
     </section>
-
-    {'<section class="chart-panel" style="margin-top:1.5rem"><h2 class="chart-title"><span class="title-accent title-accent--teal"></span>FIRE年齢 vs ベースライン最終資産</h2>' + pareto_frontier_html + '</section>' if pareto_frontier_html else ''}
 
   </div>
 

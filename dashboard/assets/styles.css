@@ -261,10 +261,17 @@ body {
   overflow-y: auto;
 }
 
-/* === 情報パネル（2カラム・折りたたみ） === */
-.info-panels {
+/* === ボトムレイアウト（パレートチャート + 情報パネル） === */
+.bottom-layout {
   display: grid;
   grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  align-items: start;
+}
+
+.info-panels-stacked {
+  display: flex;
+  flex-direction: column;
   gap: 14px;
 }
 
@@ -483,7 +490,7 @@ details[open] > .info-summary::after {
 
 /* === レスポンシブ === */
 @media (max-width: 1200px) {
-  .info-panels { grid-template-columns: 1fr; }
+  .bottom-layout { grid-template-columns: 1fr; }
   .dual-content { grid-template-columns: 1fr; }
 }
 
@@ -496,7 +503,7 @@ details[open] > .info-summary::after {
   }
   .kpi-divider { display: none; }
   .kpi-value--large { font-size: 32px; }
-  .info-panels { grid-template-columns: 1fr; }
+  .bottom-layout { grid-template-columns: 1fr; }
   .dual-content { grid-template-columns: 1fr; }
   .dashboard-container { padding: 12px; gap: 10px; }
 }

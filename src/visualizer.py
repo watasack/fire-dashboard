@@ -1031,14 +1031,28 @@ def create_pareto_frontier_chart(
             f"年金開始: {pa_str}"
         )
 
-    ages = [d['fire_age'] for d in pareto_data]
-    finals = [max(0, d.get('final_assets', 0)) / 10000 for d in pareto_data]
     margin_man = min_baseline_final_assets / 10000
+
+    all_finals_raw = [max(0, d.get('final_assets', 0)) for d in pareto_data]
+    first_feasible_idx = next(
+        (i for i, f in enumerate(all_finals_raw) if f > 0),
+        len(pareto_data) - 1,
+    )
+    crossover_age = pareto_data[first_feasible_idx]['fire_age']
+
+    age_start = crossover_age - 2
+    age_end = crossover_age + 3
+    visible = [d for d in pareto_data if age_start <= d['fire_age'] <= age_end]
+    if not visible:
+        visible = pareto_data
+
+    ages = [d['fire_age'] for d in visible]
+    finals = [max(0, d.get('final_assets', 0)) / 10000 for d in visible]
+    y_max = margin_man * 2
 
     base_layout = get_common_layout(config)
     fig = go.Figure()
 
-    # ベースライン最終資産（棒グラフ）
     fig.add_trace(
         go.Bar(
             x=ages, y=finals,
@@ -1056,27 +1070,25 @@ def create_pareto_frontier_chart(
                 ],
                 width=1,
             ),
-            hovertext=[_build_hover(d) for d in pareto_data],
+            hovertext=[_build_hover(d) for d in visible],
             hoverinfo='text',
             width=0.06,
         )
     )
 
-    # 最適解マーカー
-    if optimal:
+    if optimal and age_start <= optimal['fire_age'] <= age_end:
         opt_age = optimal['fire_age']
-        opt_fa = optimal.get('final_assets', 0) / 10000
+        opt_fa = min(optimal.get('final_assets', 0) / 10000, y_max)
         fig.add_trace(go.Scatter(
             x=[opt_age], y=[opt_fa],
             mode='markers',
             name='最適解',
             marker=dict(size=14, color='#f59e0b', symbol='star',
                         line=dict(width=2, color='#d97706')),
-            hovertext=f"★ 最適解<br>FIRE年齢: {opt_age:.1f}歳<br>最終資産: {opt_fa:.0f}万円",
+            hovertext=f"★ 最適解<br>FIRE年齢: {opt_age:.1f}歳<br>最終資産: {optimal.get('final_assets', 0)/10000:.0f}万円",
             hoverinfo='text',
         ))
 
-    # 安全マージンライン
     fig.add_hline(
         y=margin_man,
         line=dict(color='#ef4444', width=1.5, dash='dash'),
@@ -1085,7 +1097,6 @@ def create_pareto_frontier_chart(
         annotation_font=dict(color='#ef4444', size=11),
     )
 
-    max_fa = max(finals) if finals else 1000
     base_layout.update({
         'xaxis': dict(
             title='FIRE年齢（歳）',
@@ -1095,10 +1106,10 @@ def create_pareto_frontier_chart(
         'yaxis': dict(
             title='ベースライン最終資産（万円）',
             gridcolor='rgba(203, 213, 225, 0.3)',
-            range=[0, max_fa * 1.15],
+            range=[0, y_max],
         ),
         'hovermode': 'closest',
-        'height': 420,
+        'height': 350,
         'showlegend': True,
         'legend': dict(
             orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1,
