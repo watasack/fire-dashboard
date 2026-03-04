@@ -498,30 +498,14 @@ fire:
     senior_from_age: 70        # 70歳からシニア期
     elderly_from_age: 80       # 80歳から高齢期
 
-  # 動的支出削減設定（暴落時の自動対応）
-  # ドローダウンレベルに応じて裁量的支出を段階的に削減
-  # ワーケーション費用のベースライン比較削減も引き続き併用
+  # 動的支出調整（比例制御型）
+  # ベースライン資産との乖離に比例して支出を調整
+  # 上ぶれ（余剰）→ 支出増加、下ぶれ（不足）→ 支出削減
   dynamic_expense_reduction:
     enabled: true
-    drawdown_thresholds:
-      level_1_warning: -0.15   # -10%で警戒
-      level_2_concern: -0.25   # -20%で深刻
-      level_3_crisis: -0.4    # -35%で危機
-    reduction_rates:
-      level_0_normal: 0.0      # 平常時: 削減なし
-      level_1_warning: 0.2    # 警戒（-15%～-30%）: 裁量支出40%削減
-      level_2_concern: 0.5    # 懸念（-30%～-50%）: 裁量支出80%削減
-      level_3_crisis: 0.7     # 危機（-50%以下）: 裁量支出95%削減
-    # 対称的ガードレール: 上ぶれ時は裁量支出を増加（MC中央値を決定論的ラインに引き戻す）
-    spending_boost_enabled: true
-    spending_boost_thresholds:
-      level_neg1_upside: 0.10    # +10%で緩やかな増加
-      level_neg2_upside: 0.20    # +20%で中程度の増加
-      level_neg3_upside: 0.35    # +35%で大幅増加
-    boost_rates:
-      level_neg1: 0.3    # +10%超: 裁量支出80%増
-      level_neg2: 0.5    # +20%超: 裁量支出150%増
-      level_neg3: 1.4    # +35%超: 裁量支出300%増（目標: 月次P97.5ピーク≈1.2億）
+    surplus_spending_rate: 0.40  # 余剰/不足額の年率40%を支出調整に反映（α）
+    max_cut_ratio: 0.7           # 裁量支出の最大70%まで削減可能（生活防衛）
+    max_boost_ratio: 5.0         # 裁量支出の最大500%まで増加可能
 
   # 追加子供1人あたりの生活費増加（ステージ別・年額・円）
   # 第二子以降、各子供の年齢（ステージ）に応じた追加費用を加算
@@ -537,7 +521,7 @@ fire:
   # 最適化結果（optimize_pension.py が自動更新）
   # optimal_fire_month が設定されている場合、ダッシュボードはこの月でFIREしたものとしてMCを実行する
   # null の場合は従来通り最初にFIRE可能になった月を使用
-  optimal_fire_month: 49       # 最適化結果: 月49、最終資産615万円
+  optimal_fire_month: 47       # 最適化結果: 月47、最終資産822万円
   optimal_extra_monthly_budget: 0  # 最適化結果: FIRE後追加月額予算
 
   # 固定支出（一律、データが不足している場合のフォールバック）
@@ -643,12 +627,12 @@ pension:
       past_pension_base_annual: 236929   # ねんきん定期便: 老齢厚生年金実績額（円/年）
       past_contribution_months: 177      # ねんきん定期便: これまでの加入月数
       # 計算方式: 過去実績(236,929円) + 残り期間(625,615円 × 将来月数 × 0.005481)
-      override_start_age: 75      # 最適化結果: 75歳繰下げ（+84.0%増額）
+      override_start_age: 74      # 最適化結果: 75歳繰下げ（+84.0%増額）
     - name: '桜'
       birthdate: '1991/04/20'     # 生年月日（YYYY/MM/DD形式）
       pension_type: 'national'    # 国民年金のみ
       # 動的計算により、国民年金満額: 約81.6万円/年
-      override_start_age: 74      # 最適化結果: 62歳早期受給（桜）
+      override_start_age: 73      # 最適化結果: 62歳早期受給（桜）
   # 注: annual_amountを指定すると、動的計算をスキップして固定値を使用（後方互換性）
 
 # 社会保険料設定（FIRE後の支出）
@@ -747,6 +731,13 @@ pension_deferral:
   min_start_age: 62            # 繰り上げ受給の下限
   max_start_age: 75            # 繰り下げ受給の上限（2022年4月から75歳まで可能）
 
+
+# 最適化設定
+optimization:
+  pre_pension_reduction_rate: 0.3  # 最適化結果
+  min_asset_floor: 3_000_000       # 途中の最小資産下限（円）
+  austerity_years_before_pension: 10  # 年金受給前の緊縮期間（年）
+  pre_pension_reduction_candidates: [0, 0.10, 0.20, 0.30]
 
 # 可視化設定
 visualization:

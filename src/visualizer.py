@@ -1013,10 +1013,18 @@ def create_pareto_frontier_chart(
     min_baseline_final_assets: float = 1_000_000,
 ) -> go.Figure:
     """
-    パレートフロンティアチャート（FIRE年齢 vs ベースライン最終資産）を作成。
+    パレートフロンティアチャート（FIRE年齢 vs 最小パス資産）を作成。
+    min_path_assets が存在しない場合は final_assets にフォールバック。
     """
     if not pareto_data:
         return go.Figure()
+
+    has_min_path = any('min_path_assets' in d for d in pareto_data)
+    value_key = 'min_path_assets' if has_min_path else 'final_assets'
+    y_label = '最小パス資産（万円）' if has_min_path else 'ベースライン最終資産（万円）'
+
+    min_asset_floor = config.get('optimization', {}).get('min_asset_floor', 0)
+    threshold_man = min_asset_floor / 10000 if has_min_path and min_asset_floor > 0 else min_baseline_final_assets / 10000
 
     def _build_hover(d: Dict[str, Any]) -> str:
         pa_str = ', '.join(f'{k}: {v}歳' for k, v in d.get('pension_ages', {}).items())
@@ -1024,18 +1032,24 @@ def create_pareto_frontier_chart(
         eb_str = f'{eb/10000:.0f}万/月' if eb > 0 else 'なし'
         fa = d.get('final_assets', 0)
         fa_str = f'{fa/10000:.0f}万円' if fa > 0 else '破綻（0円）'
-        return (
-            f"FIRE年齢: {d['fire_age']:.1f}歳<br>"
-            f"ベースライン最終資産: {fa_str}<br>"
-            f"追加予算: {eb_str}<br>"
-            f"年金開始: {pa_str}"
-        )
+        mp = d.get('min_path_assets', 0)
+        mp_str = f'{mp/10000:.0f}万円'
+        red = d.get('pre_pension_reduction', 0)
+        red_str = f'{red*100:.0f}%' if red > 0 else 'なし'
+        lines = [
+            f"FIRE年齢: {d['fire_age']:.1f}歳",
+            f"最終資産: {fa_str}",
+        ]
+        if has_min_path:
+            lines.append(f"最小パス資産: {mp_str}")
+        lines.append(f"緊縮削減率: {red_str}")
+        lines.append(f"追加予算: {eb_str}")
+        lines.append(f"年金開始: {pa_str}")
+        return '<br>'.join(lines)
 
-    margin_man = min_baseline_final_assets / 10000
-
-    all_finals_raw = [max(0, d.get('final_assets', 0)) for d in pareto_data]
+    all_values_raw = [max(0, d.get(value_key, 0)) for d in pareto_data]
     first_feasible_idx = next(
-        (i for i, f in enumerate(all_finals_raw) if f > 0),
+        (i for i, v in enumerate(all_values_raw) if v > 0),
         len(pareto_data) - 1,
     )
     crossover_age = pareto_data[first_feasible_idx]['fire_age']
@@ -1047,26 +1061,26 @@ def create_pareto_frontier_chart(
         visible = pareto_data
 
     ages = [d['fire_age'] for d in visible]
-    finals = [max(0, d.get('final_assets', 0)) / 10000 for d in visible]
-    y_max = margin_man * 2
+    values = [max(0, d.get(value_key, 0)) / 10000 for d in visible]
+    y_max = threshold_man * 2
 
     base_layout = get_common_layout(config)
     fig = go.Figure()
 
     fig.add_trace(
         go.Bar(
-            x=ages, y=finals,
-            name='ベースライン最終資産（万円）',
+            x=ages, y=values,
+            name=y_label,
             marker_color=[
-                'rgba(249,115,22,0.35)' if f < margin_man
+                'rgba(249,115,22,0.35)' if v < threshold_man
                 else 'rgba(14,165,233,0.35)'
-                for f in finals
+                for v in values
             ],
             marker_line=dict(
                 color=[
-                    'rgba(249,115,22,0.7)' if f < margin_man
+                    'rgba(249,115,22,0.7)' if v < threshold_man
                     else 'rgba(14,165,233,0.6)'
-                    for f in finals
+                    for v in values
                 ],
                 width=1,
             ),
@@ -1078,21 +1092,33 @@ def create_pareto_frontier_chart(
 
     if optimal and age_start <= optimal['fire_age'] <= age_end:
         opt_age = optimal['fire_age']
-        opt_fa = min(optimal.get('final_assets', 0) / 10000, y_max)
+        opt_val = min(optimal.get(value_key, optimal.get('final_assets', 0)) / 10000, y_max)
+        opt_hover_lines = [
+            f"★ 最適解",
+            f"FIRE年齢: {opt_age:.1f}歳",
+            f"最終資産: {optimal.get('final_assets', 0)/10000:.0f}万円",
+        ]
+        if has_min_path:
+            opt_hover_lines.append(f"最小パス資産: {optimal.get('min_path_assets', 0)/10000:.0f}万円")
+        red = optimal.get('pre_pension_reduction', 0)
+        if red > 0:
+            opt_hover_lines.append(f"緊縮削減率: {red*100:.0f}%")
+
         fig.add_trace(go.Scatter(
-            x=[opt_age], y=[opt_fa],
+            x=[opt_age], y=[opt_val],
             mode='markers',
             name='最適解',
             marker=dict(size=14, color='#f59e0b', symbol='star',
                         line=dict(width=2, color='#d97706')),
-            hovertext=f"★ 最適解<br>FIRE年齢: {opt_age:.1f}歳<br>最終資産: {optimal.get('final_assets', 0)/10000:.0f}万円",
+            hovertext='<br>'.join(opt_hover_lines),
             hoverinfo='text',
         ))
 
+    threshold_label = f'最小資産フロア {threshold_man:.0f}万円' if has_min_path else f'安全マージン {threshold_man:.0f}万円'
     fig.add_hline(
-        y=margin_man,
+        y=threshold_man,
         line=dict(color='#ef4444', width=1.5, dash='dash'),
-        annotation_text=f'安全マージン {margin_man:.0f}万円',
+        annotation_text=threshold_label,
         annotation_position='top left',
         annotation_font=dict(color='#ef4444', size=11),
     )
@@ -1104,7 +1130,7 @@ def create_pareto_frontier_chart(
             dtick=1,
         ),
         'yaxis': dict(
-            title='ベースライン最終資産（万円）',
+            title=y_label,
             gridcolor='rgba(203, 213, 225, 0.3)',
             range=[0, y_max],
         ),

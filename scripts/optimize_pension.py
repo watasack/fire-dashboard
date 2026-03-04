@@ -95,6 +95,20 @@ def _update_config_with_result(config_path: str, result: dict) -> None:
         replacement = rf'\1 {age}'
         text = re.sub(pattern, replacement, text)
 
+    pre_pension_reduction = result.get('optimal_pre_pension_reduction', 0)
+    if 'pre_pension_reduction_rate:' in text:
+        text = re.sub(
+            r'(pre_pension_reduction_rate:)\s*[\d.]+',
+            rf'\1 {pre_pension_reduction}',
+            text,
+        )
+    else:
+        text = re.sub(
+            r'(optimization:\n)',
+            rf'\1  pre_pension_reduction_rate: {pre_pension_reduction}  # 最適化結果\n',
+            text,
+        )
+
     Path(config_path).write_text(text, encoding='utf-8')
     ages_str = ', '.join(f'{k}={v}歳' for k, v in pension_ages.items())
     budget_str = f", extra_budget={int(extra_budget/10000)}万/月" if extra_budget > 0 else ""
@@ -143,15 +157,27 @@ def _save_pareto_frontier(result: dict, config: dict) -> None:
             'extra_budget': round(float(row.get('extra_budget', 0))),
             'pension_ages': {n: int(row.get(f'age_{n}', 65)) for n in person_names},
         }
+        if 'min_path_assets' in row.index:
+            entry['min_path_assets'] = round(float(row.get('min_path_assets', 0)))
+        if 'pre_pension_reduction' in row.index:
+            entry['pre_pension_reduction'] = round(float(row.get('pre_pension_reduction', 0)), 2)
         pareto_data.append(entry)
 
-    output = {
-        'pareto_frontier': pareto_data,
-        'optimal': {
+    optimal_output = None
+    if optimal:
+        optimal_output = {
             'fire_month': optimal['fire_month'],
             'fire_age': round(start_age + optimal['fire_month'] / 12, 2),
             'final_assets': round(optimal.get('final_assets', 0)),
-        } if optimal else None,
+        }
+        if 'min_path_assets' in optimal:
+            optimal_output['min_path_assets'] = round(optimal['min_path_assets'])
+        if 'pre_pension_reduction' in optimal:
+            optimal_output['pre_pension_reduction'] = round(optimal['pre_pension_reduction'], 2)
+
+    output = {
+        'pareto_frontier': pareto_data,
+        'optimal': optimal_output,
     }
 
     out_dir = Path('dashboard/data')
@@ -203,6 +229,11 @@ def main():
         print("[4/4] Running pension optimization...")
         safety_margin = config['post_fire_cash_strategy']['safety_margin']
 
+        opt_cfg = config.get('optimization', {})
+        reduction_candidates = opt_cfg.get('pre_pension_reduction_candidates', [0.0])
+        austerity_years = opt_cfg.get('austerity_years_before_pension', 10)
+        min_asset_floor = opt_cfg.get('min_asset_floor', 0)
+
         result = optimize_pension_start_ages(
             current_cash=current_status['cash_deposits'],
             current_stocks=current_status['investment_trusts'],
@@ -232,6 +263,9 @@ def main():
                 {'cash_buffer_months': 6, 'auto_invest_threshold': 2.0, 'min_cash_balance': 8_000_000},
                 {'cash_buffer_months': 9, 'auto_invest_threshold': 1.2, 'min_cash_balance': 3_000_000},
             ],
+            reduction_candidates=reduction_candidates,
+            austerity_months=austerity_years * 12,
+            min_asset_floor=min_asset_floor,
         )
 
         if 'error' in result:
@@ -249,6 +283,8 @@ def main():
                 'optimal_extra_monthly_budget': optimal.get('extra_monthly_budget', 0),
                 'optimal_cash_strategy': optimal.get('cash_strategy', {}),
                 'optimal_pre_fire_strategy': result.get('pre_fire_strategy', {}),
+                'optimal_pre_pension_reduction': optimal.get('pre_pension_reduction', 0),
+                'min_path_assets': optimal.get('min_path_assets'),
             })
 
         # 6. パレートフロンティアデータを保存

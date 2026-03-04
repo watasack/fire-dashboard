@@ -39,7 +39,7 @@ from simulator import (
     simulate_post_fire_assets,
     calculate_base_expense_by_category,
     calculate_drawdown_level,
-    apply_dynamic_expense_reduction,
+    calculate_proportional_expense_adjustment,
     calculate_education_expense,
     calculate_pension_income,
     _calculate_person_pension,
@@ -1976,7 +1976,7 @@ class TestCalculateBaseExpenseByCategory:
 # ============================================================
 
 class TestCalculateDrawdownLevel:
-    """ドローダウンレベル計算のテスト"""
+    """ベースライン乖離率計算のテスト（比例制御版）"""
 
     @pytest.fixture
     def dd_config(self):
@@ -1984,34 +1984,15 @@ class TestCalculateDrawdownLevel:
             'fire': {
                 'dynamic_expense_reduction': {
                     'enabled': True,
-                    'drawdown_thresholds': {
-                        'level_1_warning': -0.10,
-                        'level_2_concern': -0.20,
-                        'level_3_crisis': -0.35,
-                    },
-                    'reduction_rates': {
-                        'level_0_normal': 0.0,
-                        'level_1_warning': 0.2,
-                        'level_2_concern': 0.5,
-                        'level_3_crisis': 0.7,
-                    },
-                    'spending_boost_enabled': False,
-                    'spending_boost_thresholds': {
-                        'level_neg1_upside': 0.10,
-                        'level_neg2_upside': 0.20,
-                        'level_neg3_upside': 0.35,
-                    },
-                    'boost_rates': {
-                        'level_neg1': 0.3,
-                        'level_neg2': 0.5,
-                        'level_neg3': 1.4,
-                    },
+                    'surplus_spending_rate': 0.10,
+                    'max_cut_ratio': 0.7,
+                    'max_boost_ratio': 5.0,
                 },
             },
         }
 
     def test_no_drawdown_level_zero(self, dd_config):
-        """ピーク付近ならレベル0"""
+        """ピーク付近なら乖離0、level=0"""
         dd, level = calculate_drawdown_level(
             current_assets=1_000_000,
             peak_assets_history=[1_000_000],
@@ -2020,50 +2001,35 @@ class TestCalculateDrawdownLevel:
         assert dd == pytest.approx(0.0)
         assert level == 0
 
-    def test_mild_drawdown_level_1(self, dd_config):
-        """-15%ならレベル1"""
+    def test_negative_drawdown(self, dd_config):
+        """-15%乖離"""
         dd, level = calculate_drawdown_level(
             current_assets=850_000,
             peak_assets_history=[1_000_000],
             config=dd_config,
         )
         assert dd == pytest.approx(-0.15)
-        assert level == 1
+        assert level == 0
 
-    def test_moderate_drawdown_level_2(self, dd_config):
-        """-25%ならレベル2"""
+    def test_positive_drawdown(self, dd_config):
+        """+20%乖離"""
         dd, level = calculate_drawdown_level(
-            current_assets=750_000,
+            current_assets=1_200_000,
             peak_assets_history=[1_000_000],
             config=dd_config,
         )
-        assert dd == pytest.approx(-0.25)
-        assert level == 2
+        assert dd == pytest.approx(0.20)
+        assert level == 0
 
-    def test_severe_drawdown_level_3(self, dd_config):
-        """-40%ならレベル3"""
+    def test_severe_negative_drawdown(self, dd_config):
+        """-40%乖離でもlevel=0（比例制御ではレベル不使用）"""
         dd, level = calculate_drawdown_level(
             current_assets=600_000,
             peak_assets_history=[1_000_000],
             config=dd_config,
         )
         assert dd == pytest.approx(-0.40)
-        assert level == 3
-
-    def test_disabled_always_level_zero(self):
-        """dynamic_expense_reduction.enabled=Falseは常にレベル0"""
-        config = {
-            'fire': {
-                'dynamic_expense_reduction': {'enabled': False},
-            },
-        }
-        dd, level = calculate_drawdown_level(
-            current_assets=500_000,
-            peak_assets_history=[1_000_000],
-            config=config,
-        )
         assert level == 0
-        assert dd == pytest.approx(-0.50)
 
     def test_planned_assets_used_as_reference(self, dd_config):
         """planned_assets指定時はそちらを基準に"""
@@ -2074,7 +2040,7 @@ class TestCalculateDrawdownLevel:
             planned_assets=1_000_000,
         )
         assert dd == pytest.approx(-0.10)
-        assert level == 0  # exactly at level_1 boundary → level 0
+        assert level == 0
 
     def test_empty_history_uses_current(self, dd_config):
         """履歴空の場合は自分自身がピーク"""
@@ -2088,107 +2054,75 @@ class TestCalculateDrawdownLevel:
 
 
 # ============================================================
-# apply_dynamic_expense_reduction テスト
+# calculate_proportional_expense_adjustment テスト
 # ============================================================
 
-class TestApplyDynamicExpenseReduction:
-    """動的支出削減のテスト"""
+class TestProportionalExpenseAdjustment:
+    """比例制御型動的支出調整のテスト"""
 
     @pytest.fixture
-    def dyn_config(self):
+    def prop_config(self):
         return {
             'fire': {
                 'dynamic_expense_reduction': {
                     'enabled': True,
-                    'reduction_rates': {
-                        'level_0_normal': 0.0,
-                        'level_1_warning': 0.50,
-                        'level_2_concern': 0.75,
-                        'level_3_crisis': 1.0,
-                    },
-                    'boost_rates': {
-                        'level_neg1': 0.10,
-                        'level_neg2': 0.20,
-                        'level_neg3': 0.30,
-                    },
-                },
-                'discretionary_ratio_by_stage': {
-                    'young_child': 0.25,
-                    'empty_nest': 0.30,
+                    'surplus_spending_rate': 0.12,
+                    'max_cut_ratio': 0.70,
+                    'max_boost_ratio': 5.0,
                 },
             },
         }
 
-    def test_disabled_returns_original(self):
-        """無効の場合は元の支出をそのまま返す"""
+    def test_disabled_returns_zero(self):
+        """無効の場合は調整額0"""
         config = {
             'fire': {
                 'dynamic_expense_reduction': {'enabled': False},
             },
         }
-        actual, bd = apply_dynamic_expense_reduction(
-            base_expense=3_000_000, stage='young_child',
-            drawdown_level=2, config=config,
+        adj = calculate_proportional_expense_adjustment(
+            surplus=5_000_000, discretionary_monthly=100_000, config=config,
         )
-        assert actual == 3_000_000
-        assert bd['reduction_rate'] == 0.0
+        assert adj == 0.0
 
-    def test_level_0_no_reduction(self, dyn_config):
-        """レベル0: 削減なし"""
-        actual, bd = apply_dynamic_expense_reduction(
-            base_expense=2_800_000, stage='young_child',
-            drawdown_level=0, config=dyn_config,
+    def test_surplus_increases_expense(self, prop_config):
+        """余剰(surplus>0)で支出増加"""
+        adj = calculate_proportional_expense_adjustment(
+            surplus=6_000_000, discretionary_monthly=100_000, config=prop_config,
         )
-        assert actual == 2_800_000
-        assert bd['amount_saved'] == 0
+        expected = 6_000_000 * 0.12 / 12.0  # 60000
+        assert adj == pytest.approx(expected)
+        assert adj > 0
 
-    def test_level_1_warning(self, dyn_config):
-        """レベル1: 裁量的支出を50%削減"""
-        actual, bd = apply_dynamic_expense_reduction(
-            base_expense=2_800_000, stage='young_child',
-            drawdown_level=1, config=dyn_config,
+    def test_deficit_decreases_expense(self, prop_config):
+        """不足(surplus<0)で支出削減"""
+        adj = calculate_proportional_expense_adjustment(
+            surplus=-6_000_000, discretionary_monthly=100_000, config=prop_config,
         )
-        discretionary = 2_800_000 * 0.25
-        essential = 2_800_000 * 0.75
-        expected = essential + discretionary * 0.50
-        assert actual == pytest.approx(expected)
-        assert bd['reduction_rate'] == pytest.approx(0.50)
-        assert bd['amount_saved'] == pytest.approx(discretionary * 0.50)
+        expected = max(-100_000 * 0.70, -6_000_000 * 0.12 / 12.0)
+        assert adj == pytest.approx(expected)
+        assert adj < 0
 
-    def test_level_3_crisis_full_cut(self, dyn_config):
-        """レベル3: 裁量的支出を100%削減"""
-        actual, bd = apply_dynamic_expense_reduction(
-            base_expense=2_800_000, stage='young_child',
-            drawdown_level=3, config=dyn_config,
+    def test_boost_capped(self, prop_config):
+        """上ぶれキャップ: disc_monthly * max_boost_ratio"""
+        adj = calculate_proportional_expense_adjustment(
+            surplus=999_999_999, discretionary_monthly=50_000, config=prop_config,
         )
-        essential = 2_800_000 * 0.75
-        assert actual == pytest.approx(essential)
-        assert bd['discretionary'] == pytest.approx(0)
+        assert adj == pytest.approx(50_000 * 5.0)
 
-    def test_negative_level_boost(self, dyn_config):
-        """レベル-1: 裁量的支出を10%増加"""
-        actual, bd = apply_dynamic_expense_reduction(
-            base_expense=2_800_000, stage='young_child',
-            drawdown_level=-1, config=dyn_config,
+    def test_cut_capped(self, prop_config):
+        """下ぶれキャップ: disc_monthly * max_cut_ratio"""
+        adj = calculate_proportional_expense_adjustment(
+            surplus=-999_999_999, discretionary_monthly=50_000, config=prop_config,
         )
-        discretionary = 2_800_000 * 0.25
-        essential = 2_800_000 * 0.75
-        expected = essential + discretionary * 1.10
-        assert actual == pytest.approx(expected)
-        assert bd['reduction_rate'] == pytest.approx(-0.10)
+        assert adj == pytest.approx(-50_000 * 0.70)
 
-    def test_different_stage_ratio(self, dyn_config):
-        """ステージごとに裁量比率が異なる"""
-        actual_yc, _ = apply_dynamic_expense_reduction(
-            base_expense=3_000_000, stage='young_child',
-            drawdown_level=1, config=dyn_config,
+    def test_zero_surplus(self, prop_config):
+        """乖離0なら調整0"""
+        adj = calculate_proportional_expense_adjustment(
+            surplus=0, discretionary_monthly=100_000, config=prop_config,
         )
-        actual_en, _ = apply_dynamic_expense_reduction(
-            base_expense=3_000_000, stage='empty_nest',
-            drawdown_level=1, config=dyn_config,
-        )
-        # empty_nest has higher discretionary ratio (0.30 vs 0.25)
-        assert actual_en < actual_yc
+        assert adj == 0.0
 
 
 # ============================================================

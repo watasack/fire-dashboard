@@ -59,7 +59,6 @@ def _build_assumptions_html(config: Dict[str, Any], monte_carlo: Dict[str, Any])
 
     der = fire_cfg['dynamic_expense_reduction']
     der_enabled = der['enabled']
-    der_rates = der['reduction_rates']
 
     summary_badge = f"年率{return_rate*100:.1f}% / σ{return_std*100:.1f}% / MC {mc_iters:,}回"
 
@@ -83,14 +82,26 @@ def _build_assumptions_html(config: Dict[str, Any], monte_carlo: Dict[str, Any])
         <tr><td>暴落判定閾値</td><td>{crash_threshold*100:.0f}%</td></tr>'''
 
     if der_enabled:
-        l1 = der_rates['level_1_warning']
-        l2 = der_rates['level_2_concern']
-        l3 = der_rates['level_3_crisis']
+        alpha = der['surplus_spending_rate']
+        max_cut = der['max_cut_ratio']
+        max_boost = der['max_boost_ratio']
         rows += f'''
-        <tr class="group-header"><td colspan="2">動的支出削減</td></tr>
-        <tr><td>警戒レベル</td><td>裁量支出{l1*100:.0f}%削減</td></tr>
-        <tr><td>懸念レベル</td><td>裁量支出{l2*100:.0f}%削減</td></tr>
-        <tr><td>危機レベル</td><td>裁量支出{l3*100:.0f}%削減</td></tr>'''
+        <tr class="group-header"><td colspan="2">動的支出調整（比例制御）</td></tr>
+        <tr><td>余剰支出率（α）</td><td>年率{alpha*100:.0f}%</td></tr>
+        <tr><td>最大削減率</td><td>裁量支出の{max_cut*100:.0f}%</td></tr>
+        <tr><td>最大増加率</td><td>裁量支出の{max_boost*100:.0f}%</td></tr>'''
+
+    opt_cfg = config.get('optimization', {})
+    if opt_cfg:
+        min_floor = opt_cfg.get('min_asset_floor', 0)
+        austerity_yrs = opt_cfg.get('austerity_years_before_pension', 10)
+        red_cands = opt_cfg.get('pre_pension_reduction_candidates', [0])
+        red_str = ', '.join(f'{r*100:.0f}%' for r in red_cands)
+        rows += f'''
+        <tr class="group-header"><td colspan="2">デス・バレー対策（最適化）</td></tr>
+        <tr><td>最小資産フロア</td><td>{_format_man_yen(min_floor)}</td></tr>
+        <tr><td>緊縮期間</td><td>年金受給前{austerity_yrs}年間</td></tr>
+        <tr><td>削減率候補</td><td>[{red_str}]</td></tr>'''
 
     return f'''
     <details class="info-detail">
@@ -110,6 +121,9 @@ def _build_assumptions_html(config: Dict[str, Any], monte_carlo: Dict[str, Any])
 
 def _build_optimization_html(config: Dict[str, Any]) -> str:
     """最適化結果サマリーパネルのHTMLを生成（折りたたみ式、デフォルト展開）"""
+    import json as _json
+    from pathlib import Path as _Path
+
     fire_cfg = config['fire']
     pension_cfg = config['pension']
     cash_strategy = config['post_fire_cash_strategy']
@@ -118,6 +132,15 @@ def _build_optimization_html(config: Dict[str, Any]) -> str:
     extra_budget = fire_cfg.get('optimal_extra_monthly_budget') or 0
     safety_margin = cash_strategy['safety_margin']
     safety_margin_man = safety_margin / 10000
+
+    pareto_optimal = {}
+    pareto_path = _Path('dashboard/data/pareto_frontier.json')
+    if pareto_path.exists():
+        try:
+            pareto_json = _json.loads(pareto_path.read_text(encoding='utf-8'))
+            pareto_optimal = pareto_json.get('optimal', {}) or {}
+        except Exception:
+            pass
 
     pension_deferral = config['pension_deferral']
     base_age = pension_cfg['start_age']
@@ -170,11 +193,14 @@ def _build_optimization_html(config: Dict[str, Any]) -> str:
             <tr><td>安全マージン</td><td>¥{safety_margin_man:.0f}万（ベースライン最終資産 ≥ この額）</td></tr>
             <tr><td>FIRE後追加予算</td><td>¥{extra_budget/10000:.1f}万/月</td></tr>
             <tr class="sep"><td colspan="2"></td></tr>{pension_rows}
+            {'<tr class="sep"><td colspan="2"></td></tr>' if pareto_optimal.get('pre_pension_reduction', 0) > 0 or pareto_optimal.get('min_path_assets') is not None else ''}
+            {f'<tr><td>年金前緊縮削減率</td><td>{pareto_optimal["pre_pension_reduction"]*100:.0f}%</td></tr>' if pareto_optimal.get('pre_pension_reduction', 0) > 0 else ''}
+            {f'<tr><td>最小パス資産</td><td>{_format_man_yen(pareto_optimal["min_path_assets"])}</td></tr>' if pareto_optimal.get('min_path_assets') is not None else ''}
           </tbody>
         </table>
         <div class="optimization-note">
-          最適化により、ベースライン最終資産が安全マージン（{safety_margin_man:.0f}万円）以上を
-          維持しながら最も早いFIRE時期と最適な年金受給開始年齢の組み合わせを探索しています。
+          最適化により、ベースライン最終資産が安全マージン（{safety_margin_man:.0f}万円）以上かつ
+          途中の最小資産が資産フロア以上を維持しながら最も早いFIRE時期と最適な年金受給開始年齢の組み合わせを探索しています。
         </div>
       </div>
     </details>'''
@@ -504,7 +530,7 @@ def generate_dashboard_html(
 
     <!-- パレートチャート + 前提条件・最適化結果 -->
     <section class="bottom-layout">
-      {'<div class="chart-panel"><h2 class="chart-title"><span class="title-accent title-accent--teal"></span>FIRE年齢 vs ベースライン最終資産</h2>' + pareto_frontier_html + '</div>' if pareto_frontier_html else '<div></div>'}
+      {'<div class="chart-panel"><h2 class="chart-title"><span class="title-accent title-accent--teal"></span>FIRE年齢 vs 最小パス資産</h2>' + pareto_frontier_html + '</div>' if pareto_frontier_html else '<div></div>'}
       <div class="info-panels-stacked">
         {assumptions_html}
         {optimization_html}

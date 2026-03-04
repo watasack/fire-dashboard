@@ -504,10 +504,10 @@ def calculate_drawdown_level(
     planned_assets: float = None,
 ) -> Tuple[float, int]:
     """
-    ドローダウンレベルを計算
+    ベースラインとの乖離率を計算する。
 
-    計画資産額（planned_assets）が指定された場合はそれを基準に、
-    指定がない場合はピーク履歴を基準にドローダウンを算出します。
+    比例制御型動的支出調整のために、計画資産額に対する現在の乖離率を返す。
+    level は後方互換性のため残すが、常に 0 を返す（比例制御では不使用）。
 
     Args:
         current_assets: 現在の総資産（円）
@@ -516,399 +516,53 @@ def calculate_drawdown_level(
         planned_assets: 計画資産額（円）。指定時はこちらを基準とする。
 
     Returns:
-        (drawdown, level):
-            - drawdown: ドローダウン率（例: -0.15は計画比-15%）
-            - level: 警戒レベル（0=正常、1=警戒、2=深刻、3=危機）
+        (drawdown, 0):
+            - drawdown: 乖離率（正=上ぶれ、負=下ぶれ）
+            - 0: 後方互換性のため常に0
     """
-    # 動的支出制御が無効の場合はレベル0を返す（削減も増加も行わない）
-    dynamic_config_check = config['fire']['dynamic_expense_reduction']
-    if not dynamic_config_check['enabled']:
-        # enabled=False: 基準との比較は行わず、常にレベル0（変更なし）を返す
-        # ピークからの下落率計算のみ行い、レベルは0に固定
-        if planned_assets is not None and planned_assets > 0:
-            peak_for_dd = planned_assets
-        else:
-            peak_for_dd = max(peak_assets_history) if peak_assets_history else current_assets
-        drawdown_only = (current_assets / peak_for_dd - 1.0) if peak_for_dd > 0 else 0.0
-        return drawdown_only, 0
-
-    # 基準資産の設定: 計画比 or ピーク比
     if planned_assets is not None and planned_assets > 0:
-        peak_assets = planned_assets
+        reference = planned_assets
     else:
-        peak_assets = max(peak_assets_history) if peak_assets_history else current_assets
+        reference = max(peak_assets_history) if peak_assets_history else current_assets
 
-    # ドローダウン計算（ピークからの下落率）
-    # 例: peak=100万円、current=85万円 → drawdown = -0.15 (-15%)
-    if peak_assets > 0:
-        drawdown = (current_assets / peak_assets) - 1.0
-    else:
-        drawdown = 0.0
-
-    # 設定から閾値を取得（デフォルト値あり）
-    dynamic_config = config['fire']['dynamic_expense_reduction']
-    thresholds = dynamic_config['drawdown_thresholds']
-
-    level_1_threshold = thresholds['level_1_warning']
-    level_2_threshold = thresholds['level_2_concern']
-    level_3_threshold = thresholds['level_3_crisis']
-
-    # 上ぶれ閾値（対称的ガードレール）
-    boost_thresholds = dynamic_config['spending_boost_thresholds']
-    upside_l1 = boost_thresholds['level_neg1_upside']
-    upside_l2 = boost_thresholds['level_neg2_upside']
-    upside_l3 = boost_thresholds['level_neg3_upside']
-    boost_enabled = dynamic_config['spending_boost_enabled']
-
-    if drawdown >= level_1_threshold:
-        # 上ぶれ判定（boost_enabled のときのみ）
-        if boost_enabled and drawdown >= upside_l3:
-            level = -3  # 大幅上ぶれ
-        elif boost_enabled and drawdown >= upside_l2:
-            level = -2  # 中程度上ぶれ
-        elif boost_enabled and drawdown >= upside_l1:
-            level = -1  # 軽微上ぶれ
-        else:
-            level = 0   # 正常
-    elif drawdown >= level_2_threshold:
-        level = 1  # 警戒
-    elif drawdown >= level_3_threshold:
-        level = 2  # 深刻
-    else:
-        level = 3  # 危機
-
-    return drawdown, level
+    drawdown = (current_assets / reference - 1.0) if reference > 0 else 0.0
+    return drawdown, 0
 
 
-def _apply_category_based_reduction(
-    category_breakdown: Dict[str, Any],
-    reduction_rate: float,
-    config: Dict[str, Any]
-) -> Tuple[float, Dict[str, Any]]:
-    """
-    カテゴリ別内訳に基づいて削減を適用（内部関数）
-
-    Args:
-        category_breakdown: カテゴリ別内訳辞書（calculate_base_expense_by_category()の結果）
-        reduction_rate: 削減率（0.0-1.0）
-        config: 設定辞書
-
-    Returns:
-        (actual_expense, breakdown):
-            - actual_expense: 削減後の実際の年間支出（円）
-            - breakdown: 内訳辞書
-    """
-    # カテゴリ定義を取得
-    definitions = config['fire']['expense_categories']['definitions']
-    discretionary_map = {cat['id']: cat['discretionary'] for cat in definitions}
-
-    # カテゴリごとに削減を適用
-    categories_after = {}
-    essential_total = 0.0
-    discretionary_original_total = 0.0
-    discretionary_after_total = 0.0
-
-    for cat_id, amount in category_breakdown['categories'].items():
-        if discretionary_map.get(cat_id, False):
-            # 裁量的支出: 削減を適用
-            discretionary_original_total += amount
-            amount_after = amount * (1.0 - reduction_rate)
-            discretionary_after_total += amount_after
-            categories_after[cat_id] = amount_after
-        else:
-            # 基礎生活費: 削減なし
-            essential_total += amount
-            categories_after[cat_id] = amount
-
-    actual_expense = essential_total + discretionary_after_total
-    amount_saved = discretionary_original_total - discretionary_after_total
-
-    breakdown = {
-        'essential': essential_total,
-        'discretionary': discretionary_after_total,
-        'discretionary_original': discretionary_original_total,
-        'reduction_rate': reduction_rate,
-        'amount_saved': amount_saved,
-        'categories_after': categories_after,  # カテゴリ別削減後の金額
-        'stage': category_breakdown.get('stage', 'unknown')
-    }
-
-    return actual_expense, breakdown
-
-
-def apply_dynamic_expense_reduction(
-    base_expense: float,
-    stage: str,
-    drawdown_level: int,
+def calculate_proportional_expense_adjustment(
+    surplus: float,
+    discretionary_monthly: float,
     config: Dict[str, Any],
-    category_breakdown: Optional[Dict[str, Any]] = None
-) -> Tuple[float, Dict[str, float]]:
+) -> float:
     """
-    動的支出削減を適用
+    比例制御型の動的支出調整額を計算する。
 
-    ライフステージの基本生活費を、基礎生活費と裁量的支出に分離し、
-    ドローダウンレベルに応じて裁量的支出を削減します。
-
-    カテゴリ別内訳が提供された場合は、カテゴリごとに削減を適用します。
+    ベースラインとの乖離額（surplus）に比例して支出を調整する。
+    余剰（surplus > 0）→ 支出増加、不足（surplus < 0）→ 支出削減。
+    調整額は裁量支出の倍率でキャップされる。
 
     Args:
-        base_expense: ライフステージの基本生活費（年額・円）
-        stage: ライフステージ（'young_child', 'elementary', etc.）
-        drawdown_level: 警戒レベル（0-3）
-        config: 設定辞書
-        category_breakdown: カテゴリ別内訳辞書（オプション）
-
-    Returns:
-        (actual_expense, breakdown):
-            - actual_expense: 削減後の実際の年間支出（円）
-            - breakdown: 内訳辞書
-                - 'essential': 基礎生活費（円）
-                - 'discretionary': 削減後の裁量的支出（円）
-                - 'discretionary_original': 削減前の裁量的支出（円）
-                - 'reduction_rate': 適用された削減率（0.0-1.0）
-                - 'amount_saved': 削減額（円）
-                - 'categories_after': カテゴリ別削減後の金額（カテゴリ別の場合のみ）
-
-    例:
-        base_expense = 2800000  # 280万円/年
-        stage = 'young_child'
-        drawdown_level = 1  # 警戒レベル
-
-        actual, breakdown = apply_dynamic_expense_reduction(
-            base_expense, stage, drawdown_level, config
-        )
-        # 裁量的25% = 70万円 → 50%削減 = 35万円
-        # actual = 210万円（基礎） + 35万円（裁量） = 245万円
-        # breakdown = {
-        #     'essential': 2100000,
-        #     'discretionary': 350000,
-        #     'discretionary_original': 700000,
-        #     'reduction_rate': 0.50,
-        #     'amount_saved': 350000
-        # }
-    """
-    dynamic_config = config['fire']['dynamic_expense_reduction']
-
-    # 動的削減が無効の場合、元の支出をそのまま返す
-    if not dynamic_config['enabled']:
-        return base_expense, {
-            'essential': base_expense,
-            'discretionary': 0.0,
-            'discretionary_original': 0.0,
-            'reduction_rate': 0.0,
-            'amount_saved': 0.0
-        }
-
-    # 裁量的支出の比率を取得（ライフステージ別）
-    discretionary_ratios = config['fire']['discretionary_ratio_by_stage']
-    discretionary_ratio = discretionary_ratios.get(stage, 0.30)  # デフォルト30%
-
-    # 基礎生活費と裁量的支出を分離
-    essential_expense = base_expense * (1.0 - discretionary_ratio)
-    discretionary_expense = base_expense * discretionary_ratio
-
-    if drawdown_level < 0:
-        # 上ぶれ: 裁量的支出を増加（対称的ガードレール）
-        boost_rates = dynamic_config['boost_rates']
-        boost_keys = ['level_neg1', 'level_neg2', 'level_neg3']
-        # drawdown_level = -1 → idx=0, -2 → idx=1, -3 → idx=2
-        idx = min(-drawdown_level - 1, len(boost_keys) - 1)
-        boost_rate = boost_rates.get(boost_keys[idx], 0.0)
-
-        actual_discretionary = discretionary_expense * (1.0 + boost_rate)
-        actual_expense = essential_expense + actual_discretionary
-
-        breakdown = {
-            'essential': essential_expense,
-            'discretionary': actual_discretionary,
-            'discretionary_original': discretionary_expense,
-            'reduction_rate': -boost_rate,  # 負値 = 増加
-            'amount_saved': discretionary_expense - actual_discretionary  # 負値 = 追加支出
-        }
-        return actual_expense, breakdown
-
-    # 削減率を取得（ドローダウンレベルに応じて）
-    reduction_rates = dynamic_config['reduction_rates']
-    rate_keys = ['level_0_normal', 'level_1_warning', 'level_2_concern', 'level_3_crisis']
-
-    # レベルに対応する削減率を取得（範囲外の場合はデフォルト0.0）
-    if 0 <= drawdown_level < len(rate_keys):
-        reduction_rate = reduction_rates.get(rate_keys[drawdown_level], 0.0)
-    else:
-        reduction_rate = 0.0
-
-    # カテゴリ別内訳が提供された場合、カテゴリベースの削減を適用
-    if category_breakdown is not None and category_breakdown:
-        return _apply_category_based_reduction(category_breakdown, reduction_rate, config)
-
-    # 削減を適用（裁量的支出のみ削減）
-    actual_discretionary = discretionary_expense * (1.0 - reduction_rate)
-    actual_expense = essential_expense + actual_discretionary
-
-    # 内訳を返す
-    breakdown = {
-        'essential': essential_expense,
-        'discretionary': actual_discretionary,
-        'discretionary_original': discretionary_expense,
-        'reduction_rate': reduction_rate,
-        'amount_saved': discretionary_expense - actual_discretionary
-    }
-
-    return actual_expense, breakdown
-
-
-def calculate_dynamic_adjustment(
-    drawdown: float,
-    monthly_deficit: float,
-    discretionary_expense_monthly: float,
-    config: Dict[str, Any]
-) -> Tuple[float, float, Dict[str, Any]]:
-    """
-    必要最小限の動的支出削減を計算（ドローダウンベース）
-
-    ドローダウンに比例した補填額を計算し、支出削減で対応。
-    警戒閾値を超えた場合のみ削減を開始することで、「必要最小限」を実現。
-    副収入増加機能は削除されました。
-
-    Args:
-        drawdown: ドローダウン率（負の値、例: -0.15 = -15%）
-        monthly_deficit: 月次赤字額（支出 - 収入、円）
-        discretionary_expense_monthly: 削減可能な裁量的支出（月額、円）
+        surplus: ベースラインとの乖離額（actual - baseline、円）
+        discretionary_monthly: 月次裁量支出（円）
         config: 設定辞書
 
     Returns:
-        (expense_reduction, 0.0, breakdown):
-            - expense_reduction: 支出削減額（月額、円）
-            - 0.0: 副収入増加額（常に0、後方互換性のため）
-            - breakdown: 計算内訳辞書
-                - 'drawdown': ドローダウン率
-                - 'fill_ratio': 補填割合（0.0-1.0）
-                - 'monthly_deficit': 月次赤字額
-                - 'required_fill': 必要補填額
-                - 'expense_reduction': 支出削減額
-                - 'discretionary_available': 削減可能な裁量的支出
-
-    例:
-        drawdown = -0.15  # -15%下落
-        monthly_deficit = 200000  # 月20万の赤字
-        discretionary = 100000  # 裁量的支出10万
-
-        expense_reduction, _, breakdown = calculate_dynamic_adjustment(
-            drawdown, monthly_deficit, discretionary, config
-        )
-        # warning_threshold = -0.10
-        # fill_ratio = (-0.15 - (-0.10)) / (-0.35 - (-0.10)) = 0.05 / 0.25 = 0.20
-        # required_fill = 200000 * 0.20 = 40000
-        # expense_reduction = min(40000, 100000) = 40000
+        月次支出調整額（正=支出増加、負=支出削減）
     """
-    # 動的削減が無効の場合は調整なし
     dynamic_config = config['fire']['dynamic_expense_reduction']
     if not dynamic_config['enabled']:
-        return 0.0, 0.0, {
-            'drawdown': drawdown,
-            'fill_ratio': 0.0,
-            'monthly_deficit': monthly_deficit,
-            'required_fill': 0.0,
-            'expense_reduction': 0.0,
-            'discretionary_available': discretionary_expense_monthly
-        }
+        return 0.0
 
-    # 閾値の取得
-    warning_threshold = dynamic_config['drawdown_thresholds']['level_1_warning']
-    crisis_threshold = dynamic_config['drawdown_thresholds']['level_3_crisis']
+    alpha = dynamic_config['surplus_spending_rate']
+    max_cut_ratio = dynamic_config['max_cut_ratio']
+    max_boost_ratio = dynamic_config['max_boost_ratio']
 
-    # 補填割合の計算（警戒閾値を超えた場合のみ）
-    if drawdown >= warning_threshold:
-        # 警戒閾値未満なら補填不要（軽微な変動は無視）
-        fill_ratio = 0.0
-    else:
-        # 警戒閾値を超えたら、危機閾値までの比例で補填
-        # 例: warning=-10%, crisis=-35%, drawdown=-15%
-        #     fill_ratio = (15-10) / (35-10) = 5/25 = 0.20 (20%補填)
-        # 例: drawdown=-35%以上
-        #     fill_ratio = min(1.0, ...) = 1.0 (100%補填)
-        fill_ratio = min(1.0, (abs(drawdown) - abs(warning_threshold)) / (abs(crisis_threshold) - abs(warning_threshold)))
+    monthly_adjustment = surplus * alpha / 12.0
 
-    # 必要補填額の計算
-    # 月次赤字の一部を補填する（ドローダウンが大きいほど補填割合が高い）
-    required_fill = monthly_deficit * fill_ratio
+    max_boost = discretionary_monthly * max_boost_ratio
+    max_cut = discretionary_monthly * max_cut_ratio
 
-    # 支出削減で対応
-    # 裁量的支出の範囲内で必要な分だけ削減
-    expense_reduction = min(required_fill, discretionary_expense_monthly)
-
-    breakdown = {
-        'drawdown': drawdown,
-        'fill_ratio': fill_ratio,
-        'monthly_deficit': monthly_deficit,
-        'required_fill': required_fill,
-        'expense_reduction': expense_reduction,
-        'discretionary_available': discretionary_expense_monthly
-    }
-
-    # 副収入増加は常に0（機能削除）
-    return expense_reduction, 0.0, breakdown
-
-
-def calculate_dynamic_adjustment_baseline(
-    asset_shortfall: float,
-    monthly_deficit: float,
-    discretionary_expense_monthly: float,
-    config: Dict[str, Any]
-) -> Tuple[float, float, Dict[str, Any]]:
-    """
-    ベースラインとの差分に基づく動的支出削減を計算
-
-    ベースラインの期待資産額を下回る場合、ワーケーション費用の削減で対応します。
-    副収入増加機能は削除されました。
-
-    Args:
-        asset_shortfall: 資産不足額（期待資産額 - 実際の資産額、円）
-        monthly_deficit: 月次赤字額（参考値、円）
-        discretionary_expense_monthly: 削減可能費用（ワーケーション費用の月額、円）
-        config: 設定辞書
-
-    Returns:
-        (expense_reduction, 0.0, breakdown):
-            - expense_reduction: 支出削減額（月額、円）
-            - 0.0: 副収入増加額（常に0、後方互換性のため）
-            - breakdown: 計算内訳辞書
-
-    例:
-        asset_shortfall = 1000000  # ベースラインより100万円少ない
-        workation_cost = 100000    # ワーケーション費用10万/月
-
-        # ワーケーション費用の全額まで削減可能
-        expense_reduction = min(1000000, 100000) = 100000
-    """
-    # 動的削減が無効の場合は調整なし
-    dynamic_config = config['fire']['dynamic_expense_reduction']
-    if not dynamic_config['enabled']:
-        return 0.0, 0.0, {
-            'asset_shortfall': asset_shortfall,
-            'required_fill': 0.0,
-            'expense_reduction': 0.0,
-            'discretionary_available': discretionary_expense_monthly
-        }
-
-    # 必要補填額の計算
-    # 資産不足額全体を補填対象とする
-    required_fill = asset_shortfall
-
-    # ワーケーション費用削減で対応
-    # ワーケーション費用の全額まで削減可能（100%）
-    max_reduction = discretionary_expense_monthly * 1.0
-    expense_reduction = min(required_fill, max_reduction)
-
-    breakdown = {
-        'asset_shortfall': asset_shortfall,
-        'required_fill': required_fill,
-        'expense_reduction': expense_reduction,
-        'discretionary_available': discretionary_expense_monthly
-    }
-
-    # 副収入増加は常に0（機能削除）
-    return expense_reduction, 0.0, breakdown
+    return max(-max_cut, min(monthly_adjustment, max_boost))
 
 
 @lru_cache(maxsize=32)
@@ -1733,19 +1387,30 @@ def _calculate_monthly_expenses(
     """
     月次支出の全項目を計算する。
 
+    FIRE後は _compute_post_fire_monthly_expenses に委譲し、
+    全シミュレーションパスで支出計算ロジックを共有する。
+
     Returns:
         base_expense, education_expense, mortgage_payment, maintenance_cost,
         workation_cost, pension_premium, health_insurance_premium, total（全て月額・円）
     """
+    if fire_achieved:
+        return _compute_post_fire_monthly_expenses(
+            years, config,
+            prev_year_capital_gains=prev_year_capital_gains,
+            years_since_fire=years_since_fire,
+        )
+
+    # FIRE前: 成長率ベースのフォールバック値を使用
     fallback_annual = monthly_expense * 12 * (1 + expense_growth_rate) ** years
     base_expense = calculate_base_expense(years, config, fallback_annual, expense_growth_rate) / 12
     education_expense = calculate_education_expense(years, config) / 12
     mortgage_payment = calculate_mortgage_payment(years, config)
     maintenance_cost = calculate_house_maintenance(years, config) / 12
     workation_cost = calculate_workation_cost(years, config) / 12
-    pension_premium = calculate_national_pension_premium(years, config, fire_achieved) / 12
+    pension_premium = calculate_national_pension_premium(years, config, False) / 12
     health_insurance_premium = calculate_national_health_insurance_premium(
-        years, config, fire_achieved, prev_year_capital_gains,
+        years, config, False, prev_year_capital_gains,
         years_since_fire=years_since_fire,
     ) / 12
     total = (base_expense + education_expense + mortgage_payment
@@ -2335,42 +2000,45 @@ def _calculate_monthly_income(
       post_fire_income:           修平の FIRE後副収入設定値
     """
 
-    # 年金収入（年金繰り下げ戦略対応）
-    fire_year_offset = (fire_month / 12) if fire_month is not None else None
+    if fire_achieved:
+        fire_year_offset = (fire_month / 12) if fire_month is not None else None
+        _inc = _compute_post_fire_monthly_income(
+            years, config, fire_year_offset=fire_year_offset,
+            current_assets=current_assets,
+            override_start_ages=override_start_ages,
+        )
+        labor_income = _inc['post_fire_income']
+        sim = config['simulation']
+        if _inc['pension_income'] > 0:
+            shuhei_pf = 0
+            sakura_pf = 0
+        else:
+            shuhei_pf = sim['shuhei_post_fire_income']
+            sakura_pf = sim['sakura_post_fire_income']
+        return {
+            'total_income': _inc['total'],
+            'labor_income': labor_income,
+            'pension_income': _inc['pension_income'],
+            'child_allowance': _inc['child_allowance'],
+            'shuhei_income_monthly': shuhei_pf,
+            'sakura_income_monthly': sakura_pf,
+            'post_fire_income': shuhei_pf,
+        }
 
-    # FIRE目標資産を計算（年金繰り下げ判定用）
+    # FIRE前: 年金収入の計算
+    fire_year_offset = (fire_month / 12) if fire_month is not None else None
     base_expense_empty_nest = config['fire']['base_expense_by_stage']['empty_nest']
-    fire_target_assets = base_expense_empty_nest / 0.04  # 4%ルール
+    fire_target_assets = base_expense_empty_nest / 0.04
 
     annual_pension_income = calculate_pension_income(
-        years, config, fire_achieved=fire_achieved, fire_year_offset=fire_year_offset,
+        years, config, fire_achieved=False, fire_year_offset=fire_year_offset,
         current_assets=current_assets,
         fire_target_assets=fire_target_assets,
         override_start_ages=override_start_ages
     )
     monthly_pension_income = annual_pension_income / 12
-
-    # 児童手当
     monthly_child_allowance = calculate_child_allowance(years, config) / 12
 
-    if fire_achieved:
-        if monthly_pension_income > 0:
-            shuhei_post_fire_income = 0
-            sakura_post_fire_income = 0
-        else:
-            sim = config['simulation']
-            shuhei_post_fire_income = sim['shuhei_post_fire_income']
-            sakura_post_fire_income = sim['sakura_post_fire_income']
-        labor_income = shuhei_post_fire_income + sakura_post_fire_income
-        return {
-            'total_income': monthly_pension_income + monthly_child_allowance + labor_income,
-            'labor_income': labor_income,
-            'pension_income': monthly_pension_income,
-            'child_allowance': monthly_child_allowance,
-            'shuhei_income_monthly': shuhei_post_fire_income,
-            'sakura_income_monthly': sakura_post_fire_income,
-            'post_fire_income': shuhei_post_fire_income,
-        }
     shuhei_post_fire_income = config['simulation']['shuhei_post_fire_income']
     sakura_post_fire_income = config['simulation']['sakura_post_fire_income']
 
@@ -2459,6 +2127,197 @@ def _initialize_post_fire_simulation(
     }
 
 
+def _get_life_stage_for_year(years: float, config: Dict[str, Any]) -> str:
+    """指定年数におけるライフステージ名を取得する。"""
+    children_cfg = config['education']['children']
+    _sub = config['fire']['empty_nest_sub_stages']
+    _parent_age = _get_primary_parent_age(config, years)
+    if children_cfg:
+        child_age = _get_age_at_offset(children_cfg[0]['birthdate'], years)
+        return _get_life_stage(child_age, _parent_age, _sub['senior_from_age'], _sub['elderly_from_age'])
+    else:
+        return _get_life_stage(22.0, _parent_age, _sub['senior_from_age'], _sub['elderly_from_age'])
+
+
+def _get_discretionary_ratio(years: float, config: Dict[str, Any]) -> float:
+    """現在のライフステージに応じた裁量的支出比率を取得する。
+
+    緊縮削減と動的支出調整の両方で共通利用される。
+    """
+    stage = _get_life_stage_for_year(years, config)
+    disc_ratios = config['fire']['discretionary_ratio_by_stage']
+    return disc_ratios.get(stage, 0.30)
+
+
+def _compute_post_fire_monthly_expenses(
+    years: float,
+    config: Dict[str, Any],
+    prev_year_capital_gains: float = 0,
+    years_since_fire: float = 0,
+    include_health_insurance: bool = True,
+    extra_monthly_budget: float = 0,
+) -> dict:
+    """FIRE後の月次支出を計算する単一関数。
+
+    全シミュレーションパス（ベースライン、MC事前計算、MCイテレーション、FIRE判定）が
+    この関数を利用し、支出計算ロジックの重複を排除する。
+
+    Args:
+        include_health_insurance: Falseの場合、健康保険料を0とする（MC事前計算用）
+
+    Returns:
+        各項目の月額 + total + annual_base_expense を含む辞書
+    """
+    annual_base_expense = calculate_base_expense(years, config, 0)
+    base_expense = annual_base_expense / 12
+    education_expense = calculate_education_expense(years, config) / 12
+    mortgage_payment = calculate_mortgage_payment(years, config)
+    maintenance_cost = calculate_house_maintenance(years, config) / 12
+    workation_cost = calculate_workation_cost(years, config) / 12
+    pension_premium = calculate_national_pension_premium(years, config, fire_achieved=True) / 12
+
+    health_insurance_premium = 0.0
+    if include_health_insurance:
+        health_insurance_premium = calculate_national_health_insurance_premium(
+            years, config, fire_achieved=True,
+            prev_year_capital_gains=prev_year_capital_gains,
+            years_since_fire=years_since_fire,
+        ) / 12
+
+    total = (base_expense + education_expense + mortgage_payment
+             + maintenance_cost + workation_cost
+             + pension_premium + health_insurance_premium
+             + extra_monthly_budget)
+
+    return {
+        'base_expense': base_expense,
+        'education_expense': education_expense,
+        'mortgage_payment': mortgage_payment,
+        'maintenance_cost': maintenance_cost,
+        'workation_cost': workation_cost,
+        'pension_premium': pension_premium,
+        'health_insurance_premium': health_insurance_premium,
+        'total': total,
+        'annual_base_expense': annual_base_expense,
+    }
+
+
+def _compute_post_fire_monthly_income(
+    years: float,
+    config: Dict[str, Any],
+    fire_year_offset: float,
+    current_assets: float = None,
+    override_start_ages: Dict[str, int] = None,
+    post_fire_income_override: float = None,
+) -> dict:
+    """FIRE後の月次収入を計算する単一関数。
+
+    全シミュレーションパスがこの関数を利用し、収入計算ロジックの重複を排除する。
+
+    Args:
+        current_assets: 現在の総資産（年金繰り下げ判定用、Noneの場合は override_start_ages で判定）
+        post_fire_income_override: 労働収入の上書き値（Noneの場合はconfigから取得）
+
+    Returns:
+        pension_income, child_allowance, post_fire_income, total を含む辞書
+    """
+    base_expense_empty_nest = config['fire']['base_expense_by_stage']['empty_nest']
+    fire_target_assets = base_expense_empty_nest / 0.04
+
+    annual_pension_income = calculate_pension_income(
+        years, config, fire_achieved=True, fire_year_offset=fire_year_offset,
+        current_assets=current_assets,
+        fire_target_assets=fire_target_assets,
+        override_start_ages=override_start_ages,
+    )
+    monthly_pension_income = annual_pension_income / 12
+
+    monthly_child_allowance = calculate_child_allowance(years, config) / 12
+
+    if monthly_pension_income > 0:
+        labor_income = 0.0
+    elif post_fire_income_override is not None:
+        labor_income = post_fire_income_override
+    else:
+        labor_income = _compute_post_fire_income(config)
+
+    total = monthly_pension_income + monthly_child_allowance + labor_income
+
+    return {
+        'pension_income': monthly_pension_income,
+        'child_allowance': monthly_child_allowance,
+        'post_fire_income': labor_income,
+        'total': total,
+    }
+
+
+def _compute_austerity_period(
+    config: Dict[str, Any],
+    fire_years_offset: float,
+    override_start_ages: Dict[str, int] = None,
+) -> Tuple[Optional[int], Optional[int], float]:
+    """緊縮期間の開始月・終了月・削減率を計算する。
+
+    ループ外で1回だけ呼び、結果を _compute_austerity_reduction に渡す。
+
+    Returns:
+        (reduction_start_month, reduction_end_month, reduction_rate)
+        適用不要の場合は (None, None, 0.0)
+    """
+    opt_cfg = config.get('optimization', {})
+    red_rate = opt_cfg.get('pre_pension_reduction_rate') or 0.0
+    if red_rate <= 0:
+        return None, None, 0.0
+
+    austerity_years = opt_cfg.get('austerity_years_before_pension', 10)
+    austerity_months = austerity_years * 12
+
+    pension_people = config['pension']['people']
+    ages_list = []
+    for p in pension_people:
+        ovr = p.get('override_start_age')
+        if ovr:
+            ages_list.append(ovr)
+        elif override_start_ages and p['name'] in override_start_ages:
+            ages_list.append(override_start_ages[p['name']])
+
+    if not ages_list:
+        return None, None, 0.0
+
+    earliest_pension_age = min(ages_list)
+    start_age = config['simulation']['start_age']
+    reduction_end_month = int((earliest_pension_age - start_age - fire_years_offset) * 12)
+    reduction_start_month = max(0, reduction_end_month - austerity_months)
+
+    return reduction_start_month, reduction_end_month, red_rate
+
+
+def _compute_austerity_reduction(
+    months_since_fire: int,
+    years: float,
+    config: Dict[str, Any],
+    reduction_rate: float,
+    reduction_start_month: int,
+    reduction_end_month: int,
+) -> float:
+    """緊縮期間中の裁量的支出削減額を計算する。
+
+    Returns:
+        削減額（正の値）。緊縮期間外は 0.0。
+    """
+    if reduction_rate <= 0:
+        return 0.0
+    if reduction_start_month is None or reduction_end_month is None:
+        return 0.0
+    if not (reduction_start_month <= months_since_fire < reduction_end_month):
+        return 0.0
+
+    disc_ratio = _get_discretionary_ratio(years, config)
+    annual_base = calculate_base_expense(years, config, 0)
+    disc_monthly = annual_base * disc_ratio / 12.0
+    return disc_monthly * reduction_rate
+
+
 def _process_post_fire_monthly_cycle(
     month: int,
     cash: float,
@@ -2478,11 +2337,13 @@ def _process_post_fire_monthly_cycle(
     min_cash_balance: float,
     post_fire_income: float,
     override_start_ages: Dict[str, int] = None,
-    peak_assets_history: list = None,
     extra_monthly_budget: float = 0,
+    austerity_start: int = None,
+    austerity_end: int = None,
+    austerity_rate: float = 0.0,
 ) -> Dict[str, Any]:
     """
-    FIRE後の1ヶ月分のシミュレーション処理
+    FIRE後の1ヶ月分のシミュレーション処理（決定論的ベースライン用）
 
     Returns:
         更新後の状態と破綻フラグを含む辞書
@@ -2498,67 +2359,30 @@ def _process_post_fire_monthly_cycle(
     if _year_advanced:
         prev_year_capital_gains_post = _prev_gains
 
-    # ドローダウン追跡（FIRE後現金管理戦略用）
     current_total_assets = cash + stocks
-    if peak_assets_history is not None:
-        peak_assets_history.append(current_total_assets)
-        if len(peak_assets_history) > 12:
-            peak_assets_history.pop(0)
+    drawdown = 0.0
 
-    drawdown, _ = calculate_drawdown_level(
-        current_assets=current_total_assets,
-        peak_assets_history=peak_assets_history or [],
-        config=config
-    )
-
-    # 支出計算
-    annual_base_expense = calculate_base_expense(years, config, 0)
-    base_expense = annual_base_expense / 12
-
-    annual_education_expense = calculate_education_expense(years, config)
-    monthly_education_expense = annual_education_expense / 12
-
-    monthly_mortgage_payment = calculate_mortgage_payment(years, config)
-
-    annual_maintenance_cost = calculate_house_maintenance(years, config)
-    monthly_maintenance_cost = annual_maintenance_cost / 12
-
-    annual_workation_cost = calculate_workation_cost(years, config)
-    monthly_workation_cost = annual_workation_cost / 12
-
-    annual_pension_premium = calculate_national_pension_premium(years, config, fire_achieved=True)
-    monthly_pension_premium = annual_pension_premium / 12
-
-    annual_health_insurance_premium = calculate_national_health_insurance_premium(
-        years, config, fire_achieved=True,
+    # 支出計算（共通関数）
+    _exp = _compute_post_fire_monthly_expenses(
+        years, config,
         prev_year_capital_gains=prev_year_capital_gains_post,
         years_since_fire=month / 12,
+        extra_monthly_budget=extra_monthly_budget,
     )
-    monthly_health_insurance_premium = annual_health_insurance_premium / 12
+    expense = _exp['total']
 
-    expense = (base_expense + monthly_education_expense + monthly_mortgage_payment +
-              monthly_maintenance_cost + monthly_workation_cost +
-              monthly_pension_premium + monthly_health_insurance_premium +
-              extra_monthly_budget)
+    # 緊縮削減
+    expense -= _compute_austerity_reduction(
+        month, years, config, austerity_rate, austerity_start, austerity_end,
+    )
 
-    # 収入計算（年金繰り下げ戦略対応）
-    base_expense_empty_nest = config['fire']['base_expense_by_stage']['empty_nest']
-    fire_target_assets = base_expense_empty_nest / 0.04
-
-    annual_pension_income = calculate_pension_income(
-        years, config, fire_achieved=True, fire_year_offset=years_offset,
+    # 収入計算（共通関数）
+    _inc = _compute_post_fire_monthly_income(
+        years, config, fire_year_offset=years_offset,
         current_assets=current_total_assets,
-        fire_target_assets=fire_target_assets,
-        override_start_ages=override_start_ages
+        override_start_ages=override_start_ages,
     )
-    monthly_pension_income = annual_pension_income / 12
-
-    effective_post_fire_income = 0 if monthly_pension_income > 0 else post_fire_income
-
-    annual_child_allowance = calculate_child_allowance(years, config)
-    monthly_child_allowance = annual_child_allowance / 12
-
-    total_income = effective_post_fire_income + monthly_pension_income + monthly_child_allowance
+    total_income = _inc['total']
 
     cash += total_income
 
@@ -2663,7 +2487,10 @@ def simulate_post_fire_assets(
     capital_gains_this_year_post = 0
     prev_year_capital_gains_post = 0
 
-    peak_assets_history = []
+    # 緊縮期間の事前計算
+    a_start, a_end, a_rate = _compute_austerity_period(
+        config, years_offset, override_start_ages
+    )
 
     # 月次シミュレーション
     for month in range(remaining_months):
@@ -2675,8 +2502,10 @@ def simulate_post_fire_assets(
             monthly_return_rate, allocation_enabled,
             capital_gains_tax_rate, min_cash_balance, _post_fire_income,
             override_start_ages=override_start_ages,
-            peak_assets_history=peak_assets_history,
             extra_monthly_budget=extra_monthly_budget,
+            austerity_start=a_start,
+            austerity_end=a_end,
+            austerity_rate=a_rate,
         )
 
         # 状態を更新
@@ -2722,72 +2551,32 @@ def _precompute_monthly_cashflows(
     """
     expenses = np.zeros(total_months)
     income = np.zeros(total_months)
-    base_expenses = np.zeros(total_months)  # 基本生活費（年額）を記録
-    life_stages = np.empty(total_months, dtype=object)  # ライフステージを記録
-    workation_costs = np.zeros(total_months)  # ワーケーション費用（月額）を記録
+    base_expenses = np.zeros(total_months)
+    life_stages = np.empty(total_months, dtype=object)
+    workation_costs = np.zeros(total_months)
 
     for month_idx in range(total_months):
         years = years_offset + month_idx / 12
 
-        # 支出計算
-        annual_base = calculate_base_expense(years, config, 0)
-        annual_education = calculate_education_expense(years, config)
-        monthly_mortgage = calculate_mortgage_payment(years, config)
-        annual_maintenance = calculate_house_maintenance(years, config)
-        annual_workation = calculate_workation_cost(years, config)
-        annual_pension_prem = calculate_national_pension_premium(years, config, fire_achieved=True)
-        # 健康保険は資産売却益に依存するため0とする（ループ内で計算）
-
-        # 基本生活費を記録
-        base_expenses[month_idx] = annual_base
-
-        # ワーケーション費用を記録（月額）
-        workation_costs[month_idx] = annual_workation / 12
-
-        # ライフステージを取得して記録
-        children = config['education']['children']
-        _sub = config['fire']['empty_nest_sub_stages']
-        _senior_from = _sub['senior_from_age']
-        _elderly_from = _sub['elderly_from_age']
-        _parent_age = _get_primary_parent_age(config, years)
-        if children:
-            first_child = children[0]
-            child_age = _get_age_at_offset(first_child['birthdate'], years)
-            life_stages[month_idx] = _get_life_stage(child_age, _parent_age, _senior_from, _elderly_from)
-        else:
-            life_stages[month_idx] = _get_life_stage(22.0, _parent_age, _senior_from, _elderly_from)
-
-        expenses[month_idx] = (
-            annual_base / 12 +
-            annual_education / 12 +
-            monthly_mortgage +
-            annual_maintenance / 12 +
-            annual_workation / 12 +
-            annual_pension_prem / 12
+        # 支出計算（共通関数、健康保険は確率的譲渡益に依存するため除外）
+        _exp = _compute_post_fire_monthly_expenses(
+            years, config, include_health_insurance=False,
         )
+        expenses[month_idx] = _exp['total']
+        base_expenses[month_idx] = _exp['annual_base_expense']
+        workation_costs[month_idx] = _exp['workation_cost']
 
-        # 収入計算
-        # current_assets=None: 事前計算時は各月の資産額が未確定のため、
-        # 資産ベースの動的繰り下げは使用不可。override_start_agesで年金開始年齢を直接指定する。
-        annual_pension = calculate_pension_income(
-            years, config, fire_achieved=True, fire_year_offset=years_offset,
+        # ライフステージを取得して記録（動的調整用）
+        life_stages[month_idx] = _get_life_stage_for_year(years, config)
+
+        # 収入計算（共通関数、current_assets=None: 事前計算時は資産額未確定）
+        _inc = _compute_post_fire_monthly_income(
+            years, config, fire_year_offset=years_offset,
             current_assets=None,
-            fire_target_assets=None,
-            override_start_ages=override_start_ages
+            override_start_ages=override_start_ages,
+            post_fire_income_override=post_fire_income_override,
         )
-        monthly_pension = annual_pension / 12
-
-        if monthly_pension > 0:
-            effective_labor_income = 0
-        elif post_fire_income_override is not None:
-            effective_labor_income = post_fire_income_override
-        else:
-            effective_labor_income = _compute_post_fire_income(config)
-
-        annual_child_allow = calculate_child_allowance(years, config)
-        monthly_child_allow = annual_child_allow / 12
-
-        income[month_idx] = effective_labor_income + monthly_pension + monthly_child_allow
+        income[month_idx] = _inc['total']
 
     return expenses, income, base_expenses, life_stages, workation_costs
 
@@ -2811,6 +2600,10 @@ def _simulate_post_fire_with_random_returns(
     baseline_assets: np.ndarray = None,
     override_start_ages: Dict[str, int] = None,
     extra_monthly_budget: float = 0,
+    return_min_path_assets: bool = False,
+    pre_pension_reduction_rate: float = 0.0,
+    reduction_end_month: int = None,
+    austerity_months: int = 120,
 ):
     """
     FIRE後の資産推移をランダムリターンでシミュレーション（モンテカルロ用）
@@ -2826,10 +2619,15 @@ def _simulate_post_fire_with_random_returns(
         nisa_cost_basis: NISA簿価
         stocks_cost_basis: 株式全体の簿価
         return_timeseries: Trueの場合、月ごとの資産リストを返す
+        return_min_path_assets: Trueの場合、(final_assets, min_path_assets) を返す
+        pre_pension_reduction_rate: 年金受給前の緊縮期間における裁量的支出の削減率 (0-1)
+        reduction_end_month: 緊縮期間の終了月（年金受給開始月）
+        austerity_months: 緊縮期間の長さ（月数、デフォルト120=10年）
 
     Returns:
-        return_timeseries=False: 90歳時点での資産額（破綻時は0）
         return_timeseries=True: 月ごとの資産額のリスト
+        return_min_path_assets=True: (final_assets, min_path_assets) のタプル
+        それ以外: 最終資産額（破綻時は0）
     """
     # 初期化
     init = _initialize_post_fire_simulation(
@@ -2860,8 +2658,12 @@ def _simulate_post_fire_with_random_returns(
     # 月ごとの資産を記録（return_timeseries=Trueの場合）
     timeseries = [] if return_timeseries else None
     _last_positive_baseline_scalar = float(baseline_assets[0]) if baseline_assets is not None and len(baseline_assets) > 0 and baseline_assets[0] > 0 else 0.0
-    _initial_total_scalar = current_cash + current_stocks
-    _boost_suppress_thr_scalar = _initial_total_scalar * 0.30
+
+    min_path_assets = current_cash + current_stocks
+
+    reduction_start_month = None
+    if pre_pension_reduction_rate > 0 and reduction_end_month is not None:
+        reduction_start_month = max(0, reduction_end_month - austerity_months)
 
     # 月次シミュレーション
     for month in range(remaining_months):
@@ -2884,24 +2686,17 @@ def _simulate_post_fire_with_random_returns(
             if _ba_val_scalar > 0:
                 _last_positive_baseline_scalar = _ba_val_scalar
         _planned = _last_positive_baseline_scalar if _last_positive_baseline_scalar > 0 else None
-        drawdown, drawdown_level = calculate_drawdown_level(
+        drawdown, _ = calculate_drawdown_level(
             current_assets=current_total_assets,
             peak_assets_history=[],
             config=config,
             planned_assets=_planned,
         )
-        # ベースラインが初期資産の30%を下回った場合、上振れ（ブースト）を抑制
-        if baseline_assets is not None and _ba_val_scalar < _boost_suppress_thr_scalar:
-            if drawdown > 0:
-                drawdown = 0.0
-            if drawdown_level < 0:
-                drawdown_level = 0
 
         # 支出・収入計算（事前計算済みの場合は配列から取得）
         if precomputed_expenses is not None and precomputed_income is not None:
             base_expense_total_original = precomputed_expenses[month]
 
-            # 健康保険料のみ資産売却益に依存するため毎回計算
             annual_health_insurance_premium = calculate_national_health_insurance_premium(
                 years, config, fire_achieved=True,
                 prev_year_capital_gains=prev_year_capital_gains_post,
@@ -2909,124 +2704,52 @@ def _simulate_post_fire_with_random_returns(
             )
             monthly_health_insurance_premium = annual_health_insurance_premium / 12
 
-            # 支出と収入を計算（調整前）
             expense = base_expense_total_original + monthly_health_insurance_premium + extra_monthly_budget
             total_income = precomputed_income[month]
 
-            # ドローダウンベースの裁量支出削減（下ぶれ）または増加（上ぶれ）
-            if drawdown_level != 0 and precomputed_base_expenses is not None and precomputed_life_stages is not None:
-                annual_base = precomputed_base_expenses[month]
-                stage = precomputed_life_stages[month]
-                _, dd_breakdown = apply_dynamic_expense_reduction(
-                    annual_base, stage, drawdown_level, config
-                )
-                expense -= dd_breakdown['amount_saved'] / 12  # 下ぶれ時は正値（削減）、上ぶれ時は負値（増加）
-
-            # ベースラインとの比較による動的調整（ワーケーション費用）
-            if baseline_assets is not None and month > 0:
-                # 前月末の資産（今月初の値）
-                prev_actual_assets = cash + stocks
-
-                # 前月末のベースライン期待資産額
-                prev_expected_assets = baseline_assets[month - 1] if (month - 1) < len(baseline_assets) else 0
-
-                # 資産不足額を計算（前月末時点での不足）
-                asset_shortfall = max(0, prev_expected_assets - prev_actual_assets)
-
-                # ワーケーション費用を削減対象として取得
-                if precomputed_workation_costs is not None:
-                    workation_cost_monthly = precomputed_workation_costs[month]
+            # 比例制御型動的支出調整（プリコンピュートパス）
+            if baseline_assets is not None and _last_positive_baseline_scalar > 0:
+                surplus = current_total_assets - _last_positive_baseline_scalar
+                if precomputed_base_expenses is not None and precomputed_life_stages is not None:
+                    stage = precomputed_life_stages[month]
+                    disc_ratios = config['fire']['discretionary_ratio_by_stage']
+                    disc_ratio = disc_ratios.get(stage, 0.30)
                 else:
-                    # 事前計算がない場合は、その場で計算
-                    annual_workation = calculate_workation_cost(years, config)
-                    workation_cost_monthly = annual_workation / 12
-
-                # 月次赤字を計算（参考値）
-                monthly_deficit = expense - total_income
-
-                # 動的支出削減を計算
-                # ワーケーション費用のみを削減対象とする
-                expense_reduction_monthly, _, adjustment_breakdown = calculate_dynamic_adjustment_baseline(
-                    asset_shortfall=asset_shortfall,
-                    monthly_deficit=monthly_deficit,
-                    discretionary_expense_monthly=workation_cost_monthly,  # ワーケーション費用を削減対象に
-                    config=config
-                )
-
-                # 支出を削減
-                expense -= expense_reduction_monthly
-            else:
-                # ベースラインがない場合は調整なし（ベースライン自身の計算時）
-                pass
+                    disc_ratio = _get_discretionary_ratio(years, config)
+                disc_monthly = precomputed_base_expenses[month] * disc_ratio / 12.0 if precomputed_base_expenses is not None else expense * 0.30
+                adjustment = calculate_proportional_expense_adjustment(surplus, disc_monthly, config)
+                expense += adjustment
         else:
-            # 従来の方法（互換性のため残す）
-            annual_base_expense = calculate_base_expense(years, config, 0)
-            base_expense = annual_base_expense / 12
-
-            annual_education_expense = calculate_education_expense(years, config)
-            monthly_education_expense = annual_education_expense / 12
-
-            monthly_mortgage_payment = calculate_mortgage_payment(years, config)
-
-            annual_maintenance_cost = calculate_house_maintenance(years, config)
-            monthly_maintenance_cost = annual_maintenance_cost / 12
-
-            annual_workation_cost = calculate_workation_cost(years, config)
-            monthly_workation_cost = annual_workation_cost / 12
-
-            annual_pension_premium = calculate_national_pension_premium(years, config, fire_achieved=True)
-            monthly_pension_premium = annual_pension_premium / 12
-
-            annual_health_insurance_premium = calculate_national_health_insurance_premium(
-                years, config, fire_achieved=True,
+            # インラインパス（共通関数使用）
+            _exp = _compute_post_fire_monthly_expenses(
+                years, config,
                 prev_year_capital_gains=prev_year_capital_gains_post,
                 years_since_fire=month / 12,
+                extra_monthly_budget=extra_monthly_budget,
             )
-            monthly_health_insurance_premium = annual_health_insurance_premium / 12
+            expense = _exp['total']
 
-            expense = (base_expense + monthly_education_expense + monthly_mortgage_payment +
-                      monthly_maintenance_cost + monthly_workation_cost +
-                      monthly_pension_premium + monthly_health_insurance_premium +
-                      extra_monthly_budget)
+            # 比例制御型動的支出調整（インラインパス）
+            if baseline_assets is not None and _last_positive_baseline_scalar > 0:
+                surplus = current_total_assets - _last_positive_baseline_scalar
+                disc_ratio = _get_discretionary_ratio(years, config)
+                disc_monthly = _exp['annual_base_expense'] * disc_ratio / 12.0
+                adjustment = calculate_proportional_expense_adjustment(surplus, disc_monthly, config)
+                expense += adjustment
 
-            # ドローダウンベースの裁量支出削減（下ぶれ）または増加（上ぶれ）
-            if drawdown_level != 0:
-                children_cfg = config['education']['children']
-                _sub = config['fire']['empty_nest_sub_stages']
-                _senior_from = _sub['senior_from_age']
-                _elderly_from = _sub['elderly_from_age']
-                _parent_age = _get_primary_parent_age(config, years)
-                if children_cfg:
-                    first_child = children_cfg[0]
-                    child_age = _get_age_at_offset(first_child['birthdate'], years)
-                    stage = _get_life_stage(child_age, _parent_age, _senior_from, _elderly_from)
-                else:
-                    stage = _get_life_stage(22.0, _parent_age, _senior_from, _elderly_from)
-                _, dd_breakdown = apply_dynamic_expense_reduction(
-                    annual_base_expense, stage, drawdown_level, config
-                )
-                expense -= dd_breakdown['amount_saved'] / 12  # 下ぶれ時は正値（削減）、上ぶれ時は負値（増加）
-
-            # 収入計算（年金繰り下げ戦略対応）
-            # FIRE目標資産を計算
-            base_expense_empty_nest = config['fire']['base_expense_by_stage']['empty_nest']
-            fire_target_assets = base_expense_empty_nest / 0.04
-
-            annual_pension_income = calculate_pension_income(
-                years, config, fire_achieved=True, fire_year_offset=years_offset,
+            # 収入計算（共通関数使用）
+            _inc = _compute_post_fire_monthly_income(
+                years, config, fire_year_offset=years_offset,
                 current_assets=current_total_assets,
-                fire_target_assets=fire_target_assets,
-                override_start_ages=override_start_ages
+                override_start_ages=override_start_ages,
             )
-            monthly_pension_income = annual_pension_income / 12
+            total_income = _inc['total']
 
-            _post_fire_income = _compute_post_fire_income(config)
-            effective_post_fire_income = 0 if monthly_pension_income > 0 else _post_fire_income
-
-            annual_child_allowance = calculate_child_allowance(years, config)
-            monthly_child_allowance = annual_child_allowance / 12
-
-            total_income = effective_post_fire_income + monthly_pension_income + monthly_child_allowance
+        # 緊縮期間の支出削減（共通関数使用）
+        expense -= _compute_austerity_reduction(
+            month, years, config,
+            pre_pension_reduction_rate, reduction_start_month, reduction_end_month,
+        )
 
         # 収入を現金に加算
         cash += total_income
@@ -3077,22 +2800,31 @@ def _simulate_post_fire_with_random_returns(
         stocks *= (1 + monthly_return)
         nisa_balance *= (1 + monthly_return)
 
+        total_assets_now = cash + stocks
+
         # 月ごとの資産を記録
         if return_timeseries:
-            timeseries.append(cash + stocks)
+            timeseries.append(total_assets_now)
+
+        min_path_assets = min(min_path_assets, total_assets_now)
 
         safety_margin = config['post_fire_cash_strategy']['safety_margin']
-        if cash + stocks <= safety_margin:
+        if total_assets_now <= safety_margin:
             if return_timeseries:
                 timeseries.extend([0] * (remaining_months - month - 1))
                 return timeseries
+            elif return_min_path_assets:
+                return (0, min_path_assets)
             else:
                 return 0
 
+    final_assets = cash + stocks
     if return_timeseries:
         return timeseries
+    elif return_min_path_assets:
+        return (final_assets, min_path_assets)
     else:
-        return cash + stocks
+        return final_assets
 
 
 
@@ -3615,6 +3347,15 @@ def _process_future_monthly_cycle(
     if fire_achieved and extra_monthly_budget > 0:
         expense += extra_monthly_budget
 
+    # 緊縮期間の支出削減（共通関数使用）
+    if fire_achieved and fire_month is not None:
+        _a_start, _a_end, _a_rate = _compute_austerity_period(
+            config, fire_month / 12, override_start_ages,
+        )
+        expense -= _compute_austerity_reduction(
+            month - fire_month, years, config, _a_rate, _a_start, _a_end,
+        )
+
     # 1. 収入を現金に加算
     cash += total_income
 
@@ -3885,141 +3626,6 @@ def simulate_future_assets(
     return df
 
 
-def _initialize_withdrawal_simulation(
-    initial_assets: float,
-    annual_expense: float,
-    years: int,
-    return_rate: float,
-) -> Dict[str, Any]:
-    """
-    引き出しシミュレーションの初期状態を設定
-
-    Returns:
-        初期化済みの設定と状態変数を含む辞書
-    """
-    return {
-        'assets': initial_assets,
-        'monthly_base_expense': annual_expense / 12,
-        'monthly_return_rate': (1 + return_rate) ** (1/12) - 1,
-        'total_months': int(years * 12),
-    }
-
-
-def _process_withdrawal_monthly_cycle(
-    month: int,
-    assets: float,
-    start_year_offset: float,
-    annual_expense: float,
-    inflation_rate: float,
-    monthly_return_rate: float,
-    config: Optional[Dict[str, Any]],
-) -> Dict[str, Any]:
-    """
-    1ヶ月分の引き出しシミュレーション処理
-
-    Returns:
-        {
-            'assets': 更新後の資産,
-            'should_break': ループを終了すべきか（破綻判定）
-        }
-    """
-    # 年数（開始オフセットを加算）
-    years_elapsed = start_year_offset + (month / 12)
-
-    # ライフステージ別の基本生活費を計算
-    fallback_annual_expense = annual_expense * (1 + inflation_rate) ** years_elapsed
-    if config is not None:
-        annual_base_expense = calculate_base_expense(years_elapsed, config, fallback_annual_expense, inflation_rate)
-    else:
-        annual_base_expense = fallback_annual_expense
-    adjusted_base_expense = annual_base_expense / 12
-
-    # 教育費を追加（configが提供されている場合）
-    monthly_education_expense = 0
-    if config is not None:
-        annual_education_expense = calculate_education_expense(years_elapsed, config)
-        monthly_education_expense = annual_education_expense / 12
-
-    # 年金収入を追加（configが提供されている場合）
-    # この関数はFIRE後のシミュレーションなので、FIRE達成済みとして計算
-    monthly_pension_income = 0
-    if config is not None:
-        # FIRE目標資産を計算（年金繰り下げ判定用）
-        base_expense_empty_nest = config['fire']['base_expense_by_stage']['empty_nest']
-        fire_target_assets = base_expense_empty_nest / 0.04
-
-        annual_pension_income = calculate_pension_income(
-            years_elapsed,
-            config,
-            fire_achieved=True,
-            fire_year_offset=start_year_offset,  # FIRE達成時点の年数
-            current_assets=assets,
-            fire_target_assets=fire_target_assets
-        )
-        monthly_pension_income = annual_pension_income / 12
-
-    # 児童手当を追加（configが提供されている場合）
-    monthly_child_allowance = 0
-    if config is not None:
-        annual_child_allowance = calculate_child_allowance(years_elapsed, config)
-        monthly_child_allowance = annual_child_allowance / 12
-
-    # 住宅ローン支払額を追加（configが提供されている場合）
-    monthly_mortgage_payment = 0
-    if config is not None:
-        monthly_mortgage_payment = calculate_mortgage_payment(years_elapsed, config)
-
-    # 住宅メンテナンス費用を追加（configが提供されている場合）
-    monthly_maintenance_cost = 0
-    if config is not None:
-        annual_maintenance_cost = calculate_house_maintenance(years_elapsed, config)
-        monthly_maintenance_cost = annual_maintenance_cost / 12
-
-    # ワーケーション費用を追加（configが提供されている場合）
-    monthly_workation_cost = 0
-    if config is not None:
-        annual_workation_cost = calculate_workation_cost(years_elapsed, config)
-        monthly_workation_cost = annual_workation_cost / 12
-
-    # FIRE後の収入（年金受給前のみ: 固定額）
-    monthly_post_fire_income = 0
-    if config is not None and monthly_pension_income == 0:
-        monthly_post_fire_income = _compute_post_fire_income(config)
-
-    # 社会保険料を追加（FIRE後のみ、configが提供されている場合）
-    monthly_pension_premium = 0
-    monthly_health_insurance_premium = 0
-    if config is not None:
-        annual_pension_premium = calculate_national_pension_premium(years_elapsed, config, fire_achieved=True)
-        monthly_pension_premium = annual_pension_premium / 12
-        # simulate_with_withdrawalはFIREチェック用の簡易計算なので、
-        # 実際の譲渡益は不明のため0で近似（保守的な見積もり）
-        annual_health_insurance_premium = calculate_national_health_insurance_premium(
-            years_elapsed, config, fire_achieved=True, prev_year_capital_gains=0,
-            years_since_fire=month / 12,
-        )
-        monthly_health_insurance_premium = annual_health_insurance_premium / 12
-
-    # 総支出 = 基本支出 + 教育費 + 住宅ローン + メンテナンス費用 + ワーケーション費用 + 社会保険料
-    total_expense = (adjusted_base_expense + monthly_education_expense + monthly_mortgage_payment +
-                    monthly_maintenance_cost + monthly_workation_cost +
-                    monthly_pension_premium + monthly_health_insurance_premium)
-
-    # 運用リターン
-    investment_return = assets * monthly_return_rate
-
-    # 資産更新（年金収入、児童手当、FIRE後副収入も考慮）
-    assets = assets - total_expense + investment_return + monthly_pension_income + monthly_child_allowance + monthly_post_fire_income
-
-    safety_margin = config['post_fire_cash_strategy']['safety_margin'] if config else 1_000_000
-    should_break = assets <= safety_margin
-
-    return {
-        'assets': assets,
-        'should_break': should_break,
-    }
-
-
 def _apply_baseline_floor(baseline_assets: list, initial_total: float, remaining_months: int) -> list:
     """ベースラインに線形償却フロアを適用する。
 
@@ -4171,33 +3777,28 @@ def run_monte_carlo_simulation(
         post_fire_income_override=post_fire_income_override,
     )
 
-    # ステップ3.5: ベースラインの資産パスを計算（補填の基準として使用）
-    print("  Step 3.5: Computing baseline asset path for comparison...")
-    params = config['simulation'][scenario]
-    monthly_return_rate = (1 + params['annual_return_rate']) ** (1/12) - 1
-
-    # 固定リターンでベースラインをシミュレーション
-    baseline_returns = np.full(remaining_months, monthly_return_rate)
-    baseline_assets = _simulate_post_fire_with_random_returns(
-        current_cash=fire_cash,
-        current_stocks=fire_stocks,
-        years_offset=years_offset,
+    # ステップ3.5: チャートと同一のコードパスでベースラインを取得
+    # simulate_future_assets を force_fire_month 付きで実行し、
+    # チャート表示のベースラインと完全に一致する資産パスを取得する
+    print("  Step 3.5: Computing baseline asset path (chart-identical)...")
+    baseline_df = simulate_future_assets(
+        current_cash=current_cash,
+        current_stocks=current_stocks,
         config=config,
         scenario=scenario,
-        random_returns=baseline_returns,
-        nisa_balance=fire_nisa,
-        nisa_cost_basis=fire_nisa_cost,
-        stocks_cost_basis=fire_stocks_cost,
-        return_timeseries=True,
-        precomputed_expenses=precomputed_expenses,
-        precomputed_income=precomputed_income,
-        precomputed_base_expenses=precomputed_base_expenses,
-        precomputed_life_stages=precomputed_life_stages,
-        precomputed_workation_costs=precomputed_workation_costs,
-        baseline_assets=None,
+        monthly_income=monthly_income,
+        monthly_expense=monthly_expense,
         override_start_ages=override_start_ages,
+        force_fire_month=fire_month,
         extra_monthly_budget=extra_monthly_budget,
     )
+    # FIRE月以降のデータを抽出（FIRE月 = ポストFIRE0ヶ月目）
+    post_fire_rows = baseline_df.iloc[fire_month:fire_month + remaining_months]
+    baseline_assets = post_fire_rows['assets'].tolist()
+    # 早期終了（破綻）した場合は0で補完
+    while len(baseline_assets) < remaining_months:
+        baseline_assets.append(0)
+    baseline_assets = baseline_assets[:remaining_months]
     # 線形償却フロアを適用: ベースラインが破綻した場合でもドローダウン検知を継続する
     baseline_assets = _apply_baseline_floor(baseline_assets, fire_cash + fire_stocks, remaining_months)
 
@@ -4430,309 +4031,3 @@ def _sell_stocks_vectorized(
         new_nisa_cost_basis,
         new_stocks_cost,
     )
-
-
-def _simulate_post_fire_mc_vectorized(
-    fire_cash: float,
-    fire_stocks: float,
-    years_offset: float,
-    config: Dict[str, Any],
-    scenario: str,
-    random_returns_matrix: np.ndarray,
-    nisa_balance: float = 0,
-    nisa_cost_basis: float = 0,
-    stocks_cost_basis: float = None,
-    precomputed_expenses: np.ndarray = None,
-    precomputed_income: np.ndarray = None,
-    precomputed_base_expenses: np.ndarray = None,
-    precomputed_life_stages: np.ndarray = None,
-    precomputed_workation_costs: np.ndarray = None,
-    baseline_assets=None,
-    override_start_ages: Dict[str, int] = None,
-    extra_monthly_budget: float = 0,
-    post_fire_income_override: float = None,
-) -> np.ndarray:
-    """
-    FIRE 後 MC シミュレーションの NumPy ベクトル化版。
-
-    _simulate_post_fire_with_random_returns の 500 回ループを廃止し、
-    N_iter 個の iteration を月ループ 1 回で同時処理する。
-
-    Args:
-        fire_cash: FIRE 達成時の現金残高
-        fire_stocks: FIRE 達成時の株式残高（NISA 含む）
-        years_offset: FIRE 達成時の経過年数
-        config: 設定辞書（_apply_cash_strategy / _apply_expense_reduction 適用済み）
-        scenario: シナリオ名
-        random_returns_matrix: 月次リターン行列 shape (N_iter, remaining_months)
-        nisa_balance: NISA 残高
-        nisa_cost_basis: NISA 簿価
-        stocks_cost_basis: 株式全体の簿価
-        precomputed_expenses: 事前計算済み月次支出配列
-        precomputed_income: 事前計算済み月次収入配列
-        precomputed_base_expenses: 事前計算済み基本生活費（年額）配列
-        precomputed_life_stages: 事前計算済みライフステージ配列
-        precomputed_workation_costs: 事前計算済みワーケーション費用（月額）配列
-        baseline_assets: ベースライン資産推移（決定論的パス、list）
-        override_start_ages: 年金受給開始年齢オーバーライド（利用しない、互換性のため）
-        extra_monthly_budget: FIRE 後追加月額予算
-
-    Returns:
-        final_assets: shape (N_iter,) 各 iteration の最終資産額（破綻時は 0）
-
-    前提条件:
-        precomputed_expenses is not None（MC では必ず事前計算済みを使用）
-    """
-    assert precomputed_expenses is not None, (
-        "_simulate_post_fire_mc_vectorized requires precomputed_expenses"
-    )
-
-    N = random_returns_matrix.shape[0]
-
-    # ── 初期化（スカラー設定値を抽出）
-    init = _initialize_post_fire_simulation(
-        fire_cash, fire_stocks, years_offset, config,
-        scenario, nisa_balance, nisa_cost_basis, stocks_cost_basis,
-    )
-    remaining_months = init['remaining_months']
-    allocation_enabled = init['allocation_enabled']
-    capital_gains_tax_rate = init['capital_gains_tax_rate']
-
-    if remaining_months <= 0:
-        return np.zeros(N)
-
-    strategy_cfg = config['post_fire_cash_strategy']
-    safety_margin = strategy_cfg['safety_margin']
-    target_cash_reserve = strategy_cfg['target_cash_reserve']
-    strategy_enabled = allocation_enabled and strategy_cfg['enabled']
-    buffer_months = strategy_cfg['monthly_buffer_months']
-    crash_thr = strategy_cfg['market_crash_threshold']
-    recovery_thr = strategy_cfg['recovery_threshold']
-    emergency_floor = strategy_cfg['emergency_cash_floor']
-
-    # ドローダウン閾値・削減率
-    dyn_cfg = config['fire']['dynamic_expense_reduction']
-    dd_enabled = dyn_cfg['enabled']
-    thresholds = dyn_cfg['drawdown_thresholds']
-    l1_thr = thresholds['level_1_warning']
-    l2_thr = thresholds['level_2_concern']
-    l3_thr = thresholds['level_3_crisis']
-    rate_keys = ['level_0_normal', 'level_1_warning', 'level_2_concern', 'level_3_crisis']
-    _rr = dyn_cfg['reduction_rates']
-    reduction_rates_arr = np.array([_rr[k] for k in rate_keys])
-
-    # 対称的ガードレール: 上ぶれ時の支出増加
-    boost_enabled = dyn_cfg['spending_boost_enabled']
-    _bt = dyn_cfg['spending_boost_thresholds']
-    u1_thr = _bt['level_neg1_upside']
-    u2_thr = _bt['level_neg2_upside']
-    u3_thr = _bt['level_neg3_upside']
-    _br = dyn_cfg['boost_rates']
-    # boost_rates_arr: index 0 = level_neg1, 1 = level_neg2, 2 = level_neg3
-    boost_rates_arr = np.array([
-        _br['level_neg1'],
-        _br['level_neg2'],
-        _br['level_neg3'],
-    ])
-    disc_ratios_map = config['fire']['discretionary_ratio_by_stage']
-
-    # 健康保険設定
-    si_enabled = _is_enabled(config, 'social_insurance')
-    si_cfg = config['social_insurance'] if si_enabled else None
-
-    if si_cfg is not None:
-        _hi_basic_ded = si_cfg['health_insurance_basic_deduction']
-        _hi_income_rate = si_cfg['health_insurance_income_rate']
-        _hi_per_person = si_cfg['health_insurance_per_person']
-        _hi_members = si_cfg['health_insurance_members']
-        _hi_per_hh = si_cfg['health_insurance_per_household']
-        _hi_max = si_cfg['health_insurance_max_premium']
-        _hi_fixed = _hi_per_person * _hi_members + _hi_per_hh
-
-    # 参照日付・年度
-    reference_date = _get_reference_date()
-    current_year_scalar = (
-        reference_date + relativedelta(months=int(years_offset * 12))
-    ).year
-
-    # ── 状態配列初期化（スカラー → [N]）
-    cash = np.full(N, init['cash'], dtype=np.float64)
-    stocks = np.full(N, init['stocks'], dtype=np.float64)
-    nisa_bal = np.full(N, init['nisa_balance'], dtype=np.float64)
-    nisa_cost = np.full(N, init['nisa_cost_basis'], dtype=np.float64)
-    stk_cost = np.full(N, init['stocks_cost_basis'], dtype=np.float64)
-    cap_gains_yr = np.zeros(N, dtype=np.float64)
-    prev_cap_gains = np.zeros(N, dtype=np.float64)
-
-    # 破綻フラグ
-    bankrupt = np.zeros(N, dtype=bool)
-
-    # ── 月次ループ（T 回、各ステップで N iteration を同時処理）
-    T = min(remaining_months, random_returns_matrix.shape[1])
-    _last_positive_baseline = float(baseline_assets[0]) if baseline_assets is not None and len(baseline_assets) > 0 and baseline_assets[0] > 0 else 0.0
-    _initial_total = fire_cash + fire_stocks
-    _boost_suppress_threshold = _initial_total * 0.30
-
-    # 健康保険の所得割計算用: FIRE後固定収入
-    if post_fire_income_override is not None:
-        _fixed_post_fire_annual = post_fire_income_override * 12
-    else:
-        _fixed_post_fire_annual = _compute_post_fire_income(config) * 12
-    post_fire_annual_side_income_arr = np.full(T, _fixed_post_fire_annual)
-
-    for month in range(T):
-        years = years_offset + month / 12
-        date_post = reference_date + relativedelta(months=int(years * 12))
-        date_year = date_post.year
-
-        # 1. 年度進行（year は全 iteration 共通 → スカラー判定）
-        if date_year > current_year_scalar:
-            prev_cap_gains = cap_gains_yr.copy()
-            cap_gains_yr[:] = 0.0
-            current_year_scalar = date_year
-
-        # 2. 計画資産比ドローダウン計算
-        total_assets = cash + stocks
-        if baseline_assets is not None and month < len(baseline_assets):
-            ba_val = float(baseline_assets[month])
-            if ba_val > 0:
-                _last_positive_baseline = ba_val
-            if _last_positive_baseline > 0:
-                drawdown = total_assets / _last_positive_baseline - 1.0
-            else:
-                drawdown = np.zeros(N, dtype=np.float64)
-            # ベースラインが初期資産の30%を下回った場合、上振れ（ブースト）を抑制
-            if ba_val < _boost_suppress_threshold:
-                drawdown = np.minimum(drawdown, 0.0)
-        else:
-            drawdown = np.zeros(N, dtype=np.float64)
-
-        if boost_enabled:
-            # 対称的ガードレール: 上ぶれ（負レベル）・通常・下ぶれ（正レベル）を判定
-            level = np.select(
-                [
-                    drawdown >= u3_thr,   # +35%以上: level -3
-                    drawdown >= u2_thr,   # +20%以上: level -2
-                    drawdown >= u1_thr,   # +10%以上: level -1
-                    drawdown >= l1_thr,   # ±10%以内: level 0
-                    drawdown >= l2_thr,   # -10%〜-20%: level 1
-                    drawdown >= l3_thr,   # -20%〜-35%: level 2
-                ],
-                [-3, -2, -1, 0, 1, 2],
-                default=3,
-            ).astype(np.intp)
-        else:
-            level = np.select(
-                [drawdown >= l1_thr, drawdown >= l2_thr, drawdown >= l3_thr],
-                [0, 1, 2],
-                default=3,
-            ).astype(np.intp)
-
-        # 3. 健康保険料（per-iteration prev_cap_gains を使用）
-        if si_cfg is not None:
-            total_inc = post_fire_annual_side_income_arr[month] + prev_cap_gains
-            taxable_inc = np.maximum(0.0, total_inc - _hi_basic_ded)
-            annual_prem = np.minimum(taxable_inc * _hi_income_rate + _hi_fixed, _hi_max)
-            health_ins_monthly = annual_prem / 12.0
-        else:
-            health_ins_monthly = 0.0
-
-        # 4. 支出計算（事前計算済み base + 健康保険 + 追加予算）
-        expense = (
-            precomputed_expenses[month]
-            + health_ins_monthly
-            + extra_monthly_budget
-        )
-
-        # ドローダウンベースの裁量支出削減（下ぶれ）または増加（上ぶれ）
-        if dd_enabled and precomputed_base_expenses is not None and precomputed_life_stages is not None:
-            stage = precomputed_life_stages[month]
-            disc_ratio = disc_ratios_map.get(stage, 0.30)
-            disc_monthly = precomputed_base_expenses[month] * disc_ratio / 12.0
-
-            if boost_enabled:
-                # 上ぶれ（level < 0）: boost_rates_arr でインデックス計算
-                # level=-3 → idx=2, -2 → 1, -1 → 0, 0〜3 → 通常削減
-                is_upside = level < 0
-                # 上ぶれの場合: boost_rate を使って expense 増加
-                boost_idx = np.clip(-level - 1, 0, len(boost_rates_arr) - 1)
-                boost_rate = np.where(is_upside, boost_rates_arr[boost_idx], 0.0)
-                # 下ぶれの場合: reduction_rates_arr を使って expense 削減
-                red_idx = np.clip(level, 0, len(reduction_rates_arr) - 1)
-                red_rate = np.where(~is_upside, reduction_rates_arr[red_idx], 0.0)
-                # amount_saved: 削減時は正値、増加時は負値
-                amount_saved = disc_monthly * (red_rate - boost_rate)
-            else:
-                red_idx = np.clip(level, 0, len(reduction_rates_arr) - 1)
-                amount_saved = disc_monthly * reduction_rates_arr[red_idx]
-
-            expense = expense - amount_saved
-
-        # 5. ベースライン比較によるワーケーション費用削減
-        if baseline_assets is not None and month > 0 and precomputed_workation_costs is not None:
-            prev_actual = cash + stocks
-            prev_expected = baseline_assets[month - 1]
-            shortfall = np.maximum(0.0, prev_expected - prev_actual)
-            workation_mo = precomputed_workation_costs[month]
-            reduction = np.minimum(shortfall, workation_mo)
-            expense = expense - reduction
-
-        # 6. 収入加算（全 iteration 共通）
-        cash = cash + precomputed_income[month]
-
-        # 7. FIRE 後現金管理（allocation 有効時）
-        if strategy_enabled:
-            in_crash = drawdown <= crash_thr
-            is_recovering = drawdown >= recovery_thr
-            is_emergency = cash < emergency_floor
-            should_sell = (~in_crash) | is_recovering | is_emergency
-            target_cash = target_cash_reserve + buffer_months * float(precomputed_expenses[month])
-            shortage_mgmt = np.maximum(0.0, target_cash - cash)
-            to_sell = np.where(should_sell & (stocks > 0.0), shortage_mgmt, 0.0)
-
-            if to_sell.any():
-                nisa_s, cash_t, cap_g, new_stk, new_nb, new_nc, new_sc = (
-                    _sell_stocks_vectorized(
-                        to_sell, stocks, nisa_bal, nisa_cost, stk_cost,
-                        capital_gains_tax_rate, allocation_enabled,
-                    )
-                )
-                cash += nisa_s + cash_t  # 最低現金型: 両方 cash へ
-                cap_gains_yr += cap_g
-                stocks, nisa_bal, nisa_cost, stk_cost = new_stk, new_nb, new_nc, new_sc
-
-        # 8. 支出支払い（不足時に株売却）
-        cash = cash - expense
-        deficit = np.maximum(0.0, -cash)
-        cash = np.maximum(0.0, cash)
-
-        if deficit.any():
-            nisa_s, cash_t, cap_g, new_stk, new_nb, new_nc, new_sc = (
-                _sell_stocks_vectorized(
-                    deficit, stocks, nisa_bal, nisa_cost, stk_cost,
-                    capital_gains_tax_rate, allocation_enabled,
-                )
-            )
-            cash += cash_t  # 支出不足型: cash_from_taxable のみ
-            cap_gains_yr += cap_g
-            stocks, nisa_bal, nisa_cost, stk_cost = new_stk, new_nb, new_nc, new_sc
-
-        # 9. ランダムリターン適用
-        month_ret = random_returns_matrix[:, month]
-        stocks *= 1.0 + month_ret
-        nisa_bal *= 1.0 + month_ret
-
-        total_assets = cash + stocks
-        newly_bankrupt = (~bankrupt) & (total_assets <= safety_margin)
-        if newly_bankrupt.any():
-            bankrupt |= newly_bankrupt
-            cash[bankrupt] = 0.0
-            stocks[bankrupt] = 0.0
-            nisa_bal[bankrupt] = 0.0
-            nisa_cost[bankrupt] = 0.0
-            stk_cost[bankrupt] = 0.0
-            cap_gains_yr[bankrupt] = 0.0
-
-    return np.where(bankrupt, 0.0, cash + stocks)
-
-

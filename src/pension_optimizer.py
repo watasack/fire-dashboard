@@ -56,6 +56,9 @@ def optimize_pension_start_ages(
     extra_budget_candidates: List[float] = None,
     cash_strategy_candidates: List[Dict[str, Any]] = None,
     pre_fire_investment_candidates: List[Dict[str, Any]] = None,
+    reduction_candidates: List[float] = None,
+    austerity_months: int = 120,
+    min_asset_floor: float = 0,
 ) -> Dict[str, Any]:
     """
     FIRE達成時期・年金受給開始年齢・FIRE後追加予算・現金管理戦略を同時に最適化する。
@@ -84,6 +87,8 @@ def optimize_pension_start_ages(
         cash_strategy_candidates = [{}]
     if pre_fire_investment_candidates is None:
         pre_fire_investment_candidates = [{}]
+    if reduction_candidates is None:
+        reduction_candidates = [0.0]
     print("=" * 60)
     print("年金受給開始年齢の最適化")
     print("=" * 60)
@@ -206,11 +211,18 @@ def optimize_pension_start_ages(
     print(f"  安全マージン: {min_baseline_final_assets/10000:.0f}万円")
     print(f"  合計候補数: {total_coarse}")
 
+    if len(reduction_candidates) > 1:
+        red_str = ', '.join(f'{r*100:.0f}%' for r in reduction_candidates)
+        print(f"  緊縮削減率候補: [{red_str}]")
+    total_coarse *= len(reduction_candidates)
+
     screening_results = _run_deterministic_screening(
         pre_fire_df, config, scenario,
         fire_month_candidates, coarse_ages, person_names,
         extra_budget_candidates=extra_budget_candidates,
         cash_strategy_candidates=cash_strategy_candidates,
+        reduction_candidates=reduction_candidates,
+        austerity_months=austerity_months,
     )
 
     feasible = screening_results[screening_results['final_assets'] > 0]
@@ -253,20 +265,27 @@ def optimize_pension_start_ages(
         fine_fire_months, fine_ages, person_names,
         extra_budget_candidates=extra_budget_candidates,
         cash_strategy_candidates=cash_strategy_candidates,
+        reduction_candidates=reduction_candidates,
+        austerity_months=austerity_months,
     )
 
     all_screening = pd.concat([screening_results, fine_results], ignore_index=True)
-    dedup_cols = (['fire_month', 'extra_budget']
+    dedup_cols = (['fire_month', 'extra_budget', 'pre_pension_reduction']
                   + _CASH_STRATEGY_COLS
                   + [f'age_{n}' for n in person_names])
     all_screening = all_screening.drop_duplicates(subset=dedup_cols)
 
-    feasible_count = len(all_screening[all_screening['final_assets'] >= min_baseline_final_assets])
-    print(f"\n  安全マージン({min_baseline_final_assets/10000:.0f}万円)以上: {feasible_count}/{len(all_screening)}通り")
+    feasible_mask = all_screening['final_assets'] >= min_baseline_final_assets
+    if 'min_path_assets' in all_screening.columns and min_asset_floor > 0:
+        feasible_mask = feasible_mask & (all_screening['min_path_assets'] >= min_asset_floor)
+    feasible_count = len(all_screening[feasible_mask])
+    floor_str = f"、最小パス資産>={min_asset_floor/10000:.0f}万円" if min_asset_floor > 0 else ""
+    print(f"\n  安全マージン({min_baseline_final_assets/10000:.0f}万円){floor_str}以上: {feasible_count}/{len(all_screening)}通り")
 
     # 最適解を選出
     optimal, pareto_info = _find_optimal_solution(
-        all_screening, min_baseline_final_assets, person_names
+        all_screening, min_baseline_final_assets, person_names,
+        min_asset_floor=min_asset_floor,
     )
 
     # 基準解との比較情報を構築
@@ -418,6 +437,8 @@ def _screening_worker_fire_month(args: dict) -> List[dict]:
     post_fire_income         = args['post_fire_income']
     default_target_reserve   = args['default_safety']
     default_crash            = args['default_crash']
+    reduction_candidates     = args.get('reduction_candidates', [0.0])
+    austerity_months         = args.get('austerity_months', 120)
 
     fire_cash        = pre_fire_row['cash']
     fire_stocks      = pre_fire_row['stocks']
@@ -456,6 +477,10 @@ def _screening_worker_fire_month(args: dict) -> List[dict]:
     for ages in age_combos:
         override = dict(zip(person_names, ages))
 
+        # 緊縮期間終了月 = 最も早い年金受給開始年齢からの月数
+        earliest_pension_age = min(ages)
+        reduction_end_month_val = int((earliest_pension_age - start_age - years_offset) * 12)
+
         # ベクトル化版で月ループを排除
         income_array = _compute_pension_income_array_vectorized(
             years_offset, remaining_months, config,
@@ -464,37 +489,44 @@ def _screening_worker_fire_month(args: dict) -> List[dict]:
 
         for extra_budget in extra_budget_candidates:
             for cs, cfg in strategy_configs:
-                final = _simulate_post_fire_with_random_returns(
-                    current_cash=fire_cash,
-                    current_stocks=fire_stocks,
-                    years_offset=years_offset,
-                    config=cfg,
-                    scenario=scenario,
-                    random_returns=fixed_returns,
-                    nisa_balance=fire_nisa,
-                    nisa_cost_basis=fire_nisa_cost,
-                    stocks_cost_basis=fire_stocks_cost,
-                    return_timeseries=False,
-                    precomputed_expenses=shared_expenses,
-                    precomputed_income=income_array,
-                    precomputed_base_expenses=shared_base_expenses,
-                    precomputed_life_stages=shared_life_stages,
-                    precomputed_workation_costs=shared_workation_costs,
-                    baseline_assets=None,
-                    override_start_ages=override,
-                    extra_monthly_budget=extra_budget,
-                )
+                for reduction_rate in reduction_candidates:
+                    final, min_path = _simulate_post_fire_with_random_returns(
+                        current_cash=fire_cash,
+                        current_stocks=fire_stocks,
+                        years_offset=years_offset,
+                        config=cfg,
+                        scenario=scenario,
+                        random_returns=fixed_returns,
+                        nisa_balance=fire_nisa,
+                        nisa_cost_basis=fire_nisa_cost,
+                        stocks_cost_basis=fire_stocks_cost,
+                        return_timeseries=False,
+                        precomputed_expenses=shared_expenses,
+                        precomputed_income=income_array,
+                        precomputed_base_expenses=shared_base_expenses,
+                        precomputed_life_stages=shared_life_stages,
+                        precomputed_workation_costs=shared_workation_costs,
+                        baseline_assets=None,
+                        override_start_ages=override,
+                        extra_monthly_budget=extra_budget,
+                        return_min_path_assets=True,
+                        pre_pension_reduction_rate=reduction_rate,
+                        reduction_end_month=reduction_end_month_val,
+                        austerity_months=austerity_months,
+                    )
 
-                entry = {
-                    'fire_month':            fire_month,
-                    'extra_budget':          extra_budget,
-                    'cash_target_reserve':   cs.get('target_cash_reserve', default_target_reserve),
-                    'cash_crash_threshold':  cs.get('market_crash_threshold', default_crash),
-                    'final_assets':          final,
-                }
-                for i, name in enumerate(person_names):
-                    entry[f'age_{name}'] = ages[i]
-                results.append(entry)
+                    entry = {
+                        'fire_month':              fire_month,
+                        'extra_budget':            extra_budget,
+                        'cash_target_reserve':     cs.get('target_cash_reserve', default_target_reserve),
+                        'cash_crash_threshold':    cs.get('market_crash_threshold', default_crash),
+                        'final_assets':            final,
+                        'min_path_assets':         min_path,
+                        'pre_pension_reduction':   reduction_rate,
+                    }
+                    for i, name in enumerate(person_names):
+                        entry[f'age_{name}'] = ages[i]
+                    results.append(entry)
 
     return results
 
@@ -508,6 +540,8 @@ def _run_deterministic_screening(
     person_names: List[str],
     extra_budget_candidates: List[float] = None,
     cash_strategy_candidates: List[Dict[str, Any]] = None,
+    reduction_candidates: List[float] = None,
+    austerity_months: int = 120,
 ) -> pd.DataFrame:
     """
     Phase 2: 全候補を確定的シミュレーションで高速評価する。
@@ -519,6 +553,8 @@ def _run_deterministic_screening(
         extra_budget_candidates = [0]
     if cash_strategy_candidates is None:
         cash_strategy_candidates = [{}]
+    if reduction_candidates is None:
+        reduction_candidates = [0.0]
 
     default_strategy = config['post_fire_cash_strategy']
     default_target_reserve = default_strategy['target_cash_reserve']
@@ -550,6 +586,8 @@ def _run_deterministic_screening(
             'person_names':             person_names,
             'extra_budget_candidates':  extra_budget_candidates,
             'cash_strategy_candidates': cash_strategy_candidates,
+            'reduction_candidates':     reduction_candidates,
+            'austerity_months':         austerity_months,
             'monthly_return_rate':      monthly_return_rate,
             'life_expectancy':          life_expectancy,
             'start_age':                start_age,
@@ -637,15 +675,22 @@ def _init_worker(project_root: str) -> None:
 def _find_optimal_solution(
     screening_results: pd.DataFrame,
     min_baseline_final_assets: float,
-    person_names: List[str]
+    person_names: List[str],
+    min_asset_floor: float = 0,
 ) -> Tuple[Optional[Dict[str, Any]], pd.DataFrame]:
-    """ベースライン最終資産 >= 安全マージンの中で、FIRE月最小の解を選出する。"""
-    feasible = screening_results[screening_results['final_assets'] >= min_baseline_final_assets]
+    """ベースライン最終資産 >= 安全マージン かつ min_path_assets >= min_asset_floor の中で、FIRE月最小の解を選出する。"""
+    has_min_path = 'min_path_assets' in screening_results.columns
 
+    feasible = screening_results[screening_results['final_assets'] >= min_baseline_final_assets]
+    if has_min_path and min_asset_floor > 0:
+        feasible = feasible[feasible['min_path_assets'] >= min_asset_floor]
+
+    # パレート: 各fire_monthで min_path_assets 最大の候補を選出
     pareto_candidates = []
+    sort_col = 'min_path_assets' if has_min_path else 'final_assets'
     for fm in sorted(screening_results['fire_month'].unique()):
         fm_rows = screening_results[screening_results['fire_month'] == fm]
-        best = fm_rows.sort_values('final_assets', ascending=False).iloc[0]
+        best = fm_rows.sort_values(sort_col, ascending=False).iloc[0]
         pareto_candidates.append(best)
 
     pareto_df = pd.DataFrame(pareto_candidates)
@@ -654,7 +699,7 @@ def _find_optimal_solution(
         return None, pareto_df
 
     feasible_sorted = feasible.sort_values(
-        ['fire_month', 'final_assets'],
+        ['fire_month', sort_col],
         ascending=[True, False]
     )
     best = feasible_sorted.iloc[0]
@@ -669,6 +714,10 @@ def _find_optimal_solution(
         'final_assets': float(best['final_assets']),
         'pension_ages': {name: int(best[f'age_{name}']) for name in person_names},
     }
+    if has_min_path:
+        optimal['min_path_assets'] = float(best['min_path_assets'])
+    if 'pre_pension_reduction' in best.index:
+        optimal['pre_pension_reduction'] = float(best['pre_pension_reduction'])
     return optimal, pareto_df
 
 
@@ -726,7 +775,13 @@ def _print_result(result: Dict[str, Any], config: Dict[str, Any]) -> None:
             print(f"    現金確保目標:        {cs.get('target_cash_reserve', 3_000_000)/10000:.0f}万円")
             print(f"    暴落判定閾値:       {cs.get('market_crash_threshold', -0.20)*100:.0f}%")
         final_assets = optimal.get('final_assets', 0)
+        min_path = optimal.get('min_path_assets')
+        reduction = optimal.get('pre_pension_reduction', 0)
         print(f"    ベースライン最終資産: {final_assets/10000:.0f}万円（安全マージン: {min_bl/10000:.0f}万円）")
+        if min_path is not None:
+            print(f"    最小パス資産:       {min_path/10000:.0f}万円")
+        if reduction > 0:
+            print(f"    年金前緊縮削減率:   {reduction*100:.0f}%")
 
         if baseline:
             bl_fire_age = config_start_age + baseline['fire_month'] / 12

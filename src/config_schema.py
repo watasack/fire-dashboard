@@ -158,38 +158,11 @@ class EmptyNestSubStages(BaseModel):
     elderly_from_age: int
 
 
-class DrawdownThresholds(BaseModel):
-    level_1_warning: float
-    level_2_concern: float
-    level_3_crisis: float
-
-
-class ReductionRates(BaseModel):
-    level_0_normal: float
-    level_1_warning: float
-    level_2_concern: float
-    level_3_crisis: float
-
-
-class SpendingBoostThresholds(BaseModel):
-    level_neg1_upside: float
-    level_neg2_upside: float
-    level_neg3_upside: float
-
-
-class BoostRates(BaseModel):
-    level_neg1: float
-    level_neg2: float
-    level_neg3: float
-
-
 class DynamicExpenseReductionConfig(BaseModel):
     enabled: bool
-    drawdown_thresholds: DrawdownThresholds
-    reduction_rates: ReductionRates
-    spending_boost_enabled: bool
-    spending_boost_thresholds: SpendingBoostThresholds
-    boost_rates: BoostRates
+    surplus_spending_rate: float
+    max_cut_ratio: float
+    max_boost_ratio: float
 
 
 class AdditionalChildExpenseByStage(BaseModel):
@@ -363,6 +336,13 @@ class PensionDeferralConfig(BaseModel):
     max_start_age: int
 
 
+class OptimizationConfig(BaseModel):
+    min_asset_floor: int
+    austerity_years_before_pension: int
+    pre_pension_reduction_candidates: List[float]
+    pre_pension_reduction_rate: Optional[float] = None
+
+
 class VisualizationConfig(BaseModel):
     font_family: str
 
@@ -385,5 +365,6 @@ class AppConfig(BaseModel):
     asset_allocation: AssetAllocationConfig
     post_fire_cash_strategy: PostFireCashStrategyConfig
     pension_deferral: PensionDeferralConfig
+    optimization: OptimizationConfig
     visualization: VisualizationConfig
     output: OutputConfig
