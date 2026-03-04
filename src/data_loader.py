@@ -51,7 +51,7 @@ def load_asset_data(config: Dict[str, Any]) -> pd.DataFrame:
     file_path = config['data']['asset_file']
 
     # エンコーディング検出
-    encoding = config['data'].get('encoding', 'cp932')
+    encoding = config['data']['encoding']
 
     # CSVファイル読み込み（フォールバック付き）
     encodings_to_try = [encoding, 'cp932', 'shift_jis', 'utf-8']
@@ -108,7 +108,7 @@ def load_transaction_data(config: Dict[str, Any]) -> pd.DataFrame:
 
     # すべてのファイルを読み込んで結合
     dfs = []
-    encoding = config['data'].get('encoding', 'cp932')
+    encoding = config['data']['encoding']
     encodings_to_try = [encoding, 'cp932', 'shift_jis', 'utf-8']
 
     for file_path in file_paths:

@@ -3,10 +3,10 @@
 """
 FIRE後の現金管理戦略のテスト
 
-平常時: 安全マージン500万円 + 生活費1ヶ月分を確保
-暴落時: 株式売却停止（ドローダウン-20%以下）
-回復時: 株式売却再開（ドローダウン-10%以上）
-緊急時: 現金25万円未満で強制売却
+平常時: 現金確保目標(target_cash_reserve) + 生活費バッファを確保
+暴落時: 株式売却停止（ドローダウン ≤ market_crash_threshold）
+回復時: 株式売却再開（ドローダウン ≥ recovery_threshold）
+緊急時: emergency_cash_floor 未満で強制売却
 """
 
 import sys
@@ -29,23 +29,23 @@ def test_normal_operation():
     print()
 
     config = load_config('config.yaml')
+    tcr = config['post_fire_cash_strategy']['target_cash_reserve']
+    buf = config['post_fire_cash_strategy']['monthly_buffer_months']
 
-    # 初期状態: 現金500万円（支出後または収入前の状態）、株式1000万円
-    # 目標レベル = 500万（安全マージン）+ 25万（生活費1ヶ月分）= 525万円
-    # 現金不足 = 525万 - 500万 = 25万円 → 株式売却が発生する
-    cash = 5000000
+    monthly_expense = 250000  # 月25万円
+    target_cash = tcr + buf * monthly_expense
+    cash = tcr  # 目標未達（バッファ分だけ不足）
     stocks = 10000000
     nisa_balance = 3000000
     nisa_cost_basis = 3000000
     stocks_cost_basis = 10000000
-    monthly_expense = 250000  # 月25万円
     drawdown = 0  # 平常時
     capital_gains_tax_rate = 0.20315
     allocation_enabled = True
     is_start_of_month = True
 
     print(f"初期状態:")
-    print(f"  現金: {cash:,}円（目標525万円に対して25万円不足）")
+    print(f"  現金: {cash:,}円（目標{target_cash:,}円に対して{target_cash - cash:,}円不足）")
     print(f"  株式: {stocks:,}円")
     print(f"  月次支出: {monthly_expense:,}円")
     print(f"  ドローダウン: {drawdown:.1%}")
@@ -58,7 +58,7 @@ def test_normal_operation():
     )
 
     print(f"月初処理後:")
-    print(f"  現金: {result['cash']:,}円（目標525万円）")
+    print(f"  現金: {result['cash']:,}円（目標{target_cash:,}円）")
     print(f"  株式: {result['stocks']:,}円")
     print(f"  売却額: {result['stocks_sold_for_monthly']:,}円")
     print(f"  暴落中: {result['in_market_crash']}")
@@ -66,7 +66,6 @@ def test_normal_operation():
 
     # 検証
     issues = []
-    target_cash = 5000000 + 250000  # 安全マージン + 生活費1ヶ月分
 
     # 現金が目標レベルに達しているか確認
     if abs(result['cash'] - target_cash) > 1000:  # 1000円の誤差を許容（税金の影響）
@@ -100,14 +99,16 @@ def test_market_crash():
     print()
 
     config = load_config('config.yaml')
+    tcr = config['post_fire_cash_strategy']['target_cash_reserve']
+    buf = config['post_fire_cash_strategy']['monthly_buffer_months']
 
-    # 初期状態: 現金525万円、株式1000万円、ドローダウン-25%
-    cash = 5250000
+    monthly_expense = 250000
+    target_cash = tcr + buf * monthly_expense
+    cash = target_cash  # 目標ちょうど
     stocks = 10000000
     nisa_balance = 3000000
     nisa_cost_basis = 3000000
     stocks_cost_basis = 10000000
-    monthly_expense = 250000
     drawdown = -0.25  # 暴落中
     capital_gains_tax_rate = 0.20315
     allocation_enabled = True
@@ -127,7 +128,7 @@ def test_market_crash():
     )
 
     print(f"月初処理後:")
-    print(f"  現金: {result['cash']:,}円 (変化なし、安全マージンは温存)")
+    print(f"  現金: {result['cash']:,}円 (変化なし、確保済み現金を温存)")
     print(f"  株式: {result['stocks']:,}円 (変化なし、売却停止)")
     print(f"  売却額: {result['stocks_sold_for_monthly']:,}円")
     print(f"  暴落中: {result['in_market_crash']}")
@@ -162,21 +163,23 @@ def test_market_recovery():
     print()
 
     config = load_config('config.yaml')
+    tcr = config['post_fire_cash_strategy']['target_cash_reserve']
+    buf = config['post_fire_cash_strategy']['monthly_buffer_months']
 
-    # 初期状態: 現金500万円（目標未達）、株式1000万円、ドローダウン-8%（回復）
-    cash = 5000000
+    monthly_expense = 250000
+    target_cash = tcr + buf * monthly_expense
+    cash = tcr  # 目標未達（バッファ分だけ不足）
     stocks = 10000000
     nisa_balance = 3000000
     nisa_cost_basis = 3000000
     stocks_cost_basis = 10000000
-    monthly_expense = 250000
-    drawdown = -0.08  # 回復（-10%以上）
+    drawdown = -0.08  # 回復（recovery_threshold以上）
     capital_gains_tax_rate = 0.20315
     allocation_enabled = True
     is_start_of_month = True
 
     print(f"初期状態:")
-    print(f"  現金: {cash:,}円（目標525万円に対して25万円不足）")
+    print(f"  現金: {cash:,}円（目標{target_cash:,}円に対して{target_cash - cash:,}円不足）")
     print(f"  株式: {stocks:,}円")
     print(f"  月次支出: {monthly_expense:,}円")
     print(f"  ドローダウン: {drawdown:.1%} ← 回復（-10%以上）")
@@ -189,7 +192,7 @@ def test_market_recovery():
     )
 
     print(f"月初処理後:")
-    print(f"  現金: {result['cash']:,}円（目標525万円）")
+    print(f"  現金: {result['cash']:,}円（目標{target_cash:,}円）")
     print(f"  株式: {result['stocks']:,}円")
     print(f"  売却額: {result['stocks_sold_for_monthly']:,}円")
     print(f"  暴落中: {result['in_market_crash']}")
@@ -197,7 +200,6 @@ def test_market_recovery():
 
     # 検証
     issues = []
-    target_cash = 5000000 + 250000
 
     # 現金が目標レベルに達しているか確認
     if abs(result['cash'] - target_cash) > 1000:

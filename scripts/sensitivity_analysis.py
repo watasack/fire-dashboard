@@ -51,7 +51,7 @@ def run_scenario(description, changes=None):
     trends = analyze_income_expense_trends(cashflow_df, transaction_df, config)
 
     # 労働収入
-    monthly_income = config['simulation'].get('initial_labor_income', trends['monthly_avg_income_forecast'])
+    monthly_income = config['simulation']['initial_labor_income']
 
     # シミュレーション実行
     result = simulate_future_assets(

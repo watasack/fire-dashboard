@@ -29,16 +29,16 @@ from src.simulator import simulate_future_assets
 
 PENSION_AGE_MIN = 62
 PENSION_AGE_MAX = 75
-DEFAULT_MIN_BASELINE_FINAL_ASSETS = 3_000_000
+DEFAULT_MIN_BASELINE_FINAL_ASSETS = 1_000_000
 _REFINEMENT_TOP_K = 30
 
-_CASH_STRATEGY_COLS = ['cash_safety_margin', 'cash_crash_threshold']
+_CASH_STRATEGY_COLS = ['cash_target_reserve', 'cash_crash_threshold']
 
 
 def _apply_cash_strategy(config: Dict[str, Any], strategy: Dict[str, Any]) -> Dict[str, Any]:
     """現金管理戦略のオーバーライドを適用した config のコピーを返す。"""
     cfg = copy.copy(config)
-    base = config.get('post_fire_cash_strategy', {})
+    base = config['post_fire_cash_strategy']
     cfg['post_fire_cash_strategy'] = {**base, **strategy}
     return cfg
 
@@ -88,9 +88,9 @@ def optimize_pension_start_ages(
     print("年金受給開始年齢の最適化")
     print("=" * 60)
 
-    people = config.get('pension', {}).get('people', [])
-    person_names = [p.get('name', f'person_{i}') for i, p in enumerate(people)]
-    start_age = config['simulation'].get('start_age', 35)
+    people = config['pension']['people']
+    person_names = [p['name'] for p in people]
+    start_age = config['simulation']['start_age']
 
     # Phase 0: FIRE前投資戦略スクリーニング
     if len(pre_fire_investment_candidates) > 1:
@@ -101,7 +101,7 @@ def optimize_pension_start_ages(
 
     for i, pf_cand in enumerate(pre_fire_investment_candidates):
         cfg = copy.deepcopy(config)
-        sim_cfg = cfg.get('simulation', {})
+        sim_cfg = cfg['simulation']
         for k, v in pf_cand.items():
             sim_cfg[k] = v
         cfg['simulation'] = sim_cfg
@@ -283,7 +283,7 @@ def optimize_pension_start_ages(
         'pre_fire_strategy': best_pre_fire_strategy if best_pre_fire_strategy else None,
     }
 
-    _print_result(result)
+    _print_result(result, config)
 
     return result
 
@@ -338,14 +338,12 @@ def _compute_pension_income_array_vectorized(
     import math
     from src.simulator import _calculate_person_pension, _get_age_at_offset
 
-    pension_config = config.get('pension', {})
-    default_start_age = pension_config.get('start_age', 65)
-    deferral_config = config.get('pension_deferral', {})
-    increase_rate = deferral_config.get('deferral_increase_rate', 0.084)
-    decrease_rate = deferral_config.get('early_decrease_rate', 0.048)
-    pension_growth_rate = (
-        config.get('simulation', {}).get('standard', {}).get('pension_growth_rate', 0.0)
-    )
+    pension_config = config['pension']
+    default_start_age = pension_config['start_age']
+    deferral_config = config['pension_deferral']
+    increase_rate = deferral_config['deferral_increase_rate']
+    decrease_rate = deferral_config['early_decrease_rate']
+    pension_growth_rate = config['simulation']['standard']['pension_growth_rate']
 
     years_array = years_offset + np.arange(remaining_months) / 12.0
     if pension_growth_rate != 0.0:
@@ -355,8 +353,8 @@ def _compute_pension_income_array_vectorized(
 
     # 年金収入ベース（インフレ前）: 各人の受給開始月以降に定額を加算
     pension_income_base = np.zeros(remaining_months)
-    for person in pension_config.get('people', []):
-        person_name = person.get('name', '')
+    for person in pension_config['people']:
+        person_name = person['name']
         birthdate_str = person.get('birthdate')
         if not birthdate_str:
             continue
@@ -418,7 +416,7 @@ def _screening_worker_fire_month(args: dict) -> List[dict]:
     life_expectancy          = args['life_expectancy']
     start_age                = args['start_age']
     post_fire_income         = args['post_fire_income']
-    default_safety           = args['default_safety']
+    default_target_reserve   = args['default_safety']
     default_crash            = args['default_crash']
 
     fire_cash        = pre_fire_row['cash']
@@ -490,7 +488,7 @@ def _screening_worker_fire_month(args: dict) -> List[dict]:
                 entry = {
                     'fire_month':            fire_month,
                     'extra_budget':          extra_budget,
-                    'cash_safety_margin':    cs.get('safety_margin', default_safety),
+                    'cash_target_reserve':   cs.get('target_cash_reserve', default_target_reserve),
                     'cash_crash_threshold':  cs.get('market_crash_threshold', default_crash),
                     'final_assets':          final,
                 }
@@ -522,17 +520,17 @@ def _run_deterministic_screening(
     if cash_strategy_candidates is None:
         cash_strategy_candidates = [{}]
 
-    default_strategy = config.get('post_fire_cash_strategy', {})
-    default_safety = default_strategy.get('safety_margin', 3_000_000)
-    default_crash = default_strategy.get('market_crash_threshold', -0.20)
+    default_strategy = config['post_fire_cash_strategy']
+    default_target_reserve = default_strategy['target_cash_reserve']
+    default_crash = default_strategy['market_crash_threshold']
 
     params = config['simulation'][scenario]
     monthly_return_rate = (1 + params['annual_return_rate']) ** (1 / 12) - 1
-    life_expectancy = config['simulation'].get('life_expectancy', 90)
-    start_age = config['simulation'].get('start_age', 35)
+    life_expectancy = config['simulation']['life_expectancy']
+    start_age = config['simulation']['start_age']
     post_fire_income = (
-        config['simulation'].get('shuhei_post_fire_income', 0)
-        + config['simulation'].get('sakura_post_fire_income', 0)
+        config['simulation']['shuhei_post_fire_income']
+        + config['simulation']['sakura_post_fire_income']
     )
 
     age_combos = list(product(pension_ages, repeat=len(person_names)))
@@ -556,7 +554,7 @@ def _run_deterministic_screening(
             'life_expectancy':          life_expectancy,
             'start_age':                start_age,
             'post_fire_income':         post_fire_income,
-            'default_safety':           default_safety,
+            'default_safety':           default_target_reserve,
             'default_crash':            default_crash,
         })
 
@@ -590,7 +588,7 @@ def _select_diverse_top_k(
 ) -> pd.DataFrame:
     """FIRE月×現金管理戦略の多様性を確保しつつ上位K件を選出する。
 
-    (FIRE月, cash_safety_margin) の各グループからラウンドロビンで選出し、
+    (FIRE月, cash_target_reserve) の各グループからラウンドロビンで選出し、
     特定のFIRE月や特定の現金管理戦略に偏ることを防ぐ。
     """
     by_group = {}
@@ -600,13 +598,13 @@ def _select_diverse_top_k(
         fm = int(row['fire_month'])
         ages = tuple(row[f'age_{name}'] for name in person_names)
         eb = row.get('extra_budget', 0)
-        cs_margin = row.get('cash_safety_margin', 0)
+        cs_reserve = row.get('cash_target_reserve', 0)
         cs_crash = row.get('cash_crash_threshold', 0)
-        key = (fm, ages, eb, cs_margin, cs_crash)
+        key = (fm, ages, eb, cs_reserve, cs_crash)
         if key in seen_combos:
             continue
         seen_combos.add(key)
-        group_key = (fm, cs_margin)
+        group_key = (fm, cs_reserve)
         by_group.setdefault(group_key, []).append(row)
 
     selected = []
@@ -665,7 +663,7 @@ def _find_optimal_solution(
         'fire_month': int(best['fire_month']),
         'extra_monthly_budget': float(best.get('extra_budget', 0)),
         'cash_strategy': {
-            'safety_margin': float(best.get('cash_safety_margin', 3_000_000)),
+            'target_cash_reserve': float(best.get('cash_target_reserve', 3_000_000)),
             'market_crash_threshold': float(best.get('cash_crash_threshold', -0.20)),
         },
         'final_assets': float(best['final_assets']),
@@ -680,16 +678,19 @@ def _get_baseline_info(
     config: Dict[str, Any],
 ) -> Dict[str, Any]:
     """現在のルールベースの結果を返す（比較用）。"""
-    default_start_age = config.get('pension', {}).get('start_age', 65)
+    default_start_age = config['pension']['start_age']
     return {
         'fire_month': baseline_fire_month,
         'pension_ages': {name: default_start_age for name in person_names},
     }
 
 
-def _print_result(result: Dict[str, Any]) -> None:
+def _print_result(result: Dict[str, Any], config: Dict[str, Any]) -> None:
     """最適化結果を整形して出力する。"""
-    config_start_age = 35
+    config_start_age = config['simulation']['start_age']
+    pension_base_age = config['pension']['start_age']
+    deferral_rate_pct = config['pension_deferral']['deferral_increase_rate'] * 100
+    early_rate_pct = config['pension_deferral']['early_decrease_rate'] * 100
 
     print("\n" + "=" * 60)
     print("最適化結果")
@@ -711,19 +712,18 @@ def _print_result(result: Dict[str, Any]) -> None:
         print(f"    FIRE達成月:         月{optimal['fire_month']}（{fire_age:.1f}歳）")
         for name in person_names:
             age = optimal['pension_ages'][name]
-            default_age = 65
-            diff = age - default_age
+            diff = age - pension_base_age
             if diff > 0:
-                adj_str = f"+{diff*8.4:.1f}%増額"
+                adj_str = f"+{diff*deferral_rate_pct:.1f}%増額"
             elif diff < 0:
-                adj_str = f"{diff*4.8:.1f}%減額"
+                adj_str = f"{diff*early_rate_pct:.1f}%減額"
             else:
                 adj_str = "増減なし"
             print(f"    {name}の受給開始年齢:  {age}歳（{adj_str}）")
         if extra_budget > 0:
             print(f"    FIRE後追加予算:     月{extra_budget/10000:.0f}万円（年{extra_budget*12/10000:.0f}万円）")
         if cs:
-            print(f"    現金安全マージン:    {cs.get('safety_margin', 3_000_000)/10000:.0f}万円")
+            print(f"    現金確保目標:        {cs.get('target_cash_reserve', 3_000_000)/10000:.0f}万円")
             print(f"    暴落判定閾値:       {cs.get('market_crash_threshold', -0.20)*100:.0f}%")
         final_assets = optimal.get('final_assets', 0)
         print(f"    ベースライン最終資産: {final_assets/10000:.0f}万円（安全マージン: {min_bl/10000:.0f}万円）")

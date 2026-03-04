@@ -147,7 +147,8 @@ def _add_reference_markers(
     current_status: Dict[str, Any],
     fire_target: Dict[str, Any],
     fire_achievement: Dict[str, Any],
-    simulations: Dict[str, pd.DataFrame]
+    simulations: Dict[str, pd.DataFrame],
+    config: Dict[str, Any],
 ) -> tuple:
     """
     基準線・マーカー（現在位置、FIRE縦線、安全マージン）を fig に追加し、
@@ -242,19 +243,22 @@ def _add_reference_markers(
         x_start = first_scenario['date'].iloc[0]
         x_end = first_scenario['date'].iloc[-1]
 
+        safety_margin_yen = config['post_fire_cash_strategy']['safety_margin']
+        safety_margin_man = safety_margin_yen / 10000
+
         fig.add_trace(go.Scatter(
             x=[x_start, x_end],
-            y=[500, 500],
+            y=[safety_margin_man, safety_margin_man],
             name='安全マージン',
             mode='lines',
             line={'color': 'rgba(220, 38, 38, 0.4)', 'width': 1.5, 'dash': 'dot'},
-            hovertemplate='<b>安全マージン</b><br>¥500万<extra></extra>',
+            hovertemplate=f'<b>安全マージン</b><br>¥{safety_margin_man:.0f}万<extra></extra>',
             showlegend=True
         ))
         annotations.append({
-            'x': x_end, 'y': 500,
+            'x': x_end, 'y': safety_margin_man,
             'xref': 'x', 'yref': 'y',
-            'text': '¥500万',
+            'text': f'¥{safety_margin_man:.0f}万',
             'showarrow': False,
             'font': {'size': 9, 'color': '#dc2626'},
             'xanchor': 'right', 'yanchor': 'bottom',
@@ -475,7 +479,7 @@ def extract_life_events(config: Dict[str, Any], fire_achievement: Dict[str, Any]
     current_date = datetime.now()
 
     # 子供の進学イベント
-    children = config.get('education', {}).get('children', [])
+    children = config['education']['children']
     # 子供ごとに異なる色を割り当て
     child_colors = [
         '#06b6d4',  # 第一子（颯）: シアン
@@ -490,7 +494,7 @@ def extract_life_events(config: Dict[str, Any], fire_achievement: Dict[str, Any]
             continue
 
         birthdate = datetime.strptime(birthdate_str, '%Y/%m/%d')
-        child_name = child.get('name', f'子供{i+1}')  # 名前が設定されていればそれを使用
+        child_name = child['name']  # 名前が設定されていればそれを使用
         child_color = child_colors[i] if i < len(child_colors) else child_colors[0]  # 子供ごとの色
 
         # 各進学イベント
@@ -514,7 +518,7 @@ def extract_life_events(config: Dict[str, Any], fire_achievement: Dict[str, Any]
                 })
 
     # 住宅ローン完済
-    mortgage_end_date_str = config.get('mortgage', {}).get('end_date')
+    mortgage_end_date_str = config['mortgage'].get('end_date')
     if mortgage_end_date_str:
         mortgage_end_date = datetime.strptime(mortgage_end_date_str, '%Y/%m/%d')
         if mortgage_end_date > current_date:
@@ -526,14 +530,14 @@ def extract_life_events(config: Dict[str, Any], fire_achievement: Dict[str, Any]
             })
 
     # 年金受給開始
-    pension_people = config.get('pension', {}).get('people', [])
-    pension_default_age = config.get('pension', {}).get('start_age', 65)
+    pension_people = config['pension']['people']
+    pension_default_age = config['pension']['start_age']
     for person in pension_people:
         birthdate_str = person.get('birthdate')
-        name = person.get('name', '')
+        name = person['name']
         if birthdate_str:
             birthdate = datetime.strptime(birthdate_str, '%Y/%m/%d')
-            start_age = person.get('override_start_age', pension_default_age)
+            start_age = person.get('override_start_age') or pension_default_age
             pension_date = birthdate + relativedelta(years=start_age)
             if pension_date > current_date:
                 events.append({
@@ -544,15 +548,15 @@ def extract_life_events(config: Dict[str, Any], fire_achievement: Dict[str, Any]
                 })
 
     # メンテナンス費用（想定寿命までのイベントのみ）
-    life_expectancy = config.get('simulation', {}).get('life_expectancy', 90)
-    start_age = config.get('simulation', {}).get('start_age', 35)
+    life_expectancy = config['simulation']['life_expectancy']
+    start_age = config['simulation']['start_age']
     max_simulation_year = current_date.year + (life_expectancy - start_age)
 
-    maintenance_items = config.get('house_maintenance', {}).get('items', [])
+    maintenance_items = config['house_maintenance']['items']
     for item in maintenance_items:
         first_year = item.get('first_year')
         frequency_years = item.get('frequency_years')
-        name = item.get('name', '')
+        name = item['name']
 
         if first_year and frequency_years:
             # シミュレーション期間内のメンテナンスイベントのみ
@@ -755,7 +759,7 @@ def create_fire_timeline_chart(
 
     # 基準線・マーカー・フェーズラベル
     ref_shapes, ref_annotations = _add_reference_markers(
-        fig, current_status, fire_target, fire_achievement, simulations
+        fig, current_status, fire_target, fire_achievement, simulations, config
     )
 
     # X軸範囲（ライフイベントタイムラインは削除、テーブルで代替済み）
@@ -985,7 +989,7 @@ def create_monte_carlo_distribution_chart(
     layout = get_common_layout(config, 'FIRE成功確率（モンテカルロシミュレーション）')
     layout.update({
         'xaxis': {
-            'title': '最終資産（90歳時点・万円）',
+            'title': f'最終資産（{config["simulation"]["life_expectancy"]}歳時点・万円）',
             'gridcolor': '#e2e8f0'
         },
         'yaxis': {
@@ -1006,7 +1010,7 @@ def create_pareto_frontier_chart(
     pareto_data: List[Dict[str, Any]],
     optimal: Dict[str, Any],
     config: Dict[str, Any],
-    min_baseline_final_assets: float = 3_000_000,
+    min_baseline_final_assets: float = 1_000_000,
 ) -> go.Figure:
     """
     パレートフロンティアチャート（FIRE年齢 vs ベースライン最終資産）を作成。

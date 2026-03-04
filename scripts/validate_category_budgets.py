@@ -9,16 +9,14 @@ config.yamlのexpense_categoriesセクションを検証:
 3. カテゴリIDの重複がないか
 """
 
-import yaml
+import sys
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
 
-def load_config() -> Dict:
-    """設定ファイルを読み込む"""
-    config_path = Path(__file__).parent.parent / 'config.yaml'
-    with open(config_path, 'r', encoding='utf-8') as f:
-        return yaml.safe_load(f)
+from src.config import load_config
 
 
 def validate_category_ids(config: Dict) -> List[str]:
@@ -155,7 +153,7 @@ def main():
     print("カテゴリ別予算の妥当性検証")
     print("=" * 80)
 
-    config = load_config()
+    config = load_config('config.yaml')
 
     # カテゴリ定義のサマリ表示
     print_category_summary(config)

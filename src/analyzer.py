@@ -83,14 +83,12 @@ def analyze_income_expense_trends(
     monthly_avg_income_forecast = monthly_avg_income  # デフォルトは全収入
 
     if transaction_df is not None and config is not None:
-        forecast_config = config.get('data', {}).get('income_forecast', {})
+        forecast_config = config['data']['income_forecast']
         if forecast_config:
-            # 収入のみ抽出
             income_df = transaction_df[transaction_df['amount'] > 0].copy()
 
-            # フィルタ適用
-            include_keywords = forecast_config.get('include_keywords', [])
-            exclude_keywords = forecast_config.get('exclude_keywords', [])
+            include_keywords = forecast_config['include_keywords']
+            exclude_keywords = forecast_config['exclude_keywords']
 
             # 除外キーワードでフィルタ
             for keyword in exclude_keywords:

@@ -24,8 +24,8 @@ def _build_kpi_detail_evidence(
     """成功確率KPIの根拠テキストを生成（MC試行回数ベース）"""
     if not monte_carlo or 'success_rate' not in monte_carlo:
         return ''
-    mc_cfg = config.get('simulation', {}).get('monte_carlo', {})
-    iterations = mc_cfg.get('iterations', 1000)
+    mc_cfg = config['simulation']['monte_carlo']
+    iterations = mc_cfg['iterations']
     success_count = int(monte_carlo['success_rate'] * iterations)
     return f'{iterations:,}回中{success_count:,}回成功'
 
@@ -33,32 +33,33 @@ def _build_kpi_detail_evidence(
 
 def _build_assumptions_html(config: Dict[str, Any], monte_carlo: Dict[str, Any]) -> str:
     """前提条件パネルのHTMLを生成（折りたたみ式）"""
-    sim = config.get('simulation', {})
-    std = sim.get('standard', {})
-    mc_cfg = sim.get('monte_carlo', {})
-    pension_cfg = config.get('pension', {})
-    fire_cfg = config.get('fire', {})
-    post_fire_cash = config.get('post_fire_cash_strategy', {})
+    sim = config['simulation']
+    std = sim['standard']
+    mc_cfg = sim['monte_carlo']
+    pension_cfg = config['pension']
+    fire_cfg = config['fire']
+    post_fire_cash = config['post_fire_cash_strategy']
 
-    return_rate = std.get('annual_return_rate', 0.05)
-    inflation = std.get('inflation_rate', 0.02)
-    income_growth = std.get('income_growth_rate', 0.02)
-    return_std = mc_cfg.get('return_std_dev', 0.06)
-    mc_iters = mc_cfg.get('iterations', 1000)
-    life_exp = sim.get('life_expectancy', 90)
-    start_age = sim.get('start_age', 35)
+    return_rate = std['annual_return_rate']
+    inflation = std['inflation_rate']
+    income_growth = std['income_growth_rate']
+    return_std = mc_cfg['return_std_dev']
+    mc_iters = mc_cfg['iterations']
+    life_exp = sim['life_expectancy']
+    start_age = sim['start_age']
 
-    shuhei_income = sim.get('shuhei_income', 0)
-    sakura_income = sim.get('sakura_income', 0)
-    shuhei_post = sim.get('shuhei_post_fire_income', 0)
-    sakura_post = sim.get('sakura_post_fire_income', 0)
+    shuhei_income = sim['shuhei_income']
+    sakura_income = sim['sakura_income']
+    shuhei_post = sim['shuhei_post_fire_income']
+    sakura_post = sim['sakura_post_fire_income']
 
-    safety_margin = post_fire_cash.get('safety_margin', 3_000_000)
-    crash_threshold = post_fire_cash.get('market_crash_threshold', 0)
+    safety_margin = post_fire_cash['safety_margin']
+    target_cash_reserve = post_fire_cash['target_cash_reserve']
+    crash_threshold = post_fire_cash['market_crash_threshold']
 
-    der = fire_cfg.get('dynamic_expense_reduction', {})
-    der_enabled = der.get('enabled', False)
-    der_rates = der.get('reduction_rates', {})
+    der = fire_cfg['dynamic_expense_reduction']
+    der_enabled = der['enabled']
+    der_rates = der['reduction_rates']
 
     summary_badge = f"年率{return_rate*100:.1f}% / σ{return_std*100:.1f}% / MC {mc_iters:,}回"
 
@@ -71,20 +72,20 @@ def _build_assumptions_html(config: Dict[str, Any], monte_carlo: Dict[str, Any])
         <tr class="group-header"><td colspan="2">シミュレーション設定</td></tr>
         <tr><td>想定寿命</td><td>{life_exp}歳</td></tr>
         <tr><td>MCシミュレーション回数</td><td>{mc_iters:,}回</td></tr>
-        <tr><td>破綻ライン</td><td>100万円</td></tr>
         <tr class="group-header"><td colspan="2">収入設定</td></tr>
         <tr><td>修平 手取り月額</td><td>¥{shuhei_income/10000:.1f}万</td></tr>
         <tr><td>桜 手取り月額</td><td>¥{sakura_income/10000:.1f}万</td></tr>
         <tr><td>FIRE後 修平 副収入</td><td>¥{shuhei_post/10000:.1f}万/月</td></tr>
         <tr><td>FIRE後 桜 事業収入</td><td>¥{sakura_post/10000:.1f}万/月</td></tr>
         <tr class="group-header"><td colspan="2">リスク管理</td></tr>
-        <tr><td>現金安全マージン</td><td>{_format_man_yen(safety_margin)}</td></tr>
+        <tr><td>安全マージン</td><td>{_format_man_yen(safety_margin)}（シミュレーション打ち切り・最適化制約）</td></tr>
+        <tr><td>現金確保目標</td><td>{_format_man_yen(target_cash_reserve)}（FIRE後の現金管理目標）</td></tr>
         <tr><td>暴落判定閾値</td><td>{crash_threshold*100:.0f}%</td></tr>'''
 
     if der_enabled:
-        l1 = der_rates.get('level_1_warning', 0)
-        l2 = der_rates.get('level_2_concern', 0)
-        l3 = der_rates.get('level_3_crisis', 0)
+        l1 = der_rates['level_1_warning']
+        l2 = der_rates['level_2_concern']
+        l3 = der_rates['level_3_crisis']
         rows += f'''
         <tr class="group-header"><td colspan="2">動的支出削減</td></tr>
         <tr><td>警戒レベル</td><td>裁量支出{l1*100:.0f}%削減</td></tr>
@@ -109,29 +110,41 @@ def _build_assumptions_html(config: Dict[str, Any], monte_carlo: Dict[str, Any])
 
 def _build_optimization_html(config: Dict[str, Any]) -> str:
     """最適化結果サマリーパネルのHTMLを生成（折りたたみ式、デフォルト展開）"""
-    fire_cfg = config.get('fire', {})
-    pension_cfg = config.get('pension', {})
-    cash_strategy = config.get('post_fire_cash_strategy', {})
+    fire_cfg = config['fire']
+    pension_cfg = config['pension']
+    cash_strategy = config['post_fire_cash_strategy']
 
     optimal_month = fire_cfg.get('optimal_fire_month')
-    extra_budget = fire_cfg.get('optimal_extra_monthly_budget', 0)
-    safety_margin = cash_strategy.get('safety_margin', 3_000_000)
+    extra_budget = fire_cfg.get('optimal_extra_monthly_budget') or 0
+    safety_margin = cash_strategy['safety_margin']
     safety_margin_man = safety_margin / 10000
 
-    people = pension_cfg.get('people', [])
+    pension_deferral = config['pension_deferral']
+    base_age = pension_cfg['start_age']
+    deferral_rate_pct = pension_deferral['deferral_increase_rate'] * 100
+    early_rate_pct = pension_deferral['early_decrease_rate'] * 100
+
+    people = pension_cfg['people']
     pension_rows = ''
     for p in people:
-        name = p.get('name', '')
+        name = p['name']
         override = p.get('override_start_age')
-        ptype = p.get('pension_type', '')
+        ptype = p['pension_type']
         type_label = '厚生年金+国民年金' if ptype == 'employee' else '国民年金'
         if override:
-            base_age = 65
-            increase = (override - base_age) * 8.4
+            diff = override - base_age
+            if diff > 0:
+                adj_pct = diff * deferral_rate_pct
+                adj_label = f'+{adj_pct:.1f}%増額'
+            elif diff < 0:
+                adj_pct = abs(diff) * early_rate_pct
+                adj_label = f'-{adj_pct:.1f}%減額'
+            else:
+                adj_label = '増減なし'
             pension_rows += f'''
         <tr>
           <td>{name}（{type_label}）</td>
-          <td>{override}歳開始（+{increase:.1f}%増額）</td>
+          <td>{override}歳開始（{adj_label}）</td>
         </tr>'''
 
     if optimal_month is not None:
@@ -176,15 +189,15 @@ def _build_life_events_table(
     if not life_events:
         return ''
 
-    pension_people = config.get('pension', {}).get('people', [])
-    children = config.get('education', {}).get('children', [])
-    start_age = config.get('simulation', {}).get('start_age', 35)
+    pension_people = config['pension']['people']
+    children = config['education']['children']
+    start_age = config['simulation']['start_age']
 
     birthdates = {}
     for p in pension_people:
-        birthdates[p.get('name', '')] = p.get('birthdate', '')
+        birthdates[p['name']] = p['birthdate']
     for c in children:
-        birthdates[c.get('name', '')] = c.get('birthdate', '')
+        birthdates[c['name']] = c['birthdate']
 
     # 年次の収支変化をシミュレーションデータから抽出
     df = simulations.get('standard')
@@ -207,11 +220,11 @@ def _build_life_events_table(
         # 年齢計算
         ages = []
         for p in pension_people:
-            bd = p.get('birthdate', '')
+            bd = p['birthdate']
             if bd:
                 birth_year = int(bd.split('/')[0])
                 age = year - birth_year
-                ages.append(f"{p.get('name', '')}{age}歳")
+                ages.append(f"{p['name']}{age}歳")
 
         age_str = ' / '.join(ages) if ages else ''
 
@@ -331,16 +344,16 @@ def generate_dashboard_html(
         immediate_fire_detail = ''
 
     # FIRE後副収入の合計（セミFIRE前提の表示用）
-    sim_cfg = config.get('simulation', {})
+    sim_cfg = config['simulation']
     post_fire_income_monthly = (
-        sim_cfg.get('shuhei_post_fire_income', 0)
-        + sim_cfg.get('sakura_post_fire_income', 0)
+        sim_cfg['shuhei_post_fire_income']
+        + sim_cfg['sakura_post_fire_income']
     )
 
     # 前提条件の短縮表示
-    std_cfg = sim_cfg.get('standard', {})
-    return_rate = std_cfg.get('annual_return_rate', 0.05)
-    inflation = std_cfg.get('inflation_rate', 0.02)
+    std_cfg = sim_cfg['standard']
+    return_rate = std_cfg['annual_return_rate']
+    inflation = std_cfg['inflation_rate']
     achievement_basis = f"年率{return_rate*100:.0f}%・インフレ{inflation*100:.0f}%前提"
 
     # 達成率の根拠
@@ -362,19 +375,19 @@ def generate_dashboard_html(
 
     # 家族情報
     family_info = []
-    pension_people = config.get('pension', {}).get('people', [])
+    pension_people = config['pension']['people']
     for person in pension_people:
         family_info.append({
-            'name': person.get('name', ''),
-            'birthdate': person.get('birthdate', ''),
+            'name': person['name'],
+            'birthdate': person['birthdate'],
             'role': 'parent'
         })
-    children = config.get('education', {}).get('children', [])
+    children = config['education']['children']
     for i, child in enumerate(children):
-        child_name = child.get('name', f'子供{i+1}')
+        child_name = child['name']
         family_info.append({
             'name': child_name,
-            'birthdate': child.get('birthdate', ''),
+            'birthdate': child['birthdate'],
             'role': 'child'
         })
     family_info_json = json.dumps(family_info, ensure_ascii=False)

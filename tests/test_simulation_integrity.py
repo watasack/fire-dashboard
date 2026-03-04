@@ -240,7 +240,8 @@ def _minimal_config(**overrides):
             'capital_gains_tax_rate': 0.20315,
         },
         'post_fire_cash_strategy': {'enabled': True,
-            'safety_margin': 3000000,
+            'safety_margin': 1000000,
+            'target_cash_reserve': 3000000,
             'monthly_buffer_months': 1,
             'market_crash_threshold': -0.2,
             'recovery_threshold': -0.10,
@@ -275,8 +276,10 @@ class TestComputePostFireIncome:
         )
         assert _compute_post_fire_income(cfg) == 0
 
-    def test_missing_keys_default_zero(self):
-        cfg = {'simulation': {}}
+    def test_both_explicitly_zero(self):
+        cfg = _minimal_config(
+            **{'simulation.shuhei_post_fire_income': 0, 'simulation.sakura_post_fire_income': 0}
+        )
         assert _compute_post_fire_income(cfg) == 0
 
 
@@ -1617,7 +1620,8 @@ class TestManagePostFireCash:
         return {
             'post_fire_cash_strategy': {
                 'enabled': True,
-                'safety_margin': 5_000_000,
+                'safety_margin': 1_000_000,
+                'target_cash_reserve': 5_000_000,
                 'monthly_buffer_months': 1,
                 'market_crash_threshold': -0.20,
                 'recovery_threshold': -0.10,
@@ -1667,7 +1671,7 @@ class TestManagePostFireCash:
             config=cash_strategy_config, capital_gains_tax_rate=0.20315,
             allocation_enabled=True, is_start_of_month=True,
         )
-        target = 5_000_000 + 1 * 300_000  # safety_margin + buffer
+        target = 5_000_000 + 1 * 300_000  # target_cash_reserve + buffer
         assert result['cash'] > 1_000_000  # cash increased
         assert result['stocks'] < 50_000_000  # stocks decreased
         assert result['stocks_sold_for_monthly'] > 0
@@ -1985,7 +1989,23 @@ class TestCalculateDrawdownLevel:
                         'level_2_concern': -0.20,
                         'level_3_crisis': -0.35,
                     },
+                    'reduction_rates': {
+                        'level_0_normal': 0.0,
+                        'level_1_warning': 0.2,
+                        'level_2_concern': 0.5,
+                        'level_3_crisis': 0.7,
+                    },
                     'spending_boost_enabled': False,
+                    'spending_boost_thresholds': {
+                        'level_neg1_upside': 0.10,
+                        'level_neg2_upside': 0.20,
+                        'level_neg3_upside': 0.35,
+                    },
+                    'boost_rates': {
+                        'level_neg1': 0.3,
+                        'level_neg2': 0.5,
+                        'level_neg3': 1.4,
+                    },
                 },
             },
         }

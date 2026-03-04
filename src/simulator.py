@@ -15,7 +15,6 @@ from functools import lru_cache
 _NATIONAL_PENSION_FULL_AMOUNT = 816_000       # 国民年金満額（2024年度, 円/年）
 _EMPLOYEE_PENSION_MULTIPLIER = 0.005481        # 厚生年金乗率（給付乗率）
 _PENSION_MAX_CONTRIBUTION_YEARS = 40           # 国民年金最大加入年数
-_BANKRUPTCY_THRESHOLD = 1_000_000              # 破綻ライン（円）
 
 # 国民健康保険料計算用定数（config未設定時のフォールバック）
 _HEALTH_INS_BASIC_DEDUCTION = 430_000  # 基礎控除（2024年度・円）
@@ -349,23 +348,23 @@ def generate_returns_enhanced(
         np.random.seed(random_seed)
 
     # 設定の取得
-    mc_config = config['simulation'].get('monte_carlo', {})
-    enhanced = mc_config.get('enhanced_model', {})
+    mc_config = config['simulation']['monte_carlo']
+    enhanced = mc_config['enhanced_model']
 
     # GARCHパラメータ
-    ω = enhanced.get('garch_omega', 0.00001)
-    α = enhanced.get('garch_alpha', 0.15)
-    β = enhanced.get('garch_beta', 0.80)
-    σ_floor = enhanced.get('volatility_floor', 0.008)
-    σ_ceil = enhanced.get('volatility_ceiling', 0.035)
+    ω = enhanced['garch_omega']
+    α = enhanced['garch_alpha']
+    β = enhanced['garch_beta']
+    σ_floor = enhanced['volatility_floor']
+    σ_ceil = enhanced['volatility_ceiling']
 
     # 平均回帰パラメータ
-    mr_window = enhanced.get('mean_reversion_window', 12)
-    λ_crash = enhanced.get('mr_speed_crash', 0.15)
-    λ_normal = enhanced.get('mr_speed_normal', 0.30)
-    λ_bubble = enhanced.get('mr_speed_bubble', 0.10)
-    crash_thresh = enhanced.get('crash_threshold', -0.15)
-    bubble_thresh = enhanced.get('bubble_threshold', 0.15)
+    mr_window = enhanced['mean_reversion_window']
+    λ_crash = enhanced['mr_speed_crash']
+    λ_normal = enhanced['mr_speed_normal']
+    λ_bubble = enhanced['mr_speed_bubble']
+    crash_thresh = enhanced['crash_threshold']
+    bubble_thresh = enhanced['bubble_threshold']
 
     # 年率から月次へ変換（対数空間）
     μ_monthly = np.log(1 + annual_return_mean) / 12
@@ -453,21 +452,21 @@ def generate_returns_enhanced_batch(
     rng = np.random.default_rng(random_seed)
     eps = rng.standard_normal((n_paths, total_months))  # 全ε_t を事前生成
 
-    mc_config = config['simulation'].get('monte_carlo', {})
-    enhanced = mc_config.get('enhanced_model', {})
+    mc_config = config['simulation']['monte_carlo']
+    enhanced = mc_config['enhanced_model']
 
-    ω = enhanced.get('garch_omega', 0.00001)
-    α = enhanced.get('garch_alpha', 0.15)
-    β = enhanced.get('garch_beta', 0.80)
-    σ_floor = enhanced.get('volatility_floor', 0.008)
-    σ_ceil = enhanced.get('volatility_ceiling', 0.035)
+    ω = enhanced['garch_omega']
+    α = enhanced['garch_alpha']
+    β = enhanced['garch_beta']
+    σ_floor = enhanced['volatility_floor']
+    σ_ceil = enhanced['volatility_ceiling']
 
-    mr_window = enhanced.get('mean_reversion_window', 12)
-    λ_crash = enhanced.get('mr_speed_crash', 0.15)
-    λ_normal = enhanced.get('mr_speed_normal', 0.30)
-    λ_bubble = enhanced.get('mr_speed_bubble', 0.10)
-    crash_thresh = enhanced.get('crash_threshold', -0.15)
-    bubble_thresh = enhanced.get('bubble_threshold', 0.15)
+    mr_window = enhanced['mean_reversion_window']
+    λ_crash = enhanced['mr_speed_crash']
+    λ_normal = enhanced['mr_speed_normal']
+    λ_bubble = enhanced['mr_speed_bubble']
+    crash_thresh = enhanced['crash_threshold']
+    bubble_thresh = enhanced['bubble_threshold']
 
     μ_monthly = np.log(1 + annual_return_mean) / 12
     σ_long = annual_return_std / np.sqrt(12)
@@ -522,8 +521,8 @@ def calculate_drawdown_level(
             - level: 警戒レベル（0=正常、1=警戒、2=深刻、3=危機）
     """
     # 動的支出制御が無効の場合はレベル0を返す（削減も増加も行わない）
-    dynamic_config_check = config.get('fire', {}).get('dynamic_expense_reduction', {})
-    if not dynamic_config_check.get('enabled', True):
+    dynamic_config_check = config['fire']['dynamic_expense_reduction']
+    if not dynamic_config_check['enabled']:
         # enabled=False: 基準との比較は行わず、常にレベル0（変更なし）を返す
         # ピークからの下落率計算のみ行い、レベルは0に固定
         if planned_assets is not None and planned_assets > 0:
@@ -547,19 +546,19 @@ def calculate_drawdown_level(
         drawdown = 0.0
 
     # 設定から閾値を取得（デフォルト値あり）
-    dynamic_config = config.get('fire', {}).get('dynamic_expense_reduction', {})
-    thresholds = dynamic_config.get('drawdown_thresholds', {})
+    dynamic_config = config['fire']['dynamic_expense_reduction']
+    thresholds = dynamic_config['drawdown_thresholds']
 
-    level_1_threshold = thresholds.get('level_1_warning', -0.10)
-    level_2_threshold = thresholds.get('level_2_concern', -0.20)
-    level_3_threshold = thresholds.get('level_3_crisis', -0.35)
+    level_1_threshold = thresholds['level_1_warning']
+    level_2_threshold = thresholds['level_2_concern']
+    level_3_threshold = thresholds['level_3_crisis']
 
     # 上ぶれ閾値（対称的ガードレール）
-    boost_thresholds = dynamic_config.get('spending_boost_thresholds', {})
-    upside_l1 = boost_thresholds.get('level_neg1_upside', 0.10)
-    upside_l2 = boost_thresholds.get('level_neg2_upside', 0.20)
-    upside_l3 = boost_thresholds.get('level_neg3_upside', 0.35)
-    boost_enabled = dynamic_config.get('spending_boost_enabled', False)
+    boost_thresholds = dynamic_config['spending_boost_thresholds']
+    upside_l1 = boost_thresholds['level_neg1_upside']
+    upside_l2 = boost_thresholds['level_neg2_upside']
+    upside_l3 = boost_thresholds['level_neg3_upside']
+    boost_enabled = dynamic_config['spending_boost_enabled']
 
     if drawdown >= level_1_threshold:
         # 上ぶれ判定（boost_enabled のときのみ）
@@ -600,7 +599,7 @@ def _apply_category_based_reduction(
             - breakdown: 内訳辞書
     """
     # カテゴリ定義を取得
-    definitions = config.get('fire', {}).get('expense_categories', {}).get('definitions', [])
+    definitions = config['fire']['expense_categories']['definitions']
     discretionary_map = {cat['id']: cat['discretionary'] for cat in definitions}
 
     # カテゴリごとに削減を適用
@@ -688,10 +687,10 @@ def apply_dynamic_expense_reduction(
         #     'amount_saved': 350000
         # }
     """
-    dynamic_config = config.get('fire', {}).get('dynamic_expense_reduction', {})
+    dynamic_config = config['fire']['dynamic_expense_reduction']
 
     # 動的削減が無効の場合、元の支出をそのまま返す
-    if not dynamic_config.get('enabled', False):
+    if not dynamic_config['enabled']:
         return base_expense, {
             'essential': base_expense,
             'discretionary': 0.0,
@@ -701,7 +700,7 @@ def apply_dynamic_expense_reduction(
         }
 
     # 裁量的支出の比率を取得（ライフステージ別）
-    discretionary_ratios = config['fire'].get('discretionary_ratio_by_stage', {})
+    discretionary_ratios = config['fire']['discretionary_ratio_by_stage']
     discretionary_ratio = discretionary_ratios.get(stage, 0.30)  # デフォルト30%
 
     # 基礎生活費と裁量的支出を分離
@@ -710,7 +709,7 @@ def apply_dynamic_expense_reduction(
 
     if drawdown_level < 0:
         # 上ぶれ: 裁量的支出を増加（対称的ガードレール）
-        boost_rates = dynamic_config.get('boost_rates', {})
+        boost_rates = dynamic_config['boost_rates']
         boost_keys = ['level_neg1', 'level_neg2', 'level_neg3']
         # drawdown_level = -1 → idx=0, -2 → idx=1, -3 → idx=2
         idx = min(-drawdown_level - 1, len(boost_keys) - 1)
@@ -729,7 +728,7 @@ def apply_dynamic_expense_reduction(
         return actual_expense, breakdown
 
     # 削減率を取得（ドローダウンレベルに応じて）
-    reduction_rates = dynamic_config.get('reduction_rates', {})
+    reduction_rates = dynamic_config['reduction_rates']
     rate_keys = ['level_0_normal', 'level_1_warning', 'level_2_concern', 'level_3_crisis']
 
     # レベルに対応する削減率を取得（範囲外の場合はデフォルト0.0）
@@ -803,8 +802,8 @@ def calculate_dynamic_adjustment(
         # expense_reduction = min(40000, 100000) = 40000
     """
     # 動的削減が無効の場合は調整なし
-    dynamic_config = config.get('fire', {}).get('dynamic_expense_reduction', {})
-    if not dynamic_config.get('enabled', False):
+    dynamic_config = config['fire']['dynamic_expense_reduction']
+    if not dynamic_config['enabled']:
         return 0.0, 0.0, {
             'drawdown': drawdown,
             'fill_ratio': 0.0,
@@ -815,8 +814,8 @@ def calculate_dynamic_adjustment(
         }
 
     # 閾値の取得
-    warning_threshold = dynamic_config.get('drawdown_thresholds', {}).get('level_1_warning', -0.10)
-    crisis_threshold = dynamic_config.get('drawdown_thresholds', {}).get('level_3_crisis', -0.35)
+    warning_threshold = dynamic_config['drawdown_thresholds']['level_1_warning']
+    crisis_threshold = dynamic_config['drawdown_thresholds']['level_3_crisis']
 
     # 補填割合の計算（警戒閾値を超えた場合のみ）
     if drawdown >= warning_threshold:
@@ -883,8 +882,8 @@ def calculate_dynamic_adjustment_baseline(
         expense_reduction = min(1000000, 100000) = 100000
     """
     # 動的削減が無効の場合は調整なし
-    dynamic_config = config.get('fire', {}).get('dynamic_expense_reduction', {})
-    if not dynamic_config.get('enabled', False):
+    dynamic_config = config['fire']['dynamic_expense_reduction']
+    if not dynamic_config['enabled']:
         return 0.0, 0.0, {
             'asset_shortfall': asset_shortfall,
             'required_fill': 0.0,
@@ -938,12 +937,12 @@ def _get_primary_parent_age(config: Dict[str, Any], year_offset: float) -> Optio
     設定から主たる親（年金設定の最初の人）の指定年時点での年齢を返す。
     シミュレーション中の empty_nest サブステージ判定に使用する。
     """
-    pension_people = config.get('pension', {}).get('people', [])
+    pension_people = config['pension']['people']
     if pension_people:
-        birthdate_str = pension_people[0].get('birthdate')
+        birthdate_str = pension_people[0]['birthdate']
         if birthdate_str:
             return _get_age_at_offset(birthdate_str, year_offset)
-    start_age = config.get('simulation', {}).get('start_age')
+    start_age = config['simulation']['start_age']
     if start_age is not None:
         return float(start_age) + year_offset
     return None
@@ -987,7 +986,7 @@ def _get_life_stage(
 
 def _is_enabled(config: Dict, section: str) -> bool:
     """設定セクションの enabled フラグを返す。"""
-    return config.get(section, {}).get('enabled', False)
+    return config[section]['enabled']
 
 
 def _advance_year(
@@ -1022,14 +1021,14 @@ def calculate_education_expense(year_offset: float, config: Dict[str, Any]) -> f
     if not _is_enabled(config, 'education'):
         return 0
 
-    children = config['education'].get('children', [])
+    children = config['education']['children']
     costs = config['education']['costs']
 
     total_education_expense = 0
 
     for child in children:
         # 生年月日から現在の年齢を計算
-        birthdate_str = child.get('birthdate')
+        birthdate_str = child['birthdate']
         if not birthdate_str:
             continue
 
@@ -1038,38 +1037,38 @@ def calculate_education_expense(year_offset: float, config: Dict[str, Any]) -> f
         # 年齢に応じた教育段階と費用を計算
         if 0 <= child_age < 3:
             # 保育園（0-2歳）
-            nursery_type = child.get('nursery', 'none')
+            nursery_type = child['nursery']
             if nursery_type != 'none':
-                annual_cost = costs.get('nursery', {}).get(nursery_type, 0)
+                annual_cost = costs['nursery'].get(nursery_type, 0)
                 total_education_expense += annual_cost
 
         elif 3 <= child_age < 6:
             # 幼稚園（3-5歳）
-            stage_type = child.get('kindergarten', 'public')
+            stage_type = child['kindergarten']
             annual_cost = costs['kindergarten'][stage_type]
             total_education_expense += annual_cost
 
         elif 6 <= child_age < 12:
             # 小学校（6-11歳）
-            stage_type = child.get('elementary', 'public')
+            stage_type = child['elementary']
             annual_cost = costs['elementary'][stage_type]
             total_education_expense += annual_cost
 
         elif 12 <= child_age < 15:
             # 中学校（12-14歳）
-            stage_type = child.get('junior_high', 'public')
+            stage_type = child['junior_high']
             annual_cost = costs['junior_high'][stage_type]
             total_education_expense += annual_cost
 
         elif 15 <= child_age < 18:
             # 高校（15-17歳）
-            stage_type = child.get('high', 'public')
+            stage_type = child['high']
             annual_cost = costs['high'][stage_type]
             total_education_expense += annual_cost
 
         elif 18 <= child_age < 22:
             # 大学（18-21歳）
-            stage_type = child.get('university', 'national')
+            stage_type = child['university']
             annual_cost = costs['university'][stage_type]
             total_education_expense += annual_cost
 
@@ -1131,7 +1130,7 @@ def _calculate_person_pension(
     Returns:
         年間年金受給額（円）。受給開始前は 0。
     """
-    birthdate_str = person.get('birthdate')
+    birthdate_str = person['birthdate']
     if not birthdate_str:
         return 0
 
@@ -1139,7 +1138,7 @@ def _calculate_person_pension(
     if person_age < start_age:
         return 0
 
-    pension_type = person.get('pension_type', 'employee')
+    pension_type = person['pension_type']
 
     if pension_type == 'employee':
         avg_monthly_salary = person.get('avg_monthly_salary', 0)
@@ -1175,11 +1174,11 @@ def _extract_override_start_ages(config: Dict[str, Any]) -> Optional[Dict[str, i
     1人でも override_start_age が指定されていれば辞書を返す。
     誰も指定していなければ None を返す。
     """
-    pension_config = config.get('pension', {})
-    people = pension_config.get('people', [])
+    pension_config = config['pension']
+    people = pension_config['people']
     ages = {}
     for person in people:
-        name = person.get('name', '')
+        name = person['name']
         override_age = person.get('override_start_age')
         if override_age is not None:
             ages[name] = int(override_age)
@@ -1202,25 +1201,25 @@ def _determine_optimal_pension_start_age(
     Returns:
         最適な年金受給開始年齢
     """
-    deferral_config = config.get('pension_deferral', {})
+    deferral_config = config['pension_deferral']
 
-    if not deferral_config.get('enabled', False):
+    if not deferral_config['enabled']:
         # 年金繰り下げ戦略が無効の場合、従来の固定年齢を使用
-        return config['pension'].get('start_age', 65)
+        return config['pension']['start_age']
 
     # FIRE目標資産を計算（未提供の場合）
     if fire_target_assets is None:
         # 簡易計算: 年間基礎支出 / 4% ルール
-        base_expense = config['fire']['base_expense_by_stage'].get('empty_nest', 2500000)
+        base_expense = config['fire']['base_expense_by_stage']['empty_nest']
         fire_target_assets = base_expense / 0.04
 
     # 資産比率を計算（現在資産 / FIRE目標資産）
     asset_ratio = current_assets / fire_target_assets if fire_target_assets > 0 else 0
 
     # 閾値を取得
-    defer_to_70_threshold = deferral_config.get('defer_to_70_threshold', 1.50)
-    defer_to_68_threshold = deferral_config.get('defer_to_68_threshold', 1.20)
-    early_at_62_threshold = deferral_config.get('early_at_62_threshold', 0.50)
+    defer_to_70_threshold = deferral_config['defer_to_70_threshold']
+    defer_to_68_threshold = deferral_config['defer_to_68_threshold']
+    early_at_62_threshold = deferral_config['early_at_62_threshold']
 
     # 最適年齢を決定
     if asset_ratio >= defer_to_70_threshold:
@@ -1270,29 +1269,29 @@ def calculate_pension_income(
     if not _is_enabled(config, 'pension'):
         return 0
 
-    pension_config = config.get('pension', {})
-    default_start_age = pension_config.get('start_age', 65)
-    deferral_config = config.get('pension_deferral', {})
+    pension_config = config['pension']
+    default_start_age = pension_config['start_age']
+    deferral_config = config['pension_deferral']
 
     # 現在の年齢を計算
-    start_age_config = config['simulation'].get('start_age', 35)
+    start_age_config = config['simulation']['start_age']
     current_age = start_age_config + year_offset
 
     # 年金成長率（マクロ経済スライド相当）
-    pension_growth_rate = config.get('simulation', {}).get('standard', {}).get('pension_growth_rate', 0.0)
+    pension_growth_rate = config['simulation']['standard']['pension_growth_rate']
     inflation_factor = (1 + pension_growth_rate) ** year_offset
 
     # override_start_ages 指定時: 各人の開始年齢を直接使用
     if override_start_ages is not None:
-        increase_rate = deferral_config.get('deferral_increase_rate', 0.084)
-        decrease_rate = deferral_config.get('early_decrease_rate', 0.048)
+        increase_rate = deferral_config['deferral_increase_rate']
+        decrease_rate = deferral_config['early_decrease_rate']
 
         total_pension = 0
-        for person in pension_config.get('people', []):
-            person_name = person.get('name', '')
+        for person in pension_config['people']:
+            person_name = person['name']
             person_start_age = override_start_ages.get(person_name, default_start_age)
 
-            birthdate_str = person.get('birthdate')
+            birthdate_str = person['birthdate']
             if birthdate_str:
                 person_age = _get_age_at_offset(birthdate_str, year_offset)
                 if person_age < person_start_age:
@@ -1314,13 +1313,13 @@ def calculate_pension_income(
         return total_pension * inflation_factor
 
     # 繰り下げ戦略が無効、または資産情報がない場合は通常受給
-    if not deferral_config.get('enabled', False) or current_assets is None:
+    if not deferral_config['enabled'] or current_assets is None:
         if current_age < default_start_age:
             return 0
 
         base_pension = sum(
             _calculate_person_pension(person, year_offset, default_start_age, fire_achieved, fire_year_offset)
-            for person in pension_config.get('people', [])
+            for person in pension_config['people']
         )
         return base_pension * inflation_factor
 
@@ -1331,7 +1330,7 @@ def calculate_pension_income(
         fire_target_assets=fire_target_assets
     )
 
-    min_start_age = deferral_config.get('min_start_age', 62)
+    min_start_age = deferral_config['min_start_age']
 
     if current_age < min_start_age:
         return 0
@@ -1341,16 +1340,16 @@ def calculate_pension_income(
 
     base_pension = sum(
         _calculate_person_pension(person, year_offset, optimal_start_age, fire_achieved, fire_year_offset)
-        for person in pension_config.get('people', [])
+        for person in pension_config['people']
     )
 
     age_diff = optimal_start_age - default_start_age
 
     if age_diff > 0:
-        increase_rate = deferral_config.get('deferral_increase_rate', 0.084)
+        increase_rate = deferral_config['deferral_increase_rate']
         adjustment_rate = 1 + (increase_rate * age_diff)
     elif age_diff < 0:
-        decrease_rate = deferral_config.get('early_decrease_rate', 0.048)
+        decrease_rate = deferral_config['early_decrease_rate']
         adjustment_rate = 1 - (decrease_rate * abs(age_diff))
     else:
         adjustment_rate = 1.0
@@ -1373,20 +1372,20 @@ def calculate_child_allowance(year_offset: float, config: Dict[str, Any]) -> flo
     if not _is_enabled(config, 'child_allowance'):
         return 0
 
-    children = config.get('education', {}).get('children', [])
+    children = config['education']['children']
     if not children:
         return 0
 
     allowance_config = config['child_allowance']
     # 2024年10月改定: 第2子以降0-3歳は2万円/月、支給対象を高校生（18歳未満）まで拡大
-    first_child_under_3 = allowance_config.get('first_child_under_3', 15000)
-    second_child_plus_under_3 = allowance_config.get('second_child_plus_under_3', 20000)
-    age_3_to_high_school = allowance_config.get('age_3_to_high_school', 10000)
+    first_child_under_3 = allowance_config['first_child_under_3']
+    second_child_plus_under_3 = allowance_config['second_child_plus_under_3']
+    age_3_to_high_school = allowance_config['age_3_to_high_school']
 
     total_annual_allowance = 0
 
     for i, child in enumerate(children):
-        birthdate_str = child.get('birthdate')
+        birthdate_str = child['birthdate']
         if not birthdate_str:
             continue
 
@@ -1432,17 +1431,17 @@ def calculate_national_pension_premium(
         return 0
 
     social_insurance_config = config['social_insurance']
-    monthly_premium = social_insurance_config.get('national_pension_monthly_premium', 16980)
+    monthly_premium = social_insurance_config['national_pension_monthly_premium']
 
     # 年金受給者情報を取得
-    pension_people = config.get('pension', {}).get('people', [])
+    pension_people = config['pension']['people']
     if not pension_people:
         return 0
 
     total_annual_premium = 0
 
     for person in pension_people:
-        birthdate_str = person.get('birthdate')
+        birthdate_str = person['birthdate']
         if not birthdate_str:
             continue
 
@@ -1500,19 +1499,19 @@ def calculate_national_health_insurance_premium(
     total_income = annual_side_income + capital_gains
 
     # --- 所得割 ---
-    basic_deduction = si.get('health_insurance_basic_deduction', _HEALTH_INS_BASIC_DEDUCTION)
+    basic_deduction = si['health_insurance_basic_deduction']
     taxable_income = max(0, total_income - basic_deduction)
-    income_rate = si.get('health_insurance_income_rate', _HEALTH_INS_DEFAULT_INCOME_RATE)
+    income_rate = si['health_insurance_income_rate']
     income_based_premium = taxable_income * income_rate
 
     # --- 均等割 + 平等割 ---
-    per_person = si.get('health_insurance_per_person', 50000)
-    members = si.get('health_insurance_members', 2)
-    per_household = si.get('health_insurance_per_household', 30000)
+    per_person = si['health_insurance_per_person']
+    members = si['health_insurance_members']
+    per_household = si['health_insurance_per_household']
     fixed_premium = per_person * members + per_household
 
     # --- 合計（上限適用）---
-    max_premium = si.get('health_insurance_max_premium', 1060000)
+    max_premium = si['health_insurance_max_premium']
     total_premium = min(income_based_premium + fixed_premium, max_premium)
 
     return total_premium
@@ -1534,8 +1533,8 @@ def calculate_mortgage_payment(year_offset: float, config: Dict[str, Any]) -> fl
         return 0
 
     mortgage_config = config['mortgage']
-    monthly_payment = mortgage_config.get('monthly_payment', 0)
-    end_date_str = mortgage_config.get('end_date')
+    monthly_payment = mortgage_config['monthly_payment']
+    end_date_str = mortgage_config['end_date']
 
     if not end_date_str:
         return 0
@@ -1569,7 +1568,7 @@ def calculate_house_maintenance(year_offset: float, config: Dict[str, Any]) -> f
         return 0
 
     maintenance_config = config['house_maintenance']
-    items = maintenance_config.get('items', [])
+    items = maintenance_config['items']
 
     if not items:
         return 0
@@ -1582,9 +1581,9 @@ def calculate_house_maintenance(year_offset: float, config: Dict[str, Any]) -> f
     total_maintenance_cost = 0
 
     for item in items:
-        first_year = item.get('first_year')
-        frequency_years = item.get('frequency_years')
-        cost = item.get('cost', 0)
+        first_year = item['first_year']
+        frequency_years = item['frequency_years']
+        cost = item['cost']
 
         if not first_year or not frequency_years:
             continue
@@ -1617,18 +1616,18 @@ def calculate_workation_cost(year_offset: float, config: Dict[str, Any]) -> floa
         return 0
 
     workation_config = config['workation']
-    start_child_index = workation_config.get('start_child_index', 1)
-    start_child_age = workation_config.get('start_child_age', 18)
-    annual_cost = workation_config.get('annual_cost', 0)
+    start_child_index = workation_config['start_child_index']
+    start_child_age = workation_config['start_child_age']
+    annual_cost = workation_config['annual_cost']
 
     # 子供情報を取得
-    children = config.get('education', {}).get('children', [])
+    children = config['education']['children']
     if start_child_index >= len(children):
         return 0  # 指定された子供が存在しない
 
     # 基準となる子供の情報
     child = children[start_child_index]
-    birthdate_str = child.get('birthdate')
+    birthdate_str = child['birthdate']
     if not birthdate_str:
         return 0
 
@@ -1960,13 +1959,13 @@ def _manage_post_fire_cash(
     FIRE後専用の現金管理戦略を実行する。
     
     平常時:
-      - 安全マージン500万円 + 生活費1ヶ月分を確保
-      - 月初に生活費1ヶ月分を株式から現金に変換
+      - 現金確保目標(target_cash_reserve) + 生活費バッファを確保
+      - 月初に不足分を株式から現金に変換
     
-    暴落時（ドローダウン ≤ -20%）:
+    暴落時:
       - 株式売却を停止（底値売却回避）
-      - 安全マージンから取り崩す
-      - 復帰条件: 現金 < 25万円 or ドローダウン ≥ -10%
+      - 確保済み現金から取り崩す
+      - 復帰条件: 緊急時(emergency_cash_floor) or 回復(recovery_threshold)
     
     Args:
         cash: 現在の現金残高
@@ -2009,8 +2008,8 @@ def _manage_post_fire_cash(
         }
     
     # 設定を取得
-    strategy_config = config.get('post_fire_cash_strategy', {})
-    if not strategy_config.get('enabled', False):
+    strategy_config = config['post_fire_cash_strategy']
+    if not strategy_config['enabled']:
         # 戦略が無効の場合は従来ロジック（何もしない）
         return {
             'cash': cash,
@@ -2023,19 +2022,19 @@ def _manage_post_fire_cash(
             'stocks_sold_for_monthly': 0,
         }
     
-    safety_margin = strategy_config.get('safety_margin', 3_000_000)
-    monthly_buffer_months = strategy_config.get('monthly_buffer_months', 1)
-    crash_threshold = strategy_config.get('market_crash_threshold', -0.20)
-    recovery_threshold = strategy_config.get('recovery_threshold', -0.10)
-    emergency_floor = strategy_config.get('emergency_cash_floor', 250000)
+    target_cash_reserve = strategy_config['target_cash_reserve']
+    monthly_buffer_months = strategy_config['monthly_buffer_months']
+    crash_threshold = strategy_config['market_crash_threshold']
+    recovery_threshold = strategy_config['recovery_threshold']
+    emergency_floor = strategy_config['emergency_cash_floor']
     
     # 暴落判定
     in_market_crash = drawdown <= crash_threshold
     is_recovering = drawdown >= recovery_threshold
     is_emergency = cash < emergency_floor
 
-    # 目標現金レベル: 安全マージン + 生活費1ヶ月分
-    target_cash_level = safety_margin + (monthly_buffer_months * monthly_expense)
+    # 目標現金レベル: 現金確保目標 + 生活費バッファ
+    target_cash_level = target_cash_reserve + (monthly_buffer_months * monthly_expense)
 
     # 月初処理: 現金が目標レベルを下回っている場合のみ株式売却
     # （収入がある場合は、収入だけで足りる可能性があるため）
@@ -2202,18 +2201,18 @@ def _sakura_income_for_month(date: datetime, sakura_income_base: float, config: 
     Returns:
         その月の桜の月収（円）
     """
-    leave_list = config.get('simulation', {}).get('maternity_leave', [])
-    children = config.get('education', {}).get('children', [])
+    leave_list = config['simulation']['maternity_leave']
+    children = config['education']['children']
 
     for leave in leave_list:
-        child_name = leave.get('child')
-        months_before = leave.get('months_before', 2)
-        months_after = leave.get('months_after', 12)
-        income_during_leave = leave.get('monthly_income', 0)
+        child_name = leave['child']
+        months_before = leave['months_before']
+        months_after = leave['months_after']
+        income_during_leave = leave['monthly_income']
 
         # 対象の子供の生年月日を検索
         birthdate_str = next(
-            (c.get('birthdate') for c in children if c.get('name') == child_name),
+            (c['birthdate'] for c in children if c['name'] == child_name),
             None,
         )
         if birthdate_str is None:
@@ -2242,19 +2241,19 @@ def _shuhei_income_for_month(date: datetime, shuhei_income_grown: float, config:
     Returns:
         その月の修平の月収（円）
     """
-    sim = config.get('simulation', {})
-    children = config.get('education', {}).get('children', [])
+    sim = config['simulation']
+    children = config['education']['children']
 
     # 育休判定（優先）
-    leave_list = sim.get('shuhei_parental_leave', [])
+    leave_list = sim['shuhei_parental_leave']
     for leave in leave_list:
-        child_name = leave.get('child')
-        months_after = leave.get('months_after', 12)
-        income_first = leave.get('monthly_income', 0)
-        income_later = leave.get('monthly_income_after_180days', income_first)
+        child_name = leave['child']
+        months_after = leave['months_after']
+        income_first = leave['monthly_income']
+        income_later = leave['monthly_income_after_180days']
 
         birthdate_str = next(
-            (c.get('birthdate') for c in children if c.get('name') == child_name),
+            (c['birthdate'] for c in children if c['name'] == child_name),
             None,
         )
         if birthdate_str is None:
@@ -2271,15 +2270,15 @@ def _shuhei_income_for_month(date: datetime, shuhei_income_grown: float, config:
             return income_later
 
     # 時短勤務判定
-    reduced_list = sim.get('shuhei_reduced_hours', [])
+    reduced_list = sim['shuhei_reduced_hours']
     for rh in reduced_list:
-        child_name = rh.get('child')
-        start_months = rh.get('start_months_after', 12)
-        end_months = rh.get('end_months_after', 36)
-        ratio = rh.get('income_ratio', 0.75)
+        child_name = rh['child']
+        start_months = rh['start_months_after']
+        end_months = rh['end_months_after']
+        ratio = rh['income_ratio']
 
         birthdate_str = next(
-            (c.get('birthdate') for c in children if c.get('name') == child_name),
+            (c['birthdate'] for c in children if c['name'] == child_name),
             None,
         )
         if birthdate_str is None:
@@ -2300,9 +2299,9 @@ def _compute_post_fire_income(config: Dict[str, Any]) -> float:
 
     年金受給開始までの間、設定された固定額の収入を得る。
     """
-    sim = config.get('simulation', {})
-    shuhei_base = sim.get('shuhei_post_fire_income', 0)
-    sakura_base = sim.get('sakura_post_fire_income', 0)
+    sim = config['simulation']
+    shuhei_base = sim['shuhei_post_fire_income']
+    sakura_base = sim['sakura_post_fire_income']
     return shuhei_base + sakura_base
 
 
@@ -2340,7 +2339,7 @@ def _calculate_monthly_income(
     fire_year_offset = (fire_month / 12) if fire_month is not None else None
 
     # FIRE目標資産を計算（年金繰り下げ判定用）
-    base_expense_empty_nest = config['fire']['base_expense_by_stage'].get('empty_nest', 2500000)
+    base_expense_empty_nest = config['fire']['base_expense_by_stage']['empty_nest']
     fire_target_assets = base_expense_empty_nest / 0.04  # 4%ルール
 
     annual_pension_income = calculate_pension_income(
@@ -2359,9 +2358,9 @@ def _calculate_monthly_income(
             shuhei_post_fire_income = 0
             sakura_post_fire_income = 0
         else:
-            sim = config.get('simulation', {})
-            shuhei_post_fire_income = sim.get('shuhei_post_fire_income', 0)
-            sakura_post_fire_income = sim.get('sakura_post_fire_income', 0)
+            sim = config['simulation']
+            shuhei_post_fire_income = sim['shuhei_post_fire_income']
+            sakura_post_fire_income = sim['sakura_post_fire_income']
         labor_income = shuhei_post_fire_income + sakura_post_fire_income
         return {
             'total_income': monthly_pension_income + monthly_child_allowance + labor_income,
@@ -2372,8 +2371,8 @@ def _calculate_monthly_income(
             'sakura_income_monthly': sakura_post_fire_income,
             'post_fire_income': shuhei_post_fire_income,
         }
-    shuhei_post_fire_income = config['simulation'].get('shuhei_post_fire_income', 0)
-    sakura_post_fire_income = config['simulation'].get('sakura_post_fire_income', 0)
+    shuhei_post_fire_income = config['simulation']['shuhei_post_fire_income']
+    sakura_post_fire_income = config['simulation']['sakura_post_fire_income']
 
     # FIRE前: 労働収入を成長率に応じて計算
     # 修平（会社員）: income_growth_rateを適用。育休期間中は給付金に置換
@@ -2421,8 +2420,8 @@ def _initialize_post_fire_simulation(
     annual_return_rate = scenario_config['annual_return_rate']
 
     # シミュレーション期間
-    life_expectancy = config['simulation'].get('life_expectancy', 90)
-    start_age = config['simulation'].get('start_age', 35)
+    life_expectancy = config['simulation']['life_expectancy']
+    start_age = config['simulation']['start_age']
     current_age = start_age + years_offset
     remaining_years = life_expectancy - current_age
     remaining_months = int(remaining_years * 12)
@@ -2433,16 +2432,16 @@ def _initialize_post_fire_simulation(
     # 資産配分設定
     allocation_enabled = _is_enabled(config, 'asset_allocation')
     if allocation_enabled:
-        capital_gains_tax_rate = config['asset_allocation'].get('capital_gains_tax_rate', 0.20315)
-        min_cash_balance = config['asset_allocation'].get('min_cash_balance', 1000000)
+        capital_gains_tax_rate = config['asset_allocation']['capital_gains_tax_rate']
+        min_cash_balance = config['asset_allocation']['min_cash_balance']
     else:
         capital_gains_tax_rate = 0.20315
         min_cash_balance = 0
 
     # FIRE後の収入
     post_fire_income = (
-        config['simulation'].get('shuhei_post_fire_income', 0)
-        + config['simulation'].get('sakura_post_fire_income', 0)
+        config['simulation']['shuhei_post_fire_income']
+        + config['simulation']['sakura_post_fire_income']
     )
 
     return {
@@ -2543,7 +2542,7 @@ def _process_post_fire_monthly_cycle(
               extra_monthly_budget)
 
     # 収入計算（年金繰り下げ戦略対応）
-    base_expense_empty_nest = config['fire']['base_expense_by_stage'].get('empty_nest', 2500000)
+    base_expense_empty_nest = config['fire']['base_expense_by_stage']['empty_nest']
     fire_target_assets = base_expense_empty_nest / 0.04
 
     annual_pension_income = calculate_pension_income(
@@ -2595,8 +2594,8 @@ def _process_post_fire_monthly_cycle(
     nisa_balance = returns_result['nisa_balance']
     investment_return = returns_result['investment_return']
 
-    # 破綻判定
-    should_break = (cash + stocks <= _BANKRUPTCY_THRESHOLD)
+    safety_margin = config['post_fire_cash_strategy']['safety_margin']
+    should_break = (cash + stocks <= safety_margin)
 
     return {
         'cash': cash,
@@ -2746,10 +2745,10 @@ def _precompute_monthly_cashflows(
         workation_costs[month_idx] = annual_workation / 12
 
         # ライフステージを取得して記録
-        children = config.get('education', {}).get('children', [])
-        _sub = config.get('fire', {}).get('empty_nest_sub_stages', {})
-        _senior_from = _sub.get('senior_from_age', 70)
-        _elderly_from = _sub.get('elderly_from_age', 80)
+        children = config['education']['children']
+        _sub = config['fire']['empty_nest_sub_stages']
+        _senior_from = _sub['senior_from_age']
+        _elderly_from = _sub['elderly_from_age']
         _parent_age = _get_primary_parent_age(config, years)
         if children:
             first_child = children[0]
@@ -2992,10 +2991,10 @@ def _simulate_post_fire_with_random_returns(
 
             # ドローダウンベースの裁量支出削減（下ぶれ）または増加（上ぶれ）
             if drawdown_level != 0:
-                children_cfg = config.get('education', {}).get('children', [])
-                _sub = config.get('fire', {}).get('empty_nest_sub_stages', {})
-                _senior_from = _sub.get('senior_from_age', 70)
-                _elderly_from = _sub.get('elderly_from_age', 80)
+                children_cfg = config['education']['children']
+                _sub = config['fire']['empty_nest_sub_stages']
+                _senior_from = _sub['senior_from_age']
+                _elderly_from = _sub['elderly_from_age']
                 _parent_age = _get_primary_parent_age(config, years)
                 if children_cfg:
                     first_child = children_cfg[0]
@@ -3010,7 +3009,7 @@ def _simulate_post_fire_with_random_returns(
 
             # 収入計算（年金繰り下げ戦略対応）
             # FIRE目標資産を計算
-            base_expense_empty_nest = config['fire']['base_expense_by_stage'].get('empty_nest', 2500000)
+            base_expense_empty_nest = config['fire']['base_expense_by_stage']['empty_nest']
             fire_target_assets = base_expense_empty_nest / 0.04
 
             annual_pension_income = calculate_pension_income(
@@ -3082,8 +3081,8 @@ def _simulate_post_fire_with_random_returns(
         if return_timeseries:
             timeseries.append(cash + stocks)
 
-        # 破綻判定: simulate_post_fire_assets と同じ閾値を使用
-        if cash + stocks <= _BANKRUPTCY_THRESHOLD:
+        safety_margin = config['post_fire_cash_strategy']['safety_margin']
+        if cash + stocks <= safety_margin:
             if return_timeseries:
                 timeseries.extend([0] * (remaining_months - month - 1))
                 return timeseries
@@ -3130,8 +3129,8 @@ def can_retire_now(
     Returns:
         True if 退職可能、False otherwise
     """
-    life_expectancy = config['simulation'].get('life_expectancy', 90)
-    start_age = config['simulation'].get('start_age', 35)
+    life_expectancy = config['simulation']['life_expectancy']
+    start_age = config['simulation']['start_age']
 
     # 現在の年齢
     current_age = start_age + years_offset
@@ -3147,7 +3146,7 @@ def can_retire_now(
         # 資産配分が有効な場合は、適切に分離
         allocation_enabled = _is_enabled(config, 'asset_allocation')
         if allocation_enabled:
-            cash_buffer_months = config['asset_allocation'].get('cash_buffer_months', 6)
+            cash_buffer_months = config['asset_allocation']['cash_buffer_months']
             monthly_expense = current_annual_expense / 12
             estimated_cash = monthly_expense * cash_buffer_months
             current_cash = min(estimated_cash, current_assets * 0.1)  # 最大10%を現金
@@ -3169,8 +3168,7 @@ def can_retire_now(
         override_start_ages=override_start_ages
     )
 
-    # 破綻ライン: 100万円を下回らないことを確認
-    return final_assets > _BANKRUPTCY_THRESHOLD
+    return final_assets > config['post_fire_cash_strategy']['safety_margin']
 
 
 def calculate_base_expense_by_category(
@@ -3198,13 +3196,13 @@ def calculate_base_expense_by_category(
               }
     """
     # カテゴリ別予算が無効の場合はNoneを返す
-    expense_categories = config.get('fire', {}).get('expense_categories', {})
-    if not expense_categories.get('enabled', False):
+    expense_categories = config['fire']['expense_categories']
+    if not expense_categories['enabled']:
         return None, {}
 
     # カテゴリ定義と予算を取得
-    definitions = expense_categories.get('definitions', [])
-    budgets_by_stage = expense_categories.get('budgets_by_stage', {})
+    definitions = expense_categories['definitions']
+    budgets_by_stage = expense_categories['budgets_by_stage']
 
     if not definitions or not budgets_by_stage:
         return None, {}
@@ -3213,17 +3211,17 @@ def calculate_base_expense_by_category(
     discretionary_map = {cat['id']: cat['discretionary'] for cat in definitions}
 
     # 子供の情報を取得（最初の子供を基準にライフステージを決定）
-    _sub = config.get('fire', {}).get('empty_nest_sub_stages', {})
-    _senior_from = _sub.get('senior_from_age', 70)
-    _elderly_from = _sub.get('elderly_from_age', 80)
+    _sub = config['fire']['empty_nest_sub_stages']
+    _senior_from = _sub['senior_from_age']
+    _elderly_from = _sub['elderly_from_age']
     _parent_age = _get_primary_parent_age(config, year_offset)
-    children = config.get('education', {}).get('children', [])
+    children = config['education']['children']
     if not children:
         stage = _get_life_stage(22.0, _parent_age, _senior_from, _elderly_from)
     else:
         # 最初の子供の年齢を計算してライフステージを決定
         child = children[0]
-        birthdate_str = child.get('birthdate')
+        birthdate_str = child['birthdate']
         if not birthdate_str:
             return None, {}
 
@@ -3257,14 +3255,14 @@ def calculate_base_expense_by_category(
     base_expense = essential_total + discretionary_total
 
     # 第二子以降：各子供の年齢（ステージ）に応じた追加費用を加算
-    additional_by_stage = config.get('fire', {}).get('additional_child_expense_by_stage', {})
+    additional_by_stage = config['fire']['additional_child_expense_by_stage']
 
     if additional_by_stage and len(children) > 1:
         ref_date = _get_reference_date()
         simulation_date = ref_date + pd.Timedelta(days=year_offset * 365.25)
 
         for additional_child in children[1:]:
-            child_birthdate_str = additional_child.get('birthdate')
+            child_birthdate_str = additional_child['birthdate']
             if not child_birthdate_str:
                 continue
 
@@ -3319,7 +3317,7 @@ def calculate_base_expense(
         年間基本生活費（円、インフレ適用済み）
     """
     if expense_growth_rate is None:
-        expense_growth_rate = config.get('simulation', {}).get('standard', {}).get('expense_growth_rate', 0.02)
+        expense_growth_rate = config['simulation']['standard']['expense_growth_rate']
     inflation_factor = (1 + expense_growth_rate) ** year_offset
 
     # カテゴリ別予算を試す
@@ -3331,20 +3329,20 @@ def calculate_base_expense(
 
     # 従来方式（既存ロジック）
     # ============================
-    manual_expense = config.get('fire', {}).get('manual_annual_expense')
+    manual_expense = config['fire']['manual_annual_expense']
     if manual_expense is not None:
         return manual_expense * inflation_factor
 
-    base_expense_by_stage = config.get('fire', {}).get('base_expense_by_stage', {})
+    base_expense_by_stage = config['fire']['base_expense_by_stage']
 
     if not base_expense_by_stage:
         return fallback_expense
 
-    _sub = config.get('fire', {}).get('empty_nest_sub_stages', {})
-    _senior_from = _sub.get('senior_from_age', 70)
-    _elderly_from = _sub.get('elderly_from_age', 80)
+    _sub = config['fire']['empty_nest_sub_stages']
+    _senior_from = _sub['senior_from_age']
+    _elderly_from = _sub['elderly_from_age']
     _parent_age = _get_primary_parent_age(config, year_offset)
-    children = config.get('education', {}).get('children', [])
+    children = config['education']['children']
 
     def _resolve_empty_nest_stage() -> str:
         return _get_life_stage(22.0, _parent_age, _senior_from, _elderly_from)
@@ -3361,7 +3359,7 @@ def calculate_base_expense(
         return val * inflation_factor if val is not None else fallback_expense
 
     child = children[0]
-    birthdate_str = child.get('birthdate')
+    birthdate_str = child['birthdate']
     if not birthdate_str:
         return fallback_expense
 
@@ -3380,14 +3378,14 @@ def calculate_base_expense(
         return fallback_expense
     base_expense = val
 
-    additional_by_stage = config.get('fire', {}).get('additional_child_expense_by_stage', {})
+    additional_by_stage = config['fire']['additional_child_expense_by_stage']
 
     if additional_by_stage and len(children) > 1:
         ref_date = _get_reference_date()
         simulation_date = ref_date + pd.Timedelta(days=year_offset * 365.25)
 
         for additional_child in children[1:]:
-            child_birthdate_str = additional_child.get('birthdate')
+            child_birthdate_str = additional_child['birthdate']
             if not child_birthdate_str:
                 continue
 
@@ -3440,8 +3438,8 @@ def _initialize_future_simulation(
     expense_growth_rate = scenario_config['expense_growth_rate']
 
     # シミュレーション期間（寿命まで）
-    life_expectancy = config['simulation'].get('life_expectancy', 90)
-    start_age = config['simulation'].get('start_age', 35)
+    life_expectancy = config['simulation']['life_expectancy']
+    start_age = config['simulation']['start_age']
     simulation_years = life_expectancy - start_age
     simulation_months = simulation_years * 12
 
@@ -3451,13 +3449,13 @@ def _initialize_future_simulation(
     # 資産配分設定
     allocation_enabled = _is_enabled(config, 'asset_allocation')
     if allocation_enabled:
-        cash_buffer_months = config['asset_allocation'].get('cash_buffer_months', 6)
-        auto_invest_threshold = config['asset_allocation'].get('auto_invest_threshold', 1.5)
-        nisa_enabled = config['asset_allocation'].get('nisa_enabled', True)
-        nisa_annual_limit = config['asset_allocation'].get('nisa_annual_limit', 3600000)
-        invest_beyond_nisa = config['asset_allocation'].get('invest_beyond_nisa', True)
-        min_cash_balance = config['asset_allocation'].get('min_cash_balance', 1000000)
-        capital_gains_tax_rate = config['asset_allocation'].get('capital_gains_tax_rate', 0.20315)
+        cash_buffer_months = config['asset_allocation']['cash_buffer_months']
+        auto_invest_threshold = config['asset_allocation']['auto_invest_threshold']
+        nisa_enabled = config['asset_allocation']['nisa_enabled']
+        nisa_annual_limit = config['asset_allocation']['nisa_annual_limit']
+        invest_beyond_nisa = config['asset_allocation']['invest_beyond_nisa']
+        min_cash_balance = config['asset_allocation']['min_cash_balance']
+        capital_gains_tax_rate = config['asset_allocation']['capital_gains_tax_rate']
     else:
         cash_buffer_months = 0
         auto_invest_threshold = 999
@@ -3468,8 +3466,8 @@ def _initialize_future_simulation(
         capital_gains_tax_rate = 0.20315
 
     # 夫婦別収入の比率を計算
-    shuhei_income_base = config['simulation'].get('shuhei_income', 0)
-    sakura_income_base = config['simulation'].get('sakura_income', 0)
+    shuhei_income_base = config['simulation']['shuhei_income']
+    sakura_income_base = config['simulation']['sakura_income']
     if shuhei_income_base + sakura_income_base > 0:
         shuhei_ratio = shuhei_income_base / (shuhei_income_base + sakura_income_base)
     else:
@@ -3739,8 +3737,8 @@ def _process_future_monthly_cycle(
         investment_return, auto_invested, capital_gains_tax, fire_achieved, fire_month,
     )
 
-    # 破綻判定
-    should_break = (cash + stocks <= _BANKRUPTCY_THRESHOLD)
+    safety_margin = config['post_fire_cash_strategy']['safety_margin']
+    should_break = (cash + stocks <= safety_margin)
 
     return {
         'cash': cash,
@@ -3947,7 +3945,7 @@ def _process_withdrawal_monthly_cycle(
     monthly_pension_income = 0
     if config is not None:
         # FIRE目標資産を計算（年金繰り下げ判定用）
-        base_expense_empty_nest = config['fire']['base_expense_by_stage'].get('empty_nest', 2500000)
+        base_expense_empty_nest = config['fire']['base_expense_by_stage']['empty_nest']
         fire_target_assets = base_expense_empty_nest / 0.04
 
         annual_pension_income = calculate_pension_income(
@@ -4013,8 +4011,8 @@ def _process_withdrawal_monthly_cycle(
     # 資産更新（年金収入、児童手当、FIRE後副収入も考慮）
     assets = assets - total_expense + investment_return + monthly_pension_income + monthly_child_allowance + monthly_post_fire_income
 
-    # 資産が破綻ライン（100万円）以下になったら終了
-    should_break = assets <= _BANKRUPTCY_THRESHOLD
+    safety_margin = config['post_fire_cash_strategy']['safety_margin'] if config else 1_000_000
+    should_break = assets <= safety_margin
 
     return {
         'assets': assets,
@@ -4127,12 +4125,12 @@ def run_monte_carlo_simulation(
     fire_stocks_cost = fire_row['stocks_cost_basis']
     years_offset = fire_month / 12
 
-    print(f"  FIRE achieved at month {fire_month} (age {config['simulation'].get('start_age', 35) + years_offset:.1f})")
+    print(f"  FIRE achieved at month {fire_month} (age {config['simulation']['start_age'] + years_offset:.1f})")
     print(f"  Assets at FIRE: JPY{fire_cash + fire_stocks:,.0f}")
 
     # ステップ2: FIRE後の期間を計算
-    life_expectancy = config['simulation'].get('life_expectancy', 90)
-    start_age = config['simulation'].get('start_age', 35)
+    life_expectancy = config['simulation']['life_expectancy']
+    start_age = config['simulation']['start_age']
     fire_age = start_age + years_offset
     remaining_years = life_expectancy - fire_age
     remaining_months = int(remaining_years * 12)
@@ -4144,8 +4142,8 @@ def run_monte_carlo_simulation(
         post_fire_income = post_fire_income_override
     else:
         post_fire_income = (
-            config['simulation'].get('shuhei_post_fire_income', 0)
-            + config['simulation'].get('sakura_post_fire_income', 0)
+            config['simulation']['shuhei_post_fire_income']
+            + config['simulation']['sakura_post_fire_income']
         )
 
     # override_start_ages が未指定の場合:
@@ -4163,7 +4161,7 @@ def run_monte_carlo_simulation(
                 current_assets=fire_cash + fire_stocks,
                 config=config,
             )
-            pension_people = config.get('pension', {}).get('people', [])
+            pension_people = config['pension']['people']
             override_start_ages = {p['name']: optimal_pension_age for p in pension_people}
             print(f"  Pension start age (derived from FIRE assets): {optimal_pension_age}")
 
@@ -4214,9 +4212,9 @@ def run_monte_carlo_simulation(
     results = []
     all_timeseries = []  # 各イテレーションの月ごとデータ
     params = config['simulation'][scenario]
-    mc_config = config['simulation'].get('monte_carlo', {})
-    return_std_dev = mc_config.get('return_std_dev', 0.15)
-    mean_reversion_speed = mc_config.get('mean_reversion_speed', 0.0)
+    mc_config = config['simulation']['monte_carlo']
+    return_std_dev = mc_config['return_std_dev']
+    mean_reversion_speed = mc_config['mean_reversion_speed']
 
     # 補填統計を記録（各月で補填が発生した回数）
     fill_count_by_month = np.zeros(remaining_months)
@@ -4229,7 +4227,7 @@ def run_monte_carlo_simulation(
 
         # FIRE後の期間分のランダムリターンを生成
         # 拡張モデル（GARCH + 非対称多期間平均回帰）が有効か確認
-        enhanced_enabled = mc_config.get('enhanced_model', {}).get('enabled', False)
+        enhanced_enabled = mc_config['enhanced_model']['enabled']
 
         if enhanced_enabled:
             # 拡張モデル: GARCH(1,1) + 非対称多期間平均回帰
@@ -4297,15 +4295,16 @@ def run_monte_carlo_simulation(
     monthly_p975 = np.percentile(all_timeseries_array, 97.5, axis=0) # 2σ上限
 
     # 追加リスクメトリクス
+    safety_margin = config['post_fire_cash_strategy']['safety_margin']
     percentile_5 = float(np.percentile(final_assets_list, 5))
-    bankruptcy_count = sum(1 for ts in all_timeseries if min(ts) <= _BANKRUPTCY_THRESHOLD)
+    bankruptcy_count = sum(1 for ts in all_timeseries if min(ts) <= safety_margin)
     bankruptcy_rate = bankruptcy_count / iterations
 
     monthly_p5 = np.percentile(all_timeseries_array, 5, axis=0)
 
     depletion_month_p5 = None
     for m_idx, val in enumerate(monthly_p5):
-        if val <= _BANKRUPTCY_THRESHOLD:
+        if val <= safety_margin:
             depletion_month_p5 = m_idx
             break
 
@@ -4502,52 +4501,52 @@ def _simulate_post_fire_mc_vectorized(
     if remaining_months <= 0:
         return np.zeros(N)
 
-    # 月次現金管理設定
-    strategy_cfg = config.get('post_fire_cash_strategy', {})
-    strategy_enabled = allocation_enabled and strategy_cfg.get('enabled', False)
-    safety_margin = strategy_cfg.get('safety_margin', 3_000_000)
-    buffer_months = strategy_cfg.get('monthly_buffer_months', 1)
-    crash_thr = strategy_cfg.get('market_crash_threshold', -0.20)
-    recovery_thr = strategy_cfg.get('recovery_threshold', -0.10)
-    emergency_floor = strategy_cfg.get('emergency_cash_floor', 250_000)
+    strategy_cfg = config['post_fire_cash_strategy']
+    safety_margin = strategy_cfg['safety_margin']
+    target_cash_reserve = strategy_cfg['target_cash_reserve']
+    strategy_enabled = allocation_enabled and strategy_cfg['enabled']
+    buffer_months = strategy_cfg['monthly_buffer_months']
+    crash_thr = strategy_cfg['market_crash_threshold']
+    recovery_thr = strategy_cfg['recovery_threshold']
+    emergency_floor = strategy_cfg['emergency_cash_floor']
 
     # ドローダウン閾値・削減率
-    dyn_cfg = config.get('fire', {}).get('dynamic_expense_reduction', {})
-    dd_enabled = dyn_cfg.get('enabled', False)
-    thresholds = dyn_cfg.get('drawdown_thresholds', {})
-    l1_thr = thresholds.get('level_1_warning', -0.10)
-    l2_thr = thresholds.get('level_2_concern', -0.20)
-    l3_thr = thresholds.get('level_3_crisis', -0.35)
+    dyn_cfg = config['fire']['dynamic_expense_reduction']
+    dd_enabled = dyn_cfg['enabled']
+    thresholds = dyn_cfg['drawdown_thresholds']
+    l1_thr = thresholds['level_1_warning']
+    l2_thr = thresholds['level_2_concern']
+    l3_thr = thresholds['level_3_crisis']
     rate_keys = ['level_0_normal', 'level_1_warning', 'level_2_concern', 'level_3_crisis']
-    _rr = dyn_cfg.get('reduction_rates', {})
-    reduction_rates_arr = np.array([_rr.get(k, 0.0) for k in rate_keys])
+    _rr = dyn_cfg['reduction_rates']
+    reduction_rates_arr = np.array([_rr[k] for k in rate_keys])
 
     # 対称的ガードレール: 上ぶれ時の支出増加
-    boost_enabled = dyn_cfg.get('spending_boost_enabled', False)
-    _bt = dyn_cfg.get('spending_boost_thresholds', {})
-    u1_thr = _bt.get('level_neg1_upside', 0.10)
-    u2_thr = _bt.get('level_neg2_upside', 0.20)
-    u3_thr = _bt.get('level_neg3_upside', 0.35)
-    _br = dyn_cfg.get('boost_rates', {})
+    boost_enabled = dyn_cfg['spending_boost_enabled']
+    _bt = dyn_cfg['spending_boost_thresholds']
+    u1_thr = _bt['level_neg1_upside']
+    u2_thr = _bt['level_neg2_upside']
+    u3_thr = _bt['level_neg3_upside']
+    _br = dyn_cfg['boost_rates']
     # boost_rates_arr: index 0 = level_neg1, 1 = level_neg2, 2 = level_neg3
     boost_rates_arr = np.array([
-        _br.get('level_neg1', 0.0),
-        _br.get('level_neg2', 0.0),
-        _br.get('level_neg3', 0.0),
+        _br['level_neg1'],
+        _br['level_neg2'],
+        _br['level_neg3'],
     ])
-    disc_ratios_map = config.get('fire', {}).get('discretionary_ratio_by_stage', {})
+    disc_ratios_map = config['fire']['discretionary_ratio_by_stage']
 
     # 健康保険設定
     si_enabled = _is_enabled(config, 'social_insurance')
-    si_cfg = config.get('social_insurance', {}) if si_enabled else None
+    si_cfg = config['social_insurance'] if si_enabled else None
 
     if si_cfg is not None:
-        _hi_basic_ded = si_cfg.get('health_insurance_basic_deduction', _HEALTH_INS_BASIC_DEDUCTION)
-        _hi_income_rate = si_cfg.get('health_insurance_income_rate', _HEALTH_INS_DEFAULT_INCOME_RATE)
-        _hi_per_person = si_cfg.get('health_insurance_per_person', 50_000)
-        _hi_members = si_cfg.get('health_insurance_members', 2)
-        _hi_per_hh = si_cfg.get('health_insurance_per_household', 30_000)
-        _hi_max = si_cfg.get('health_insurance_max_premium', 1_060_000)
+        _hi_basic_ded = si_cfg['health_insurance_basic_deduction']
+        _hi_income_rate = si_cfg['health_insurance_income_rate']
+        _hi_per_person = si_cfg['health_insurance_per_person']
+        _hi_members = si_cfg['health_insurance_members']
+        _hi_per_hh = si_cfg['health_insurance_per_household']
+        _hi_max = si_cfg['health_insurance_max_premium']
         _hi_fixed = _hi_per_person * _hi_members + _hi_per_hh
 
     # 参照日付・年度
@@ -4687,7 +4686,7 @@ def _simulate_post_fire_mc_vectorized(
             is_recovering = drawdown >= recovery_thr
             is_emergency = cash < emergency_floor
             should_sell = (~in_crash) | is_recovering | is_emergency
-            target_cash = safety_margin + buffer_months * float(precomputed_expenses[month])
+            target_cash = target_cash_reserve + buffer_months * float(precomputed_expenses[month])
             shortage_mgmt = np.maximum(0.0, target_cash - cash)
             to_sell = np.where(should_sell & (stocks > 0.0), shortage_mgmt, 0.0)
 
@@ -4723,9 +4722,8 @@ def _simulate_post_fire_mc_vectorized(
         stocks *= 1.0 + month_ret
         nisa_bal *= 1.0 + month_ret
 
-        # 10. 破綻判定・状態凍結
         total_assets = cash + stocks
-        newly_bankrupt = (~bankrupt) & (total_assets <= _BANKRUPTCY_THRESHOLD)
+        newly_bankrupt = (~bankrupt) & (total_assets <= safety_margin)
         if newly_bankrupt.any():
             bankrupt |= newly_bankrupt
             cash[bankrupt] = 0.0
