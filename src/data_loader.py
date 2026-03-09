@@ -66,9 +66,11 @@ def load_asset_data(config: Dict[str, Any]) -> pd.DataFrame:
             )
 
             # カラム名を標準化（最初の行がヘッダー）
-            # MoneyForward CSV形式: 日付, 総計(円), 現金・預金・債券等(円), 投資信託(円)
+            # MoneyForward CSV形式: 日付, 総計(円), 現金・預金・債券等(円), 投資信託(円)[, ポイント(円)]
             if len(df.columns) >= 4:
-                df.columns = ['date', 'total_assets', 'cash_deposits', 'investment_trusts']
+                base_cols = ['date', 'total_assets', 'cash_deposits', 'investment_trusts']
+                extra_cols = [f'col_{i}' for i in range(len(df.columns) - 4)]
+                df.columns = base_cols + extra_cols
 
                 # データ型変換
                 for col in ['total_assets', 'cash_deposits', 'investment_trusts']:
