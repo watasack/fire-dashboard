@@ -1,51 +1,84 @@
-# データファイル（プライバシー保護） - 現在は管理対象
-# data/*.csv
-# data/*.xlsx
-# data/paypay
+# ========================================
+# 個人情報・機密データ（公開リポジトリに含めない）
+# ========================================
 
-# 生成されたダッシュボード（assetsは手動編集のため管理対象）
-dashboard/*
-!dashboard/assets/
+# メイン設定ファイル（個人の資産・収入・家族情報を含む）
+config.yaml
 
-# Node.js（スクリーンショット取得用）
-node_modules/
-package.json
-package-lock.json
+# Streamlit シークレット（アクセスコード・APIキー等）
+.streamlit/secrets.toml
 
-# ビジュアルテスト用スクリーンショット（作業用一時ファイル）
-dashboard_screenshots/
+# 実際の資産データ（CSV）
+data/
 
+# 生成ダッシュボード（個人データを可視化したHTML）
+dashboard/
+
+# ========================================
 # Python
+# ========================================
 __pycache__/
 *.py[cod]
 *$py.class
-.pytest_cache/
-*.coverage
-*.pyc
-*.pyo
-*.pyd
+*.so
 .Python
-env/
-venv/
-ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# IDE
-.vscode/
+# ========================================
+# 仮想環境
+# ========================================
+venv/
+env/
+ENV/
+.venv/
+.env
+
+# ========================================
+# IDE・エディタ
+# ========================================
+.vscode/settings.json
 .idea/
 *.swp
 *.swo
 *~
 
+# ========================================
 # OS
+# ========================================
 .DS_Store
 Thumbs.db
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
+desktop.ini
 
-# Plans
-.claude/
+# ========================================
+# テスト・カバレッジ
+# ========================================
+.pytest_cache/
+.coverage
+htmlcov/
 
-# Logs
+# ========================================
+# Jupyter
+# ========================================
+.ipynb_checkpoints/
+*.ipynb
+
+# ========================================
+# ログ・一時ファイル
+# ========================================
 *.log
+*.tmp
+*.bak
