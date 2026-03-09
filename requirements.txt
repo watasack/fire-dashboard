@@ -1,3 +1,6 @@
+# Streamlit デモアプリ
+streamlit>=1.32.0
+
 # データ処理
 pandas>=2.0.0
 numpy>=1.24.0
