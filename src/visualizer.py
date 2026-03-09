@@ -593,7 +593,8 @@ def _add_monte_carlo_ranges(
     fig: go.Figure,
     df_post: pd.DataFrame,
     monte_carlo_results: Dict[str, Any],
-    achievement_date
+    achievement_date,
+    current_date=None
 ) -> None:
     """
     モンテカルロシミュレーションの1σ、2σ範囲をグラフに追加
@@ -603,22 +604,26 @@ def _add_monte_carlo_ranges(
         df_post: FIRE達成後のデータ
         monte_carlo_results: モンテカルロシミュレーション結果
         achievement_date: FIRE達成日
+        current_date: 現在の日付（include_pre_fire=Trueの場合に使用）
     """
     import numpy as np
     from dateutil.relativedelta import relativedelta
 
-    # パーセンタイルデータを取得（対数正規分布は非対称なのでパーセンタイルを使用）
-    monthly_p50 = monte_carlo_results['monthly_p50']     # 中央値
-    monthly_p025 = monte_carlo_results['monthly_p025']   # 2σ下限相当（2.5パーセンタイル）
-    monthly_p16 = monte_carlo_results['monthly_p16']     # 1σ下限相当（16パーセンタイル）
-    monthly_p84 = monte_carlo_results['monthly_p84']     # 1σ上限相当（84パーセンタイル）
-    monthly_p975 = monte_carlo_results['monthly_p975']   # 2σ上限相当（97.5パーセンタイル）
+    include_pre_fire = monte_carlo_results.get('include_pre_fire', False)
+    start_date = current_date if include_pre_fire and current_date is not None else achievement_date
 
-    # FIRE達成後の日付配列を作成
-    dates_post = pd.date_range(
-        start=achievement_date,
+    # パーセンタイルデータを取得
+    monthly_p50 = monte_carlo_results['monthly_p50']
+    monthly_p025 = monte_carlo_results['monthly_p025']
+    monthly_p16 = monte_carlo_results['monthly_p16']
+    monthly_p84 = monte_carlo_results['monthly_p84']
+    monthly_p975 = monte_carlo_results['monthly_p975']
+
+    # 日付配列を作成
+    dates = pd.date_range(
+        start=start_date,
         periods=len(monthly_p50),
-        freq='MS'  # Month Start
+        freq='MS'
     )
 
     # 万円単位に変換
@@ -697,7 +702,9 @@ def create_fire_timeline_chart(
     fire_achievement: Dict[str, Any],
     simulations: Dict[str, Any],
     config: Dict[str, Any],
-    monte_carlo_results: Dict[str, Any] = None
+    monte_carlo_results: Dict[str, Any] = None,
+    show_baseline_after_fire: bool = True,
+    current_date: Any = None
 ) -> go.Figure:
     """
     FIRE達成までの道のりと達成後の持続性を統合したチャートを作成
@@ -729,22 +736,32 @@ def create_fire_timeline_chart(
                     '<b>蓄積期</b><br><b>%{x|%Y年%m月}</b><br>株式: <b>¥%{y:,.0f}万</b><extra></extra>',
                 )
 
+            # FIRE達成後の処理
             df_post = df[df['date'] >= achievement_date].copy()
             if len(df_post) > 0:
-                customdata_post = df_post[get_customdata_column_names()].values
-                _add_stacked_asset_traces(
-                    fig, df_post, 'post',
-                    '現金（FIRE期）', '株式（FIRE期）',
-                    _COLOR_POST_FIRE_CASH, _COLOR_POST_FIRE_STOCK,
-                    customdata_post,
-                    '<b>FIRE期</b><br><b>%{x|%Y年%m月}</b><br>現金: <b>¥%{y:,.0f}万</b><extra></extra>',
-                    '<b>FIRE期</b><br><b>%{x|%Y年%m月}</b><br>株式: <b>¥%{y:,.0f}万</b><extra></extra>',
-                )
-
-                if monte_carlo_results and 'monthly_p50' in monte_carlo_results:
+                # モンテカルロ結果がある場合、かつオプションで非表示が指定されている場合はベースラインを描画しない
+                if monte_carlo_results and 'monthly_p50' in monte_carlo_results and not show_baseline_after_fire:
                     _add_monte_carlo_ranges(
-                        fig, df_post, monte_carlo_results, achievement_date
+                        fig, df_post, monte_carlo_results, achievement_date,
+                        current_date=current_date
                     )
+                else:
+                    # モンテカルロがあっても表示設定がTrueの場合や、モンテカルロがない場合はベースラインを描画
+                    customdata_post = df_post[get_customdata_column_names()].values
+                    _add_stacked_asset_traces(
+                        fig, df_post, 'post',
+                        '現金（FIRE期）', '株式（FIRE期）',
+                        _COLOR_POST_FIRE_CASH, _COLOR_POST_FIRE_STOCK,
+                        customdata_post,
+                        '<b>FIRE期</b><br><b>%{x|%Y年%m月}</b><br>現金: <b>¥%{y:,.0f}万</b><extra></extra>',
+                        '<b>FIRE期</b><br><b>%{x|%Y年%m月}</b><br>株式: <b>¥%{y:,.0f}万</b><extra></extra>',
+                    )
+                    
+                    if monte_carlo_results and 'monthly_p50' in monte_carlo_results:
+                        _add_monte_carlo_ranges(
+                            fig, df_post, monte_carlo_results, achievement_date,
+                            current_date=current_date
+                        )
         else:
             df_all = df.head(480).copy()
             customdata_all = df_all[get_customdata_column_names()].values

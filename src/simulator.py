@@ -6,7 +6,7 @@
 import pandas as pd
 import numpy as np
 from datetime import datetime
-from typing import Dict, Any, List, NamedTuple, Optional, Tuple
+from typing import Dict, Any, List, NamedTuple, Optional, Tuple, Callable
 from dataclasses import dataclass, field
 from dateutil.relativedelta import relativedelta
 from functools import lru_cache
@@ -1890,6 +1890,29 @@ def _sakura_income_for_month(date: datetime, sakura_income_base: float, config: 
         if leave_start <= date <= leave_end:
             return income_during_leave
 
+    # 時短勤務判定
+    reduced_list = config['simulation'].get('sakura_reduced_hours', [])
+    for rh in reduced_list:
+        child_name = rh['child']
+        start_months = rh['start_months_after']
+        end_months = rh['end_months_after']
+        ratio = rh['income_ratio']
+
+        # 対象の子供の生年月日を検索
+        birthdate_str = next(
+            (c['birthdate'] for c in children if c['name'] == child_name),
+            None,
+        )
+        if birthdate_str is None:
+            continue
+
+        birthdate = datetime.strptime(birthdate_str, '%Y/%m/%d')
+        rh_start = birthdate + relativedelta(months=start_months)
+        rh_end = birthdate + relativedelta(months=end_months)
+
+        if rh_start <= date <= rh_end:
+            return sakura_income_base * ratio
+
     return sakura_income_base
 
 
@@ -3633,7 +3656,7 @@ def _apply_baseline_floor(baseline_assets: list, initial_total: float, remaining
     initial_total * (remaining - month) / remaining を最低参照値として使用し、
     ドローダウン検知が途切れることを防ぐ。
     """
-    if not baseline_assets or initial_total <= 0 or remaining_months <= 0:
+    if len(baseline_assets) == 0 or initial_total <= 0 or remaining_months <= 0:
         return baseline_assets
     result = list(baseline_assets)
     for m in range(len(result)):
@@ -3655,14 +3678,11 @@ def run_monte_carlo_simulation(
     min_fire_month: int = None,
     extra_monthly_budget: float = 0,
     post_fire_income_override: float = None,
+    progress_callback: Optional[Callable[[float], None]] = None,
+    include_pre_fire: bool = False,
 ) -> Dict[str, Any]:
     """
-    モンテカルロシミュレーションを実行し、FIRE成功確率を計算
-
-    Option 1実装: FIRE達成まで固定リターン、FIRE後のみランダムリターン
-    - ベースシミュレーションでFIRE達成時点の状態を取得
-    - その時点からFIRE後の期間のみランダムリターンでシミュレート
-    - 「計画通りFIRE達成後の成功確率」を評価
+    モンテカルロシミュレーションを実行し、FIRE成功確率や資産推移を計算
 
     Args:
         current_cash: 現在の現金
@@ -3674,6 +3694,8 @@ def run_monte_carlo_simulation(
         monthly_expense: 月次支出
         override_start_ages: 年金開始年齢のオーバーライド
         min_fire_month: 指定するとこの月以降でFIREしたものとしてMCを実行
+        include_pre_fire: Trueの場合、蓄積期（シミュレーション開始時）からランダムリターンを適用する
+            （Falseの場合はFIRE後のみランダムリターン）
 
     Returns:
         {
@@ -3682,7 +3704,9 @@ def run_monte_carlo_simulation(
             'percentile_10': 下位10%の最終資産,
             'percentile_90': 上位10%の最終資産,
             'mean_final_assets': 最終資産の平均値,
-            'all_results': 全イテレーションの結果リスト
+            'all_results': 全イテレーションの結果リスト,
+            'monthly_p50': 中央値の推移配列,
+            ... (各パーセンタイルの推移配列)
         }
     """
     _set_reference_date()
@@ -3809,7 +3833,7 @@ def run_monte_carlo_simulation(
     print(f"  Baseline first 5 months: {[f'{x/10000:.1f}' for x in baseline_assets[:5]]}")
     print(f"  Baseline last 5 months: {[f'{x/10000:.1f}' for x in baseline_assets[-5:]]}")
 
-    # ステップ4: モンテカルロシミュレーション（FIRE後のみ）
+    # ステップ4: モンテカルロシミュレーション
     results = []
     all_timeseries = []  # 各イテレーションの月ごとデータ
     params = config['simulation'][scenario]
@@ -3817,65 +3841,128 @@ def run_monte_carlo_simulation(
     return_std_dev = mc_config['return_std_dev']
     mean_reversion_speed = mc_config['mean_reversion_speed']
 
-    # 補填統計を記録（各月で補填が発生した回数）
-    fill_count_by_month = np.zeros(remaining_months)
-    fill_amount_by_month = np.zeros(remaining_months)
+    # include_pre_fire が True の場合、シミュレーション開始時からの期間を対象とする
+    mc_total_months = remaining_months if not include_pre_fire else len(baseline_df)
+    mc_years_offset = years_offset if not include_pre_fire else 0.0
+    mc_initial_cash = fire_cash if not include_pre_fire else current_cash
+    mc_initial_stocks = fire_stocks if not include_pre_fire else current_stocks
+    mc_initial_nisa = fire_nisa if not include_pre_fire else baseline_df.iloc[0]['nisa_balance']
+    mc_initial_nisa_cost = fire_nisa_cost if not include_pre_fire else baseline_df.iloc[0].get('nisa_cost_basis', mc_initial_nisa)
+    mc_initial_stocks_cost = fire_stocks_cost if not include_pre_fire else baseline_df.iloc[0]['stocks_cost_basis']
+
+    # include_pre_fire 時の事前計算（全期間）
+    if include_pre_fire:
+        print(f"  Simulating {mc_total_months} months (full period) with random returns...")
+        # 蓄積期も含めたキャッシュフローの事前計算
+        # 現状の _precompute_monthly_cashflows は POST-FIRE 用なので、必要に応じて拡張または
+        # 労働収入期間を考慮した計算を行う。
+        # ここではシンプルに、全期間をカバーするベースラインの各月データ（収入・支出）を使用する。
+        # (ただし health_insurance は譲渡益依存のため別途計算が必要だが、蓄積期は社会保険料として固定されているため問題ない)
+        precomputed_expenses_full = baseline_df['expense'].values
+        precomputed_income_full = baseline_df['income'].values
+        precomputed_base_expenses_full = baseline_df['base_expense'].values
+        # ライフステージは年齢から計算
+        precomputed_life_stages_full = np.array([
+            _get_life_stage_for_year(start_age + m/12, config) for m in range(mc_total_months)
+        ])
+        precomputed_workation_costs_full = baseline_df['workation_cost'].values
+        
+        # 信頼区間計算用のベースラインも全期間分用意
+        mc_baseline_assets = baseline_df['assets'].values
+        mc_baseline_assets = _apply_baseline_floor(mc_baseline_assets, current_cash + current_stocks, mc_total_months)
+    else:
+        precomputed_expenses_full = precomputed_expenses
+        precomputed_income_full = precomputed_income
+        precomputed_base_expenses_full = precomputed_base_expenses
+        precomputed_life_stages_full = precomputed_life_stages
+        precomputed_workation_costs_full = precomputed_workation_costs
+        mc_baseline_assets = baseline_assets
 
     for i in range(iterations):
         # 進捗表示
         if (i + 1) % 100 == 0:
             print(f"  Progress: {i + 1}/{iterations} iterations completed")
+        
+        if progress_callback:
+            progress_callback((i + 1) / iterations)
 
-        # FIRE後の期間分のランダムリターンを生成
-        # 拡張モデル（GARCH + 非対称多期間平均回帰）が有効か確認
+        # ランダムリターンを生成
         enhanced_enabled = mc_config['enhanced_model']['enabled']
 
         if enhanced_enabled:
-            # 拡張モデル: GARCH(1,1) + 非対称多期間平均回帰
             random_returns = generate_returns_enhanced(
                 annual_return_mean=params['annual_return_rate'],
                 annual_return_std=return_std_dev,
-                total_months=remaining_months,
+                total_months=mc_total_months,
                 config=config,
                 random_seed=i
             )
         else:
-            # 標準モデル: AR(1)平均回帰（後方互換性）
             random_returns = generate_random_returns(
                 params['annual_return_rate'],
                 return_std_dev,
-                remaining_months,
+                mc_total_months,
                 mean_reversion_speed=mean_reversion_speed,
                 random_seed=i
             )
 
-        timeseries = _simulate_post_fire_with_random_returns(
-            current_cash=fire_cash,
-            current_stocks=fire_stocks,
-            years_offset=years_offset,
-            config=config,
-            scenario=scenario,
-            random_returns=random_returns,
-            nisa_balance=fire_nisa,
-            nisa_cost_basis=fire_nisa_cost,
-            stocks_cost_basis=fire_stocks_cost,
-            return_timeseries=True,
-            precomputed_expenses=precomputed_expenses,
-            precomputed_income=precomputed_income,
-            precomputed_base_expenses=precomputed_base_expenses,
-            precomputed_life_stages=precomputed_life_stages,
-            precomputed_workation_costs=precomputed_workation_costs,
-            baseline_assets=baseline_assets,
-            override_start_ages=override_start_ages,
-            extra_monthly_budget=extra_monthly_budget,
-        )
+        if not include_pre_fire:
+            # 従来：FIRE後のみMC
+            timeseries = _simulate_post_fire_with_random_returns(
+                current_cash=mc_initial_cash,
+                current_stocks=mc_initial_stocks,
+                years_offset=mc_years_offset,
+                config=config,
+                scenario=scenario,
+                random_returns=random_returns,
+                nisa_balance=mc_initial_nisa,
+                nisa_cost_basis=mc_initial_nisa_cost,
+                stocks_cost_basis=mc_initial_stocks_cost,
+                return_timeseries=True,
+                precomputed_expenses=precomputed_expenses_full,
+                precomputed_income=precomputed_income_full,
+                precomputed_base_expenses=precomputed_base_expenses_full,
+                precomputed_life_stages=precomputed_life_stages_full,
+                precomputed_workation_costs=precomputed_workation_costs_full,
+                baseline_assets=mc_baseline_assets,
+                override_start_ages=override_start_ages,
+                extra_monthly_budget=extra_monthly_budget,
+            )
+        else:
+            # 拡張：蓄積期も含めてMC（簡略化のため _simulate_post_fire_with_random_returns を流用）
+            # 注意: 蓄積期の本来のロジック（FIREチェックやNISA枠リセット）が含まれないが、
+            # 資産の振れ幅を見るという目的においては、ベースラインのキャッシュフロー（収入・支出）
+            # を固定してリターンのみ振ることで、十分な近似が得られる。
+            timeseries = _simulate_post_fire_with_random_returns(
+                current_cash=mc_initial_cash,
+                current_stocks=mc_initial_stocks,
+                years_offset=mc_years_offset,
+                config=config,
+                scenario=scenario,
+                random_returns=random_returns,
+                nisa_balance=mc_initial_nisa,
+                nisa_cost_basis=mc_initial_nisa_cost,
+                stocks_cost_basis=mc_initial_stocks_cost,
+                return_timeseries=True,
+                precomputed_expenses=precomputed_expenses_full,
+                precomputed_income=precomputed_income_full,
+                precomputed_base_expenses=precomputed_base_expenses_full,
+                precomputed_life_stages=precomputed_life_stages_full,
+                precomputed_workation_costs=precomputed_workation_costs_full,
+                baseline_assets=mc_baseline_assets,
+                override_start_ages=override_start_ages,
+                extra_monthly_budget=0, # 蓄積期は追加予算なし
+            )
 
+        # 初期資産を先頭に追加（プロット用）
+        initial_val = mc_initial_cash + mc_initial_stocks
+        timeseries = [initial_val] + timeseries
+        
         final_assets = timeseries[-1] if len(timeseries) > 0 else 0
         all_timeseries.append(timeseries)
 
-        # 成功判定: 資産がゼロ以上なら成功
+        # 成功判定
         success = final_assets > 0
-
         results.append({
             'final_assets': final_assets,
             'success': success
@@ -3887,21 +3974,19 @@ def run_monte_carlo_simulation(
     final_assets_list = [r['final_assets'] for r in results]
 
     # 月ごとの統計を計算（パーセンタイルを使用）
-    # 対数正規分布は非対称なので、median±σ ではなくパーセンタイルを使う
-    all_timeseries_array = np.array(all_timeseries)  # shape: (iterations, months)
-    monthly_p50 = np.percentile(all_timeseries_array, 50, axis=0)   # 中央値
-    monthly_p025 = np.percentile(all_timeseries_array, 2.5, axis=0) # 2σ下限（約95%信頼区間）
-    monthly_p16 = np.percentile(all_timeseries_array, 16, axis=0)   # 1σ下限（約68%信頼区間）
-    monthly_p84 = np.percentile(all_timeseries_array, 84, axis=0)   # 1σ上限
-    monthly_p975 = np.percentile(all_timeseries_array, 97.5, axis=0) # 2σ上限
+    all_timeseries_array = np.array(all_timeseries)  # shape: (iterations, months+1)
+    monthly_p50 = np.percentile(all_timeseries_array, 50, axis=0)
+    monthly_p025 = np.percentile(all_timeseries_array, 2.5, axis=0)
+    monthly_p16 = np.percentile(all_timeseries_array, 16, axis=0)
+    monthly_p84 = np.percentile(all_timeseries_array, 84, axis=0)
+    monthly_p975 = np.percentile(all_timeseries_array, 97.5, axis=0)
+    monthly_p5 = np.percentile(all_timeseries_array, 5, axis=0)
 
     # 追加リスクメトリクス
     safety_margin = config['post_fire_cash_strategy']['safety_margin']
     percentile_5 = float(np.percentile(final_assets_list, 5))
     bankruptcy_count = sum(1 for ts in all_timeseries if min(ts) <= safety_margin)
     bankruptcy_rate = bankruptcy_count / iterations
-
-    monthly_p5 = np.percentile(all_timeseries_array, 5, axis=0)
 
     depletion_month_p5 = None
     for m_idx, val in enumerate(monthly_p5):
@@ -3912,11 +3997,8 @@ def run_monte_carlo_simulation(
     print(f"[OK] Monte Carlo simulation complete!")
     print(f"  Success rate: {success_rate*100:.1f}%")
     print(f"  Median final assets: JPY{np.median(final_assets_list):,.0f}")
-    print(f"  P5 final assets: JPY{percentile_5:,.0f}")
-    print(f"  2.5th percentile: JPY{np.percentile(final_assets_list, 2.5):,.0f}")
-    print(f"  97.5th percentile: JPY{np.percentile(final_assets_list, 97.5):,.0f}")
-    print(f"  Mean final assets: JPY{np.mean(final_assets_list):,.0f}")
-    print(f"  Bankruptcy rate: {bankruptcy_rate*100:.1f}%")
+    if include_pre_fire:
+        print(f"  Full period mode: {mc_total_months} months starting from now.")
 
     return {
         'success_rate': success_rate,
@@ -3935,6 +4017,7 @@ def run_monte_carlo_simulation(
         'monthly_p16': monthly_p16,
         'monthly_p84': monthly_p84,
         'monthly_p975': monthly_p975,
+        'include_pre_fire': include_pre_fire,
     }
 
 
