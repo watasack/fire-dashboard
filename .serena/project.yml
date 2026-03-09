@@ -39,12 +39,12 @@ ignore_all_files_in_gitignore: true
 # Same syntax as gitignore, so you can use * and **.
 # Note: global ignored_paths from serena_config.yml are also applied additively.
 ignored_paths:
-  - data/**           # 実績CSVデータ（金融データ、コードではない）
-  - dashboard/**      # generate_dashboard.py の生成物
-  - dashboard_screenshots/**  # ビジュアルテスト用スクリーンショット（一時ファイル）
-  - .pytest_cache/**
-  - .plans/**         # 設計ドキュメント（検索ノイズになる場合）
-  - "**/__pycache__/**"
+- data/**
+- dashboard/**
+- dashboard_screenshots/**
+- .pytest_cache/**
+- .plans/**
+- "**/__pycache__/**"
 
 # whether the project is in read-only mode
 # If set to true, all editing tools will be disabled and attempts to use them will result in an error
@@ -127,7 +127,6 @@ initial_prompt: |
   - scripts/optimize_pension.py: 年金最適化→config.yaml更新
   重要な不変条件: nisa_balance <= stocks（常に成立必須）
   コード変更後は必ず python tests/test_simulation_convergence.py を実行すること。
-
 # override of the corresponding setting in serena_config.yml, see the documentation there.
 # If null or missing, the value from the global config is used.
 symbol_info_budget:
@@ -138,3 +137,7 @@ symbol_info_budget:
 # Note: the backend is fixed at startup. If a project with a different backend
 # is activated post-init, an error will be returned.
 language_backend:
+
+# list of regex patterns which, when matched, mark a memory entry as read‑only.
+# Extends the list from the global configuration, merging the two lists.
+read_only_memory_patterns: []
