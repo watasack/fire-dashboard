@@ -641,7 +641,7 @@ def _add_monte_carlo_ranges(
 
     # 2σ範囲の上限境界線
     fig.add_trace(go.Scatter(
-        x=dates_post,
+        x=dates,
         y=upper_2sigma,
         mode='lines',
         line=dict(width=0.8, color=_COLOR_MC_2SIGMA_LINE, dash='dot'),
@@ -651,7 +651,7 @@ def _add_monte_carlo_ranges(
 
     # 2σ範囲（控えめなグレーブルー）
     fig.add_trace(go.Scatter(
-        x=dates_post,
+        x=dates,
         y=lower_2sigma,
         mode='lines',
         fill='tonexty',
@@ -663,7 +663,7 @@ def _add_monte_carlo_ranges(
 
     # 1σ範囲の上限境界線
     fig.add_trace(go.Scatter(
-        x=dates_post,
+        x=dates,
         y=upper_1sigma,
         mode='lines',
         line=dict(width=1, color=_COLOR_MC_1SIGMA_LINE, dash='dash'),
@@ -673,7 +673,7 @@ def _add_monte_carlo_ranges(
 
     # 1σ範囲（やや濃いグレーブルー）
     fig.add_trace(go.Scatter(
-        x=dates_post,
+        x=dates,
         y=lower_1sigma,
         mode='lines',
         fill='tonexty',
@@ -685,7 +685,7 @@ def _add_monte_carlo_ranges(
 
     # 中央値線（ダークスレートの実線）
     fig.add_trace(go.Scatter(
-        x=dates_post,
+        x=dates,
         y=p50_man,
         mode='lines',
         line=dict(color=_COLOR_MC_MEDIAN, width=2, dash='solid'),

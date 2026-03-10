@@ -64,7 +64,8 @@ inject_custom_css()
 def check_password():
     """Returns `True` if the user had the correct password."""
     def password_entered():
-        if st.session_state["password"] == st.secrets.get("access_code", "FIRE2026-TEST"):
+        valid_codes = st.secrets.get("access_codes", [])
+        if st.session_state["password"] in valid_codes:
             st.session_state["password_correct"] = True
             del st.session_state["password"]
         else:
@@ -128,7 +129,7 @@ with tab_input:
     
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown("#### 👩 妻（桜）のライフステージ")
+        st.markdown("#### 👩 妻のライフステージ")
         w_leave_pre = st.slider("産前休暇 (月数)", 0, 6, 2)
         w_leave_post = st.slider("産後育休 (月数)", 0, 24, 12)
         w_leave_inc = st.slider("育休中の月収 (万円)", 0, 50, 15, help="育児休業給付金の実効受取額")
@@ -138,7 +139,7 @@ with tab_input:
         w_red_inc = st.slider("時短勤務中の月収 (万円)", 0, 60, 28)
 
     with col2:
-        st.markdown("#### 👨 夫（修平）の育休")
+        st.markdown("#### 👨 夫の育休")
         h_leave_post = st.slider("育休取得期間 (月数)", 0, 12, 1)
         h_leave_inc = st.slider("育休中の月収 (万円)", 0, 60, 30)
         st.caption("※給付金は「休業開始前賃金の67%（180日後50%）」の平均値を入力してください。")
@@ -157,6 +158,7 @@ st.markdown("---")
 # --- 計算実行 ---
 if st.button("🚀 プロフェッショナル・シミュレーションを開始", type="primary"):
     cfg = copy.deepcopy(base_cfg)
+    current_date = datetime.today()
     birth_str = child_birth.strftime('%Y/%m/%d')
     cash = assets * 0.3 * 10000
     stocks = assets * 0.7 * 10000
