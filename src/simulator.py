@@ -3842,7 +3842,10 @@ def run_monte_carlo_simulation(
     mean_reversion_speed = mc_config['mean_reversion_speed']
 
     # include_pre_fire が True の場合、シミュレーション開始時からの期間を対象とする
-    mc_total_months = remaining_months if not include_pre_fire else len(baseline_df)
+    # baseline_df が早期終了（破綻）した場合でも、全期間分の乱数が必要なため
+    # mc_total_months は (寿命 - 開始年齢) × 12 以上を保証する
+    full_simulation_months = int((life_expectancy - start_age) * 12)
+    mc_total_months = remaining_months if not include_pre_fire else max(len(baseline_df), full_simulation_months)
     mc_years_offset = years_offset if not include_pre_fire else 0.0
     mc_initial_cash = fire_cash if not include_pre_fire else current_cash
     mc_initial_stocks = fire_stocks if not include_pre_fire else current_stocks
@@ -3858,17 +3861,24 @@ def run_monte_carlo_simulation(
         # 労働収入期間を考慮した計算を行う。
         # ここではシンプルに、全期間をカバーするベースラインの各月データ（収入・支出）を使用する。
         # (ただし health_insurance は譲渡益依存のため別途計算が必要だが、蓄積期は社会保険料として固定されているため問題ない)
-        precomputed_expenses_full = baseline_df['expense'].values
-        precomputed_income_full = baseline_df['income'].values
-        precomputed_base_expenses_full = baseline_df['base_expense'].values
+        # baseline_df が早期終了している場合は最終値でパディングする
+        def _pad_array(arr, target_len):
+            if len(arr) >= target_len:
+                return arr[:target_len]
+            pad = np.full(target_len - len(arr), arr[-1] if len(arr) > 0 else 0.0)
+            return np.concatenate([arr, pad])
+
+        precomputed_expenses_full = _pad_array(baseline_df['expense'].values, mc_total_months)
+        precomputed_income_full = _pad_array(baseline_df['income'].values, mc_total_months)
+        precomputed_base_expenses_full = _pad_array(baseline_df['base_expense'].values, mc_total_months)
         # ライフステージは年齢から計算
         precomputed_life_stages_full = np.array([
             _get_life_stage_for_year(start_age + m/12, config) for m in range(mc_total_months)
         ])
-        precomputed_workation_costs_full = baseline_df['workation_cost'].values
-        
+        precomputed_workation_costs_full = _pad_array(baseline_df['workation_cost'].values, mc_total_months)
+
         # 信頼区間計算用のベースラインも全期間分用意
-        mc_baseline_assets = baseline_df['assets'].values
+        mc_baseline_assets = _pad_array(baseline_df['assets'].values, mc_total_months)
         mc_baseline_assets = _apply_baseline_floor(mc_baseline_assets, current_cash + current_stocks, mc_total_months)
     else:
         precomputed_expenses_full = precomputed_expenses
