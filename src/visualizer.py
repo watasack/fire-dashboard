@@ -847,10 +847,6 @@ def create_fire_timeline_chart(
                 '<b>株式</b><br>%{x|%Y年%m月}<br>¥%{y:,.0f}万円<extra></extra>',
             )
 
-    # FIRE時期の確率分布縦帯（ファンチャート）
-    if monte_carlo_results and monte_carlo_results.get('p10_fire_month') is not None:
-        _add_fire_timing_bands(fig, monte_carlo_results, current_date=current_date)
-
     # 基準線・マーカー・フェーズラベル
     ref_shapes, ref_annotations = _add_reference_markers(
         fig, current_status, fire_target, fire_achievement, simulations, config
@@ -914,6 +910,10 @@ def create_fire_timeline_chart(
     })
 
     fig.update_layout(layout)
+
+    # FIRE時期の確率分布縦帯（update_layout後に追加しないとref_shapesに上書きされる）
+    if monte_carlo_results and monte_carlo_results.get('p10_fire_month') is not None:
+        _add_fire_timing_bands(fig, monte_carlo_results, current_date=current_date)
 
     return fig
 
