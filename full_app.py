@@ -300,9 +300,17 @@ if st.button("シミュレーションを開始", type="primary"):
         with col_m3:
             st.metric("FIRE時資産（目標シナリオ）", fmt_oku(assets_at_fire))
         with col_m4:
-            p25_date = (datetime.today() + relativedelta(months=mc_res['p25_fire_month'])).strftime('%Y/%m')
-            p75_date = (datetime.today() + relativedelta(months=mc_res['p75_fire_month'])).strftime('%Y/%m')
-            st.metric("FIRE時期の幅（楽観〜保守）", f"{p25_date} 〜 {p75_date}")
+            p10_date = (datetime.today() + relativedelta(months=mc_res['p10_fire_month'])).strftime('%Y年%m月')
+            p90_date = (datetime.today() + relativedelta(months=mc_res['p90_fire_month'])).strftime('%Y年%m月')
+            st.metric(
+                "FIRE時期の見通し",
+                f"{p10_date} 〜 {p90_date}",
+                help=(
+                    "1,000通りのシミュレーションのうち、上下10%の外れ値を除いた"
+                    "80%のシナリオがFIRE達成する時期の幅です。\n\n"
+                    "グラフの黄色い帯と対応しています。帯が濃い中心部が最も可能性の高い時期です。"
+                ),
+            )
 
         # タブで詳細を整理
         tab_chart, tab_guide = st.tabs(["資産予測（確率分布）", "シミュレーション解釈ガイド"])

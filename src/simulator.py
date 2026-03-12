@@ -4277,11 +4277,15 @@ def run_mc_with_dynamic_fire(
     # FIRE 月の分布（達成パスのみ）
     valid_months = [m for m in fire_months_num if m <= total_months]
     if valid_months:
+        p10_fm = int(np.percentile(valid_months, 10))
         p25_fm = int(np.percentile(valid_months, 25))
+        p40_fm = int(np.percentile(valid_months, 40))
         p50_fm = int(np.percentile(valid_months, 50))
+        p60_fm = int(np.percentile(valid_months, 60))
         p75_fm = int(np.percentile(valid_months, 75))
+        p90_fm = int(np.percentile(valid_months, 90))
     else:
-        p25_fm = p50_fm = p75_fm = total_months + 1
+        p10_fm = p25_fm = p40_fm = p50_fm = p60_fm = p75_fm = p90_fm = total_months + 1
 
     # 月次資産パーセンタイル
     monthly_p50  = np.percentile(all_monthly_assets, 50,  axis=0)
@@ -4326,9 +4330,13 @@ def run_mc_with_dynamic_fire(
         'fire_date': fire_date,
         'fire_age_h': fire_age_h,
         'fire_age_w': fire_age_w,
+        'p10_fire_month': p10_fm,
         'p25_fire_month': p25_fm,
+        'p40_fire_month': p40_fm,
         'p50_fire_month': p50_fm,
+        'p60_fire_month': p60_fm,
         'p75_fire_month': p75_fm,
+        'p90_fire_month': p90_fm,
         'never_fire_rate': never_fire_rate,
         'max_achievable_rate': max_achievable_rate,
         'impossible': impossible,
