@@ -617,9 +617,6 @@ def _add_fire_timing_bands(
     p90 = monte_carlo_results.get('p90_fire_month')
     target_fm = monte_carlo_results.get('fire_month')
 
-    target_rate = monte_carlo_results.get('target_success_rate', 0.7)
-    target_pct_label = f"{int(round(target_rate * 100))}%のFIRE"
-
     if p10 is None or p90 is None or target_fm is None:
         return
 
@@ -643,20 +640,13 @@ def _add_fire_timing_bands(
         annotation=None,
     )
 
-    # 目標ライン（縦線）
-    fig.add_vline(
-        x=_month_to_date(target_fm),
-        line_color='rgba(180, 100, 0, 0.90)',
-        line_width=2,
-        line_dash='solid',
-    )
-
-    # 上部アノテーション（ユーザー指定の確率を表示）
+    # 帯の上部ラベル（内帯の中央に表示）
+    mid_fm = (p40 + p60) // 2
     fig.add_annotation(
-        x=_month_to_date(target_fm),
+        x=_month_to_date(mid_fm),
         y=1.0,
         yref='paper',
-        text=target_pct_label,
+        text='FIRE時期の見通し',
         showarrow=False,
         xanchor='center',
         yanchor='bottom',
