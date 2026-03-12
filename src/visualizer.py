@@ -617,6 +617,9 @@ def _add_fire_timing_bands(
     p90 = monte_carlo_results.get('p90_fire_month')
     target_fm = monte_carlo_results.get('fire_month')
 
+    target_rate = monte_carlo_results.get('target_success_rate', 0.7)
+    target_pct_label = f"{int(round(target_rate * 100))}%のFIRE"
+
     if p10 is None or p90 is None or target_fm is None:
         return
 
@@ -624,7 +627,7 @@ def _add_fire_timing_bands(
     fig.add_vrect(
         x0=_month_to_date(p10),
         x1=_month_to_date(p90),
-        fillcolor='rgba(251, 191, 36, 0.10)',
+        fillcolor='rgba(251, 191, 36, 0.22)',
         line_width=0,
         layer='below',
         annotation=None,
@@ -634,7 +637,7 @@ def _add_fire_timing_bands(
     fig.add_vrect(
         x0=_month_to_date(p40),
         x1=_month_to_date(p60),
-        fillcolor='rgba(251, 191, 36, 0.25)',
+        fillcolor='rgba(251, 191, 36, 0.45)',
         line_width=0,
         layer='below',
         annotation=None,
@@ -643,22 +646,22 @@ def _add_fire_timing_bands(
     # 目標ライン（縦線）
     fig.add_vline(
         x=_month_to_date(target_fm),
-        line_color='rgba(245, 158, 11, 0.85)',
+        line_color='rgba(180, 100, 0, 0.90)',
         line_width=2,
         line_dash='solid',
     )
 
-    # 上部アノテーション（帯の説明）
+    # 上部アノテーション（ユーザー指定の確率を表示）
     fig.add_annotation(
         x=_month_to_date(target_fm),
         y=1.0,
         yref='paper',
-        text='目標FIRE',
+        text=target_pct_label,
         showarrow=False,
         xanchor='center',
         yanchor='bottom',
-        font=dict(size=10, color='rgba(180, 120, 0, 1)'),
-        bgcolor='rgba(255,255,255,0.7)',
+        font=dict(size=10, color='rgba(140, 80, 0, 1)'),
+        bgcolor='rgba(255,255,255,0.8)',
         borderpad=2,
     )
 
