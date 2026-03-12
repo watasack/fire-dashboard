@@ -426,7 +426,7 @@ fire:
     enabled: true
     surplus_spending_rate: 0.40
     max_cut_ratio: 0.7
-    max_boost_ratio: 5.0
+    max_boost_ratio: 0.0
 
   additional_child_expense_by_stage:
     young_child: 500000

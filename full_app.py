@@ -232,7 +232,7 @@ if st.button("シミュレーションを開始", type="primary"):
         mc_res = run_monte_carlo_simulation(
             cash, stocks, cfg, "standard", 1000, monthly_inc, monthly_exp,
             progress_callback=update_progress,
-            include_pre_fire=True
+            include_pre_fire=False
         ) if fire_row is not None else None
 
         # 4. 比較用MC（育休なし、200sims）
@@ -240,7 +240,7 @@ if st.button("シミュレーションを開始", type="primary"):
         status_text.text("比較シミュレーション中...")
         mc_res_no = run_monte_carlo_simulation(
             cash, stocks, cfg_no, "standard", 200, monthly_inc, monthly_exp,
-            include_pre_fire=True
+            include_pre_fire=False
         ) if fire_row_no is not None else None
 
     progress_bar.empty()
