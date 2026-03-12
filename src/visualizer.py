@@ -237,33 +237,6 @@ def _add_reference_markers(
             'xanchor': 'center', 'yanchor': 'top',
         })
 
-    # 安全マージン（ダッシュ線 + ラベル）
-    if len(simulations) > 0:
-        first_scenario = list(simulations.values())[0]
-        x_start = first_scenario['date'].iloc[0]
-        x_end = first_scenario['date'].iloc[-1]
-
-        safety_margin_yen = config['post_fire_cash_strategy']['safety_margin']
-        safety_margin_man = safety_margin_yen / 10000
-
-        fig.add_trace(go.Scatter(
-            x=[x_start, x_end],
-            y=[safety_margin_man, safety_margin_man],
-            name='安全マージン',
-            mode='lines',
-            line={'color': 'rgba(220, 38, 38, 0.4)', 'width': 1.5, 'dash': 'dot'},
-            hovertemplate=f'<b>安全マージン</b><br>¥{safety_margin_man:.0f}万<extra></extra>',
-            showlegend=True
-        ))
-        annotations.append({
-            'x': x_end, 'y': safety_margin_man,
-            'xref': 'x', 'yref': 'y',
-            'text': f'¥{safety_margin_man:.0f}万',
-            'showarrow': False,
-            'font': {'size': 9, 'color': '#dc2626'},
-            'xanchor': 'right', 'yanchor': 'bottom',
-        })
-
     return shapes, annotations
 
 
