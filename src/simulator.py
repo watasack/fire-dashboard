@@ -4031,6 +4031,326 @@ def run_monte_carlo_simulation(
     }
 
 
+def _precompute_fire_thresholds_fast(
+    total_months: int,
+    post_fire_net_cashflows: np.ndarray,
+    monthly_return: float,
+    safety_margin: float,
+) -> np.ndarray:
+    """各月末でFIRE可能な最低資産額を後ろから逆算（O(N)の高速事前計算）
+
+    backward induction:
+        threshold[T-1] = safety_margin
+        threshold[m]   = max(0, (threshold[m+1] - net[m+1]) / (1 + r))
+
+    threshold[m] = 月末時点の総資産がこの値以上なら、
+                   post-FIRE cashflow + 固定リターンで age 90 まで safety_margin を維持できる。
+    """
+    threshold = np.zeros(total_months)
+    threshold[total_months - 1] = safety_margin
+    for m in range(total_months - 2, -1, -1):
+        net_next = float(post_fire_net_cashflows[m + 1]) if m + 1 < len(post_fire_net_cashflows) else 0.0
+        threshold[m] = max(0.0, (threshold[m + 1] - net_next) / (1.0 + monthly_return))
+    return threshold
+
+
+def run_mc_with_dynamic_fire(
+    current_cash: float,
+    current_stocks: float,
+    config: Dict[str, Any],
+    target_success_rate: float,
+    monthly_income: float = 0,
+    monthly_expense: float = 0,
+    scenario: str = 'standard',
+    iterations: int = 1000,
+    progress_callback: Optional[Callable[[float], None]] = None,
+) -> Dict[str, Any]:
+    """目標成功確率を達成するFIRE時期を確率的に導出する
+
+    各MCパスで毎月FIREしきい値チェックを行い、パス固有のFIRE月を動的に決定する。
+    target_success_rate パーセンタイルのFIRE月が目標FIRE時期となる。
+
+    Args:
+        current_cash: 現在の現金残高
+        current_stocks: 現在の株式残高
+        config: 設定辞書
+        target_success_rate: 目標成功確率（例: 0.70 = 70%）
+        monthly_income: 月次労働収入（育休・時短前）
+        monthly_expense: 月次支出
+        scenario: シナリオ名
+        iterations: MCパス数
+        progress_callback: 進捗コールバック
+
+    Returns:
+        {
+          'fire_month': int,          # 目標パーセンタイルのFIRE月（Noneなら不達成）
+          'fire_date': date,
+          'fire_age_h': float,
+          'fire_age_w': float,
+          'p25_fire_month' / 'p50_fire_month' / 'p75_fire_month': int,
+          'never_fire_rate': float,   # 全期間FIRE不達成パスの割合
+          'max_achievable_rate': float,
+          'impossible': bool,
+          'monthly_p50' / 'monthly_p16' / 'monthly_p84' / 'monthly_p025' / 'monthly_p975': np.ndarray,
+          'include_pre_fire': True,   # グラフ描画で現在日から開始
+          'all_results': list,        # 後方互換（90歳資産分布用）
+          'median_final_assets': float,
+          'percentile_5': float,
+          'success_rate': float,      # = target_success_rate（後方互換）
+          'base_df': pd.DataFrame,    # チャート用決定論的ライン
+        }
+    """
+    _set_reference_date()
+
+    life_expectancy = config['simulation']['life_expectancy']
+    start_age = config['simulation']['start_age']
+    total_months = int((life_expectancy - start_age) * 12)
+
+    params = config['simulation'][scenario]
+    mc_config = config['simulation']['monte_carlo']
+    annual_return = params['annual_return_rate']
+    monthly_return = annual_return / 12.0
+    safety_margin = config['post_fire_cash_strategy']['safety_margin']
+    return_std_dev = mc_config['return_std_dev']
+    enhanced_enabled = mc_config['enhanced_model']['enabled']
+
+    # FIREしきい値計算用: 分散ドラグを考慮したジオメトリック平均月次リターン
+    # 算術平均 μ に対して、ジオメトリック平均 ≈ μ - σ²/2 （対数正規分布の性質）
+    monthly_sigma = return_std_dev / (12 ** 0.5)
+    geometric_monthly_return = float(np.log(1.0 + monthly_return) - 0.5 * monthly_sigma ** 2)
+    geometric_monthly_return = float(np.exp(geometric_monthly_return) - 1.0)
+    print(f"  Threshold return: arithmetic={monthly_return*100:.4f}%/mo, geometric={geometric_monthly_return*100:.4f}%/mo")
+
+    # ── Step 1: 決定論的シミュレーション（育休・時短を含む全期間キャッシュフロー） ──
+    print("run_mc_with_dynamic_fire: Step 1 - base simulation (disable_fire_check=True)...")
+    base_df = simulate_future_assets(
+        current_cash=current_cash,
+        current_stocks=current_stocks,
+        config=config,
+        scenario=scenario,
+        monthly_income=monthly_income,
+        monthly_expense=monthly_expense,
+        disable_fire_check=True,
+    )
+
+    # base_df の長さを total_months に合わせてパディング
+    def _pad(arr, n, fill_val=None):
+        if len(arr) >= n:
+            return arr[:n]
+        pad = np.full(n - len(arr), arr[-1] if len(arr) > 0 and fill_val is None else (fill_val or 0.0))
+        return np.concatenate([arr, pad])
+
+    work_income    = _pad(base_df['income'].values.astype(float), total_months)
+    pre_fire_exp   = _pad(base_df['expense'].values.astype(float), total_months)
+
+    # ── Step 2: FIRE後のキャッシュフロー（年金収入）を事前計算 ──
+    # override_start_ages を config から取得（run_monte_carlo_simulation と同じロジック）
+    override_start_ages = _extract_override_start_ages(config)
+    if override_start_ages:
+        print(f"  Pension start ages (from config): {override_start_ages}")
+    else:
+        # config に override_start_age がない場合: FIRE時点の資産比率から決定
+        total_now = current_cash + current_stocks
+        optimal_age = _determine_optimal_pension_start_age(
+            current_assets=total_now,
+            config=config,
+        )
+        pension_people = config['pension']['people']
+        override_start_ages = {p['name']: optimal_age for p in pension_people}
+        print(f"  Pension start age (derived): {optimal_age}")
+
+    print("run_mc_with_dynamic_fire: Step 2 - post-fire cashflows...")
+    post_fire_exp_arr, post_fire_inc_arr, *_ = _precompute_monthly_cashflows(
+        years_offset=0.0,
+        total_months=total_months,
+        config=config,
+        override_start_ages=override_start_ages,
+    )
+
+    # ── Step 3: ランダムリターン全パスを事前生成 ──
+    # パス固有の後向き帰納法（backward induction）で正確なFIREしきい値を求めるため、
+    # 全パスのリターン系列を先に生成してメモリに保持する。
+    # メモリ使用量: iterations × total_months × 8 bytes ≈ 1000 × 660 × 8 = ~5 MB
+    print(f"run_mc_with_dynamic_fire: Step 3 - pre-generating {iterations} return paths...")
+    post_fire_net = post_fire_inc_arr - post_fire_exp_arr
+    all_returns = np.zeros((iterations, total_months), dtype=np.float32)
+    for i in range(iterations):
+        if enhanced_enabled:
+            all_returns[i] = generate_returns_enhanced(
+                annual_return_mean=annual_return,
+                annual_return_std=return_std_dev,
+                total_months=total_months,
+                config=config,
+                random_seed=i,
+            )
+        else:
+            all_returns[i] = generate_random_returns(
+                annual_return, return_std_dev, total_months,
+                mean_reversion_speed=mc_config['mean_reversion_speed'],
+                random_seed=i,
+            )
+
+    # ── Step 4: MCループ（パス固有の後向き帰納法でFIREしきい値を決定） ──
+    # 各パスの実際のリターン系列を使って後向きにしきい値を計算することで、
+    # 「このパスでこの月にFIREすれば age 90 まで資産が持つ」最低資産額を正確に求める。
+    # これにより、しきい値を超えたパスは実際に生き残る（算術平均・ジオメトリック平均の
+    # 違いによる誤差なし）。target_success_rate は生き残りの割合として直接解釈できる。
+    print(f"run_mc_with_dynamic_fire: Step 4 - MC loop ({iterations} iterations, path-specific thresholds)...")
+    fire_months_list: List[Optional[int]] = []
+    final_assets_list: List[float] = []
+    all_monthly_assets = np.zeros((iterations, total_months))
+
+    for i in range(iterations):
+        if progress_callback:
+            progress_callback(i / iterations)
+
+        r = all_returns[i]
+
+        # 4a. パス固有の後向き帰納法（O(T) per path）
+        # threshold[m] = 月m末の総資産がこの値以上なら、このパスの実際のリターンで
+        #                age 90 まで safety_margin を維持できる。
+        # 全資産が株式として運用されると仮定した近似（現金バッファは誤差 <1%）。
+        path_thresholds = np.empty(total_months)
+        path_thresholds[total_months - 1] = safety_margin
+        for m in range(total_months - 2, -1, -1):
+            net_next = float(post_fire_net[m + 1]) if m + 1 < len(post_fire_net) else 0.0
+            denom = 1.0 + float(r[m + 1])
+            if denom <= 0.0:
+                path_thresholds[m] = path_thresholds[m + 1]
+            else:
+                path_thresholds[m] = max(0.0, (path_thresholds[m + 1] - net_next) / denom)
+
+        # 4b. 前向きシミュレーション
+        cash = float(current_cash)
+        stocks = float(current_stocks)
+        fire_month: Optional[int] = None
+
+        for m in range(total_months):
+            # 1. 株式にランダムリターンを適用
+            stocks = stocks * (1.0 + float(r[m]))
+
+            # 2. キャッシュフロー（pre/post-FIRE で収入を切替）
+            if fire_month is None:
+                net = work_income[m] - pre_fire_exp[m]
+            else:
+                net = float(post_fire_net[m])
+
+            if net >= 0.0:
+                stocks += net          # 余剰は自動投資
+            else:
+                deficit = -net
+                if cash >= deficit:
+                    cash -= deficit
+                else:
+                    remaining = deficit - cash
+                    cash = 0.0
+                    stocks = max(0.0, stocks - remaining)
+
+            # 3. 月末資産を記録
+            total_assets = cash + stocks
+            all_monthly_assets[i, m] = total_assets
+
+            # 4. FIREしきい値チェック（pre-FIREのみ）
+            if fire_month is None and total_assets >= path_thresholds[m]:
+                fire_month = m
+
+        fire_months_list.append(fire_month)
+        final_assets_list.append(float(cash + stocks))
+
+    if progress_callback:
+        progress_callback(1.0)
+
+    # ── Step 5: 結果集計 ──
+    never_fire_count = sum(1 for m in fire_months_list if m is None)
+    never_fire_rate = never_fire_count / iterations
+    max_achievable_rate = 1.0 - never_fire_rate
+
+    # fire_months を昇順ソート（None は total_months + 1 として扱う）
+    fire_months_num = [m if m is not None else total_months + 1 for m in fire_months_list]
+    fire_months_sorted = sorted(fire_months_num)
+
+    # 目標成功確率に対応する FIRE 月
+    target_idx = min(int(iterations * target_success_rate), iterations - 1)
+    target_fire_month = fire_months_sorted[target_idx]
+    impossible = target_fire_month > total_months
+
+    # FIRE 月の分布（達成パスのみ）
+    valid_months = [m for m in fire_months_num if m <= total_months]
+    if valid_months:
+        p25_fm = int(np.percentile(valid_months, 25))
+        p50_fm = int(np.percentile(valid_months, 50))
+        p75_fm = int(np.percentile(valid_months, 75))
+    else:
+        p25_fm = p50_fm = p75_fm = total_months + 1
+
+    # 月次資産パーセンタイル
+    monthly_p50  = np.percentile(all_monthly_assets, 50,  axis=0)
+    monthly_p16  = np.percentile(all_monthly_assets, 16,  axis=0)
+    monthly_p84  = np.percentile(all_monthly_assets, 84,  axis=0)
+    monthly_p025 = np.percentile(all_monthly_assets, 2.5, axis=0)
+    monthly_p975 = np.percentile(all_monthly_assets, 97.5, axis=0)
+
+    # 日付・年齢
+    ref_date = _get_reference_date()
+    if not impossible:
+        fire_date = ref_date + relativedelta(months=int(target_fire_month))
+        fire_age_h = start_age + target_fire_month / 12.0
+    else:
+        fire_date = None
+        fire_age_h = None
+
+    # 妻の年齢を birth date から逆算
+    fire_age_w = None
+    if not impossible and len(config.get('pension', {}).get('people', [])) >= 2:
+        try:
+            from datetime import datetime as _dt
+            bw = config['pension']['people'][1].get('birthdate', '')
+            bh = config['pension']['people'][0].get('birthdate', '')
+            bw_year = int(bw.split('/')[0])
+            bh_year = int(bh.split('/')[0])
+            age_w_now = ref_date.year - bw_year
+            age_h_now = ref_date.year - bh_year
+            fire_age_w = age_w_now + target_fire_month / 12.0
+        except Exception:
+            fire_age_w = fire_age_h  # fallback
+
+    print(f"run_mc_with_dynamic_fire: target={target_success_rate*100:.0f}% "
+          f"→ fire_month={target_fire_month} "
+          f"({'impossible' if impossible else fire_date.strftime('%Y-%m')}), "
+          f"never_fire={never_fire_rate*100:.1f}%")
+
+    return {
+        'target_success_rate': target_success_rate,
+        'success_rate': target_success_rate,       # 後方互換
+        'fire_month': target_fire_month if not impossible else None,
+        'fire_date': fire_date,
+        'fire_age_h': fire_age_h,
+        'fire_age_w': fire_age_w,
+        'p25_fire_month': p25_fm,
+        'p50_fire_month': p50_fm,
+        'p75_fire_month': p75_fm,
+        'never_fire_rate': never_fire_rate,
+        'max_achievable_rate': max_achievable_rate,
+        'impossible': impossible,
+        # グラフ用（_add_monte_carlo_ranges が期待するフィールド）
+        'monthly_p50':  monthly_p50,
+        'monthly_p16':  monthly_p16,
+        'monthly_p84':  monthly_p84,
+        'monthly_p025': monthly_p025,
+        'monthly_p975': monthly_p975,
+        'include_pre_fire': True,
+        # 後方互換（90歳資産分布グラフ等）
+        'all_results': [{'final_assets': a} for a in final_assets_list],
+        'median_final_assets': float(np.median(final_assets_list)),
+        'percentile_5':  float(np.percentile(final_assets_list, 5)),
+        'percentile_10': float(np.percentile(final_assets_list, 10)),
+        'percentile_90': float(np.percentile(final_assets_list, 90)),
+        # チャート用決定論的ライン（force_fire_month で再実行するための基礎情報）
+        'base_df': base_df,
+        'target_fire_month_int': target_fire_month if not impossible else None,
+    }
+
+
 def _sell_stocks_vectorized(
     shortage: np.ndarray,
     stocks: np.ndarray,

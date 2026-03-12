@@ -7,7 +7,7 @@ import yaml
 import copy
 import plotly.express as px
 import plotly.graph_objects as go
-from src.simulator import simulate_future_assets, run_monte_carlo_simulation
+from src.simulator import simulate_future_assets, run_monte_carlo_simulation, run_mc_with_dynamic_fire
 from src.visualizer import create_fire_timeline_chart
 from src.data_schema import get_column_names
 
@@ -114,6 +114,19 @@ with st.sidebar:
     assets = st.number_input("現在の金融資産 (万円)", value=2000, min_value=0, step=100, help="現金・株式・投資信託の合計。うち30%を現金、70%を株式として計算します。NISAの既存残高は0円として扱います。")
 
     st.divider()
+    st.subheader("FIRE目標設定")
+    target_rate = st.select_slider(
+        "FIRE維持の目標確率",
+        options=[50, 60, 70, 80, 90],
+        value=70,
+        format_func=lambda x: f"{x}%",
+        help=(
+            "市場変動があっても、この割合のシナリオでFIREが実現できる時期を計算します。\n"
+            "高くするほど保守的（遅めのFIRE）、低くするほど楽観的（早めのFIRE）になります。"
+        ),
+    )
+
+    st.divider()
     st.caption("詳細な計算設定は note のマニュアルを参照してください。")
 
 # --- メインコンテンツ: 育休・時短の設定 ---
@@ -215,135 +228,135 @@ if st.button("シミュレーションを開始", type="primary"):
         status_text.text(f"1,000通りの未来をシミュレーション中... {int(progress * 100)}%")
 
     with st.spinner("シミュレーションを実行中..."):
-        # 1. 現行プランのシミュレーション
-        df = simulate_future_assets(cash, stocks, None, monthly_inc, monthly_exp, cfg, "standard")
+        # 目標成功確率によるFIRE時期の確率的導出
+        mc_res = run_mc_with_dynamic_fire(
+            cash, stocks, cfg,
+            target_success_rate=target_rate / 100.0,
+            monthly_income=monthly_inc,
+            monthly_expense=monthly_exp,
+            scenario="standard",
+            iterations=1000,
+            progress_callback=update_progress,
+        )
+
+        # チャート用決定論的ライン（目標FIRE月で force_fire_month）
+        target_fm = mc_res.get('target_fire_month_int')
+        if target_fm is not None:
+            df = simulate_future_assets(
+                cash, stocks, None, monthly_inc, monthly_exp, cfg, "standard",
+                force_fire_month=target_fm,
+            )
+        else:
+            df = mc_res['base_df']
         df['year_offset'] = df['month'] / 12
         df['sakura_age'] = age_w + df['year_offset']
-        
-        # 2. 比較用（育休なし）
-        cfg_no = copy.deepcopy(cfg)
-        cfg_no['simulation'].update({'maternity_leave': [], 'sakura_reduced_hours': [], 'shuhei_parental_leave': []})
-        df_no = simulate_future_assets(cash, stocks, None, monthly_inc, monthly_exp, cfg_no, "standard")
-        df_no['year_offset'] = df_no['month'] / 12
-        df_no['sakura_age'] = age_w + df_no['year_offset']
-        
-        # 3. モンテカルロシミュレーション
-        fire_row = df[df['fire_achieved']].iloc[0] if df['fire_achieved'].any() else None
-        mc_res = run_monte_carlo_simulation(
-            cash, stocks, cfg, "standard", 1000, monthly_inc, monthly_exp,
-            progress_callback=update_progress,
-            include_pre_fire=False
-        ) if fire_row is not None else None
-
-        # 4. 比較用MC（育休なし、200sims）
-        fire_row_no = df_no[df_no['fire_achieved']].iloc[0] if df_no['fire_achieved'].any() else None
-        status_text.text("比較シミュレーション中...")
-        mc_res_no = run_monte_carlo_simulation(
-            cash, stocks, cfg_no, "standard", 200, monthly_inc, monthly_exp,
-            include_pre_fire=False
-        ) if fire_row_no is not None else None
 
     progress_bar.empty()
     status_text.empty()
 
     # --- 結果表示 ---
     st.markdown("## シミュレーション解析結果")
-    
-    if fire_row is not None:
-        fire_age_w = int(fire_row['sakura_age'])
-        fire_age_h = int(age_h + fire_row['year_offset'])
-        years_to_fire = fire_row['year_offset']
-        assets_at_fire = fire_row['assets']
+
+    if mc_res.get('impossible'):
+        max_rate = int(mc_res['max_achievable_rate'] * 100)
+        st.error(
+            f"⚠️ 目標{target_rate}%は達成できません。\n\n"
+            f"現在のパラメータで到達可能な最高成功確率は **{max_rate}%** です。\n"
+            f"目標を{max_rate}%以下に変更するか、月間支出を減らすか、現在の金融資産を増やしてください。"
+        )
+    else:
+        fire_month_val = mc_res['fire_month']          # 目標パーセンタイルのFIRE月
+        fire_date_val  = mc_res['fire_date']
+        fire_age_h_val = mc_res['fire_age_h']
+        fire_age_w_val = mc_res['fire_age_w']
+
+        # FIRE時資産（base_df の target_fire_month 行から取得）
+        base_df_for_assets = mc_res['base_df']
+        if fire_month_val < len(base_df_for_assets):
+            assets_at_fire = base_df_for_assets.iloc[fire_month_val]['assets']
+        else:
+            assets_at_fire = base_df_for_assets.iloc[-1]['assets']
+
+        years_to_fire = fire_month_val / 12.0
 
         # メトリクス表示
         col_m1, col_m2, col_m3, col_m4 = st.columns(4)
         with col_m1:
-            fire_age_label = f"夫{fire_age_h}歳 / 妻{fire_age_w}歳" if age_h != age_w else f"{fire_age_h}歳"
-            st.metric("FIRE到達年齢", fire_age_label)
+            fire_age_label = (
+                f"夫{fire_age_h_val:.0f}歳 / 妻{fire_age_w_val:.0f}歳"
+                if fire_age_w_val and age_h != age_w else f"{fire_age_h_val:.0f}歳"
+            )
+            st.metric(f"目標{target_rate}%のFIRE年齢", fire_age_label)
         with col_m2:
             st.metric("必要年数", f"{years_to_fire:.1f}年")
         with col_m3:
-            st.metric("FIRE時資産", f"{assets_at_fire/10000:.0f}万円")
+            st.metric("FIRE時資産（目標シナリオ）", f"{assets_at_fire/10000:.0f}万円")
         with col_m4:
-            if mc_res:
-                st.metric("成功確率 (MC)", f"{mc_res['success_rate']*100:.1f}%")
+            p25_date = (datetime.today() + relativedelta(months=mc_res['p25_fire_month'])).strftime('%Y年%m月')
+            p75_date = (datetime.today() + relativedelta(months=mc_res['p75_fire_month'])).strftime('%Y年%m月')
+            st.metric("分布範囲 (P25〜P75)", f"{p25_date}〜")
+            st.caption(f"〜{p75_date}")
 
         # タブで詳細を整理
-        tab_chart, tab_compare, tab_guide = st.tabs(["資産予測（確率分布）", "育休の経済的影響", "シミュレーション解釈ガイド"])
+        tab_chart, tab_guide = st.tabs(["資産予測（確率分布）", "シミュレーション解釈ガイド"])
 
         with tab_chart:
             st.markdown("#### 1,000通りの未来シミュレーション")
-            st.caption("蓄積期は確実な貯蓄計画を、FIRE後は市場のボラティリティ（変動）を考慮した確率的な推移を表示しています。")
-            
-            current_status = {
-                'net_assets': assets * 10000,
-                'cash_deposits': cash,
-                'investment_trusts': stocks
-            }
-            fire_achievement = {
-                'achieved': False,
-                'achievement_date': fire_row['date'],
-                'months_to_fire': int(fire_row['month'])
-            }
-            fire_target = {
-                'recommended_target': assets_at_fire,
-                'annual_expense': expense * 12 * 10000
-            }
-            simulations = {'standard': df}
-            
-            fig_timeline = create_fire_timeline_chart(
-                current_status, fire_target, fire_achievement, simulations, cfg,
-                monte_carlo_results=mc_res,
-                show_baseline_after_fire=False,
-                current_date=current_date
+            st.caption(
+                "全シナリオで現在から90歳まで通しでシミュレーションし、各パスで資産がFIREしきい値を超えた月を記録しています。"
+                f" 目標{target_rate}%ラインのFIRE時期: {fire_date_val.strftime('%Y年%m月') if fire_date_val else '—'}"
             )
-            fig_timeline.update_layout(height=500)
-            st.plotly_chart(fig_timeline, use_container_width=True)
-            
-            if mc_res:
-                col_mc1, col_mc2 = st.columns([2, 1])
-                with col_mc1:
-                    st.markdown("##### 90歳時点の資産分布")
-                    final_assets_list = [r['final_assets'] for r in mc_res['all_results']]
-                    dist_fig = px.histogram(x=np.array(final_assets_list)/10000, nbins=50, color_discrete_sequence=['#10b981'])
-                    dist_fig.add_vline(x=0, line_color="#ef4444", line_width=3)
-                    dist_fig.update_layout(xaxis_title="最終資産 (万円)", yaxis_title="頻度", margin=dict(l=20, r=20, t=10, b=20), height=300)
-                    st.plotly_chart(dist_fig, use_container_width=True)
-                with col_mc2:
-                    st.markdown("##### リスク解析結果")
-                    st.write(f"**FIRE成功確率:** {mc_res['success_rate']*100:.1f}%")
-                    st.write(f"**最悪ケース(下位5%):**  \n{mc_res['percentile_5']/10000:,.0f} 万円")
-                    st.write(f"**標準的なケース(中央値):**  \n{mc_res['median_final_assets']/10000:,.0f} 万円")
-                    st.info("中央値は『平均的な市場環境』を維持できた場合の予測です。最悪ケースでも資産が残るプランが理想的です。")
 
-        with tab_compare:
-            st.subheader("育休・時短の経済的インパクト")
-            if fire_row_no is not None:
-                age_no_w = int(fire_row_no['sakura_age'])
-                age_no_h = int(age_h + fire_row_no['year_offset'])
-                diff_years = fire_row['year_offset'] - fire_row_no['year_offset']
-                if diff_years > 0.1:
-                    st.info(f"育休・時短プランにより、FIRE到達はフル稼働時より **{diff_years:.1f}年遅くなります**。")
-                elif diff_years < -0.1:
-                    st.info(f"育休・時短プランにより、FIRE到達はフル稼働時より **{abs(diff_years):.1f}年早くなります**。")
-                else:
-                    st.info("育休・時短プランがFIRE到達年齢に影響しませんでした。")
-                no_label = f"夫{age_no_h}歳/妻{age_no_w}歳" if age_h != age_w else f"{age_no_h}歳"
-                with_label = f"夫{fire_age_h}歳/妻{fire_age_w}歳" if age_h != age_w else f"{fire_age_h}歳"
-                comp_data = {
-                    "項目": ["到達年齢", "FIRE時資産", "90歳時点(MC中央値)"],
-                    "フル稼働（育休なし）": [no_label, f"{fire_row_no['assets']/10000:.0f}万", f"{mc_res_no['median_final_assets']/10000:.0f}万" if mc_res_no else "-"],
-                    "現行プラン（育休あり）": [with_label, f"{assets_at_fire/10000:.0f}万", f"{mc_res['median_final_assets']/10000:.0f}万" if mc_res else "-"],
+            # FIRE達成情報（チャート分割用）
+            fire_row_for_chart = df[df['fire_achieved']].iloc[0] if df['fire_achieved'].any() else None
+            if fire_row_for_chart is not None:
+                current_status = {
+                    'net_assets': assets * 10000,
+                    'cash_deposits': cash,
+                    'investment_trusts': stocks,
                 }
-                st.table(pd.DataFrame(comp_data).set_index("項目"))
-                if diff_years <= 0:
-                    st.success("育休・時短プランがFIREを早める、または同等の結果をもたらしています。育休をためらう必要はありません！")
-                elif diff_years <= 3:
-                    st.success("育休は単なる休止ではなく、家族の土台を作る重要な期間です。数年の差であれば、人生全体の幸福度は現行プランの方が高いかもしれません。")
-                else:
-                    st.warning(f"{diff_years:.1f}年の遅延は大きいですが、副収入の増加・支出の最適化・時短期間の短縮などで差を縮めることができます。FIREより家族の幸福を優先するかどうか、パートナーと話し合ってみましょう。")
-            else:
-                st.warning("フル稼働（育休なし）でも90歳までにFIREを達成できませんでした。比較データを表示できません。")
+                fire_achievement = {
+                    'achieved': False,
+                    'achievement_date': fire_row_for_chart['date'],
+                    'months_to_fire': int(fire_row_for_chart['month']),
+                }
+                fire_target = {
+                    'recommended_target': assets_at_fire,
+                    'annual_expense': expense * 12 * 10000,
+                }
+                simulations = {'standard': df}
+
+                fig_timeline = create_fire_timeline_chart(
+                    current_status, fire_target, fire_achievement, simulations, cfg,
+                    monte_carlo_results=mc_res,
+                    show_baseline_after_fire=False,
+                    current_date=current_date,
+                )
+                fig_timeline.update_layout(height=500)
+                st.plotly_chart(fig_timeline, use_container_width=True)
+
+            col_mc1, col_mc2 = st.columns([2, 1])
+            with col_mc1:
+                st.markdown("##### 90歳時点の資産分布")
+                final_assets_list = [r['final_assets'] for r in mc_res['all_results']]
+                dist_fig = px.histogram(
+                    x=np.array(final_assets_list) / 10000, nbins=50,
+                    color_discrete_sequence=['#10b981'],
+                )
+                dist_fig.add_vline(x=0, line_color="#ef4444", line_width=3)
+                dist_fig.update_layout(
+                    xaxis_title="最終資産 (万円)", yaxis_title="頻度",
+                    margin=dict(l=20, r=20, t=10, b=20), height=300,
+                )
+                st.plotly_chart(dist_fig, use_container_width=True)
+            with col_mc2:
+                st.markdown("##### リスク解析結果")
+                never_pct = mc_res['never_fire_rate'] * 100
+                st.write(f"**目標確率:** {target_rate}%")
+                st.write(f"**FIRE未達パス:** {never_pct:.1f}%")
+                st.write(f"**最悪ケース(下位5%):**  \n{mc_res['percentile_5']/10000:,.0f} 万円")
+                st.write(f"**標準的なケース(中央値):**  \n{mc_res['median_final_assets']/10000:,.0f} 万円")
+                st.info("中央値は『平均的な市場環境』を維持できた場合の予測です。")
 
         with tab_guide:
             st.markdown("### シミュレーション解釈ガイド")
@@ -351,7 +364,7 @@ if st.button("シミュレーションを開始", type="primary"):
                 st.write("""
                 将来の資産推移を一本の線で予測することは、天気予報で「明日の12時00分に雨が0.5mm降る」と断定するようなものです。
                 実際には、市場は常に変動します。このシミュレーターでは、**1,000通りの異なる未来（好景気、不景気、数年続く暴落など）**を計算し、
-                そのうちの何%で資産が底を突かずに済むか（成功確率）を算出しています。
+                各シナリオでFIREが実現できるタイミングの分布を算出しています。
                 """)
             with st.expander("暴落や暴騰はどのように考慮されていますか？"):
                 st.write("""
@@ -362,16 +375,14 @@ if st.button("シミュレーションを開始", type="primary"):
                 これにより、リーマンショックのような「数年に一度の事象」への耐性を検証できます。
                 """)
             st.markdown("---")
-            st.markdown("#### プランの評価")
-            if mc_res and mc_res['success_rate'] >= 0.95:
-                st.success("**余裕のある計画です**  \n現在の収入・支出・資産水準を維持できれば、ほぼ確実にFIREを維持できます。これ以上節約を強いるより、今を楽しむための支出に予算を割くことも検討してください。")
-            elif mc_res and mc_res['success_rate'] >= 0.8:
-                st.warning("**『景気後退期』への備えを**  \n成功率は高いですが、最悪ケースでは資産が目減りするシナリオもあります。FIRE達成時に生活費の2〜3年分を「現金」として確保（キャッシュクッション）しておくことで、暴落時に株式を売らずに済む仕組みを作りましょう。")
-            else:
-                st.error("**プランに余裕がありません**  \n市場変動への耐性が不足しています。月収・支出・現在の金融資産を左側のパネルで調整するか、時短勤務後の月収を増やすことで成功確率が改善します。")
+            st.markdown("#### 目標成功確率の見方")
+            st.info(f"""
+**{target_rate}%の意味**: リーマンショック規模の暴落を含む1,000通りの市場シナリオのうち、
+**{target_rate}%のシナリオ**でこの時期にFIRE可能です。
 
-    else:
-        st.error("90歳までにFIREを達成できません。支出の見直し、または投資利回りの再確認を行ってください。")
+残り{100 - target_rate}%のシナリオでは、市場環境によってFIREが数年先にずれる可能性があります。
+目標確率を変えると、FIRE時期がどう変わるか左のスライダーで確認できます。
+""")
 
 st.divider()
 st.caption("Produced by watasack/fire-dashboard. This simulator is for professional financial planning support.")
