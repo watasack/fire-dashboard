@@ -563,71 +563,6 @@ def extract_life_events(config: Dict[str, Any], fire_achievement: Dict[str, Any]
     return events
 
 
-def _add_fire_timing_bands(
-    fig: go.Figure,
-    monte_carlo_results: Dict[str, Any],
-    current_date=None,
-) -> None:
-    """
-    FIRE時期の確率分布を縦帯（ファンチャート）としてグラフに追加。
-
-    - 外帯 (P10〜P90): 薄いアンバー、「80%のシナリオの範囲」
-    - 内帯 (P40〜P60): やや濃いアンバー、「最も可能性が高い時期」
-    - 目標ライン: 実線の縦線
-    """
-    from dateutil.relativedelta import relativedelta
-
-    ref = current_date if current_date is not None else datetime.today().date()
-
-    def _month_to_date(months: int):
-        return (
-            datetime(ref.year, ref.month, 1) + relativedelta(months=int(months))
-        ).strftime('%Y-%m-%d')
-
-    p10 = monte_carlo_results.get('p10_fire_month')
-    p40 = monte_carlo_results.get('p40_fire_month')
-    p60 = monte_carlo_results.get('p60_fire_month')
-    p90 = monte_carlo_results.get('p90_fire_month')
-    target_fm = monte_carlo_results.get('fire_month')
-
-    if p10 is None or p90 is None or target_fm is None:
-        return
-
-    # 外帯 P10〜P90（80%のシナリオが含まれる幅）
-    fig.add_vrect(
-        x0=_month_to_date(p10),
-        x1=_month_to_date(p90),
-        fillcolor='rgba(251, 191, 36, 0.22)',
-        line_width=0,
-        layer='below',
-        annotation=None,
-    )
-
-    # 内帯 P40〜P60（最も可能性が高い時期）
-    fig.add_vrect(
-        x0=_month_to_date(p40),
-        x1=_month_to_date(p60),
-        fillcolor='rgba(251, 191, 36, 0.45)',
-        line_width=0,
-        layer='below',
-        annotation=None,
-    )
-
-    # 帯の上部ラベル（内帯の中央に表示）
-    mid_fm = (p40 + p60) // 2
-    fig.add_annotation(
-        x=_month_to_date(mid_fm),
-        y=1.0,
-        yref='paper',
-        text='FIRE時期の見通し',
-        showarrow=False,
-        xanchor='center',
-        yanchor='bottom',
-        font=dict(size=10, color='rgba(140, 80, 0, 1)'),
-        bgcolor='rgba(255,255,255,0.8)',
-        borderpad=2,
-    )
-
 def _add_monte_carlo_ranges(
     fig: go.Figure,
     df_post: pd.DataFrame,
@@ -882,10 +817,6 @@ def create_fire_timeline_chart(
     })
 
     fig.update_layout(layout)
-
-    # FIRE時期の確率分布縦帯（update_layout後に追加しないとref_shapesに上書きされる）
-    if monte_carlo_results and monte_carlo_results.get('p10_fire_month') is not None:
-        _add_fire_timing_bands(fig, monte_carlo_results, current_date=current_date)
 
     return fig
 

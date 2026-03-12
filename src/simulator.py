@@ -4359,6 +4359,169 @@ def run_mc_with_dynamic_fire(
     }
 
 
+def run_mc_fixed_fire(
+    current_cash: float,
+    current_stocks: float,
+    config: Dict[str, Any],
+    target_success_rate: float,
+    monthly_income: float = 0,
+    monthly_expense: float = 0,
+    scenario: str = 'standard',
+    iterations: int = 1000,
+    progress_callback: Optional[Callable[[float], None]] = None,
+) -> Dict[str, Any]:
+    """目標成功確率を達成するFIRE月を二分探索で決定し、固定FIRE月でMCシミュレーションを実行。
+
+    run_mc_with_dynamic_fire との違い:
+    - 全パスが同一のFIRE月でシミュレーションされる
+    - 90歳時点の資産分布が意味ある分布（破産パスと黒字パスが混在）になる
+
+    Returns:
+        run_mc_with_dynamic_fire と互換のDict。
+        ただし p10_fire_month 等のFIRE月分布フィールドは含まない。
+    """
+    _set_reference_date()
+
+    life_expectancy = config['simulation']['life_expectancy']
+    start_age = config['simulation']['start_age']
+    total_months = int((life_expectancy - start_age) * 12)
+
+    override_start_ages = _extract_override_start_ages(config)
+    if not override_start_ages:
+        total_now = current_cash + current_stocks
+        optimal_age = _determine_optimal_pension_start_age(
+            current_assets=total_now, config=config
+        )
+        pension_people = config['pension']['people']
+        override_start_ages = {p['name']: optimal_age for p in pension_people}
+
+    # ── 二分探索: 目標成功確率を達成するFIRE月を探す ──
+    # 単調性: FIRE月が遅いほど蓄積資産が増え成功率が上がる
+    SEARCH_ITERS = 200
+    lo, hi = 0, total_months - 1
+
+    print(f"run_mc_fixed_fire: binary search for target={target_success_rate*100:.0f}%")
+
+    step = 0
+    while hi - lo > 3:
+        mid = (lo + hi) // 2
+        try:
+            res = run_monte_carlo_simulation(
+                current_cash=current_cash,
+                current_stocks=current_stocks,
+                config=config,
+                scenario=scenario,
+                iterations=SEARCH_ITERS,
+                monthly_income=monthly_income,
+                monthly_expense=monthly_expense,
+                override_start_ages=override_start_ages,
+                min_fire_month=mid,
+            )
+            rate = res['success_rate']
+        except Exception:
+            rate = 0.0
+        print(f"  step={step} mid={mid} rate={rate*100:.1f}%")
+        if rate >= target_success_rate:
+            hi = mid
+        else:
+            lo = mid
+        step += 1
+        if progress_callback:
+            progress_callback(0.5 * step / 12)  # 前半50%を二分探索に割り当て
+
+    best_fire_month = hi
+    impossible = best_fire_month >= total_months
+    print(f"run_mc_fixed_fire: best_fire_month={best_fire_month} impossible={impossible}")
+
+    if impossible:
+        # FIREが不可能な場合はダミー結果を返す
+        return {
+            'impossible': True,
+            'fire_month': None,
+            'fire_date': None,
+            'fire_age_h': None,
+            'fire_age_w': None,
+            'target_success_rate': target_success_rate,
+            'success_rate': 0.0,
+            'never_fire_rate': 1.0,
+            'monthly_p50': np.zeros(total_months),
+            'monthly_p16': np.zeros(total_months),
+            'monthly_p84': np.zeros(total_months),
+            'monthly_p025': np.zeros(total_months),
+            'monthly_p975': np.zeros(total_months),
+            'include_pre_fire': True,
+            'all_results': [],
+            'median_final_assets': 0.0,
+            'percentile_5': 0.0,
+            'base_df': None,
+            'target_fire_month_int': None,
+        }
+
+    # ── 本番MC（フル iterations, include_pre_fire=True） ──
+    print(f"run_mc_fixed_fire: final MC with {iterations} iterations at month={best_fire_month}")
+
+    def _progress_final(p: float):
+        if progress_callback:
+            progress_callback(0.5 + 0.5 * p)
+
+    final_res = run_monte_carlo_simulation(
+        current_cash=current_cash,
+        current_stocks=current_stocks,
+        config=config,
+        scenario=scenario,
+        iterations=iterations,
+        monthly_income=monthly_income,
+        monthly_expense=monthly_expense,
+        override_start_ages=override_start_ages,
+        min_fire_month=best_fire_month,
+        include_pre_fire=True,
+        progress_callback=_progress_final,
+    )
+
+    # ── 互換フィールドを追加 ──
+    ref_date = _get_reference_date()
+    fire_date = ref_date + relativedelta(months=int(best_fire_month))
+    fire_age_h = start_age + best_fire_month / 12.0
+
+    fire_age_w = None
+    try:
+        bw = config['pension']['people'][1].get('birthdate', '')
+        bw_year = int(bw.split('/')[0])
+        age_w_now = ref_date.year - bw_year
+        fire_age_w = age_w_now + best_fire_month / 12.0
+    except Exception:
+        fire_age_w = fire_age_h
+
+    # 決定論的ラインをforce_fire_monthで生成（チャート用）
+    base_df = simulate_future_assets(
+        current_cash=current_cash,
+        current_stocks=current_stocks,
+        config=config,
+        scenario=scenario,
+        monthly_income=monthly_income,
+        monthly_expense=monthly_expense,
+        force_fire_month=best_fire_month,
+        override_start_ages=override_start_ages,
+    )
+
+    final_res.update({
+        'target_success_rate': target_success_rate,
+        'fire_month': best_fire_month,
+        'fire_date': fire_date,
+        'fire_age_h': fire_age_h,
+        'fire_age_w': fire_age_w,
+        'never_fire_rate': 1.0 - final_res['success_rate'],
+        'impossible': False,
+        'base_df': base_df,
+        'target_fire_month_int': best_fire_month,
+    })
+
+    print(f"run_mc_fixed_fire: done. success_rate={final_res['success_rate']*100:.1f}% "
+          f"fire_date={fire_date.strftime('%Y-%m')}")
+
+    return final_res
+
+
 def _sell_stocks_vectorized(
     shortage: np.ndarray,
     stocks: np.ndarray,

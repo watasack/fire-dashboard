@@ -7,7 +7,7 @@ import yaml
 import copy
 import plotly.express as px
 import plotly.graph_objects as go
-from src.simulator import simulate_future_assets, run_monte_carlo_simulation, run_mc_with_dynamic_fire
+from src.simulator import simulate_future_assets, run_monte_carlo_simulation, run_mc_fixed_fire
 from src.visualizer import create_fire_timeline_chart
 from src.data_schema import get_column_names
 
@@ -236,8 +236,8 @@ if st.button("シミュレーションを開始", type="primary"):
         status_text.text(f"1,000通りの未来をシミュレーション中... {int(progress * 100)}%")
 
     with st.spinner("シミュレーションを実行中..."):
-        # 目標成功確率によるFIRE時期の確率的導出
-        mc_res = run_mc_with_dynamic_fire(
+        # 目標成功確率を達成するFIRE月を二分探索で決定し、固定FIRE月でMCシミュレーション
+        mc_res = run_mc_fixed_fire(
             cash, stocks, cfg,
             target_success_rate=target_rate / 100.0,
             monthly_income=monthly_inc,
@@ -247,15 +247,7 @@ if st.button("シミュレーションを開始", type="primary"):
             progress_callback=update_progress,
         )
 
-        # チャート用決定論的ライン（目標FIRE月で force_fire_month）
-        target_fm = mc_res.get('target_fire_month_int')
-        if target_fm is not None:
-            df = simulate_future_assets(
-                cash, stocks, None, monthly_inc, monthly_exp, cfg, "standard",
-                force_fire_month=target_fm,
-            )
-        else:
-            df = mc_res['base_df']
+        df = mc_res['base_df']
         df['year_offset'] = df['month'] / 12
         df['sakura_age'] = age_w + df['year_offset']
 
@@ -300,15 +292,14 @@ if st.button("シミュレーションを開始", type="primary"):
         with col_m3:
             st.metric("FIRE時資産（目標シナリオ）", fmt_oku(assets_at_fire))
         with col_m4:
-            p10_date = (datetime.today() + relativedelta(months=mc_res['p10_fire_month'])).strftime('%Y年%m月')
-            p90_date = (datetime.today() + relativedelta(months=mc_res['p90_fire_month'])).strftime('%Y年%m月')
+            bankrupt_pct = mc_res['never_fire_rate'] * 100
             st.metric(
-                "FIRE時期の見通し",
-                f"{p10_date} 〜 {p90_date}",
+                "破産リスク",
+                f"{bankrupt_pct:.0f}%",
                 help=(
-                    "1,000通りのシミュレーションのうち、上下10%の外れ値を除いた"
-                    "80%のシナリオがFIRE達成する時期の幅です。\n\n"
-                    "グラフの黄色い帯と対応しています。帯が濃い中心部が最も可能性の高い時期です。"
+                    "1,000通りのシミュレーションのうち、90歳時点で資産がマイナスになる割合です。\n\n"
+                    f"目標{target_rate}%のFIRE時期で退職した場合、"
+                    f"残り{bankrupt_pct:.0f}%のシナリオでは資産が尽きる可能性があります。"
                 ),
             )
 
