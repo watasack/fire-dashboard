@@ -11,6 +11,14 @@ from src.simulator import simulate_future_assets, run_monte_carlo_simulation, ru
 from src.visualizer import create_fire_timeline_chart
 from src.data_schema import get_column_names
 
+def fmt_oku(yen: float) -> str:
+    """円単位の値を億/万円で表記する"""
+    man = yen / 10000
+    if man >= 10000:
+        return f"{man/10000:.1f}億円"
+    return f"{man:,.0f}万円"
+
+
 # ページ設定
 st.set_page_config(
     page_title="共働きFIREシミュレーター【フル版】",
@@ -290,12 +298,11 @@ if st.button("シミュレーションを開始", type="primary"):
         with col_m2:
             st.metric("必要年数", f"{years_to_fire:.1f}年")
         with col_m3:
-            st.metric("FIRE時資産（目標シナリオ）", f"{assets_at_fire/10000:.0f}万円")
+            st.metric("FIRE時資産（目標シナリオ）", fmt_oku(assets_at_fire))
         with col_m4:
-            p25_date = (datetime.today() + relativedelta(months=mc_res['p25_fire_month'])).strftime('%Y年%m月')
-            p75_date = (datetime.today() + relativedelta(months=mc_res['p75_fire_month'])).strftime('%Y年%m月')
-            st.metric("分布範囲 (P25〜P75)", f"{p25_date}〜")
-            st.caption(f"〜{p75_date}")
+            p25_date = (datetime.today() + relativedelta(months=mc_res['p25_fire_month'])).strftime('%Y/%m')
+            p75_date = (datetime.today() + relativedelta(months=mc_res['p75_fire_month'])).strftime('%Y/%m')
+            st.metric("FIRE時期の幅（楽観〜保守）", f"{p25_date} 〜 {p75_date}")
 
         # タブで詳細を整理
         tab_chart, tab_guide = st.tabs(["資産予測（確率分布）", "シミュレーション解釈ガイド"])
@@ -354,8 +361,8 @@ if st.button("シミュレーションを開始", type="primary"):
                 never_pct = mc_res['never_fire_rate'] * 100
                 st.write(f"**目標確率:** {target_rate}%")
                 st.write(f"**FIRE未達パス:** {never_pct:.1f}%")
-                st.write(f"**最悪ケース(下位5%):**  \n{mc_res['percentile_5']/10000:,.0f} 万円")
-                st.write(f"**標準的なケース(中央値):**  \n{mc_res['median_final_assets']/10000:,.0f} 万円")
+                st.write(f"**最悪ケース(下位5%):**  \n{fmt_oku(mc_res['percentile_5'])}")
+                st.write(f"**標準的なケース(中央値):**  \n{fmt_oku(mc_res['median_final_assets'])}")
                 st.info("中央値は『平均的な市場環境』を維持できた場合の予測です。")
 
         with tab_guide:
