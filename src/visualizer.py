@@ -791,28 +791,35 @@ def create_fire_timeline_chart(
 
         if achievement_date:
             df_pre = df[df['date'] <= achievement_date].copy()
-            if len(df_pre) > 0:
-                customdata_pre = df_pre[get_customdata_column_names()].values
-                _add_stacked_asset_traces(
-                    fig, df_pre, 'pre',
-                    '現金（蓄積期）', '株式（蓄積期）',
-                    _COLOR_PRE_FIRE_CASH, _COLOR_PRE_FIRE_STOCK,
-                    customdata_pre,
-                    '<b>蓄積期</b><br><b>%{x|%Y年%m月}</b><br>現金: <b>¥%{y:,.0f}万</b><extra></extra>',
-                    '<b>蓄積期</b><br><b>%{x|%Y年%m月}</b><br>株式: <b>¥%{y:,.0f}万</b><extra></extra>',
-                )
+            use_mc = (
+                monte_carlo_results
+                and 'monthly_p50' in monte_carlo_results
+                and not show_baseline_after_fire
+            )
 
-            # FIRE達成後の処理
-            df_post = df[df['date'] >= achievement_date].copy()
-            if len(df_post) > 0:
-                # モンテカルロ結果がある場合、かつオプションで非表示が指定されている場合はベースラインを描画しない
-                if monte_carlo_results and 'monthly_p50' in monte_carlo_results and not show_baseline_after_fire:
-                    _add_monte_carlo_ranges(
-                        fig, df_post, monte_carlo_results, achievement_date,
-                        current_date=current_date
+            if use_mc:
+                # MCモード: include_pre_fire=True のため current_date から全期間をカバー
+                # 蓄積期の積み上げチャートは描画せず MC レンジのみ表示（FIRE期と同スタイル）
+                df_post = df[df['date'] >= achievement_date].copy()
+                _add_monte_carlo_ranges(
+                    fig, df_post, monte_carlo_results, achievement_date,
+                    current_date=current_date
+                )
+            else:
+                # 非MCモード: 蓄積期・FIRE期ともに積み上げチャート
+                if len(df_pre) > 0:
+                    customdata_pre = df_pre[get_customdata_column_names()].values
+                    _add_stacked_asset_traces(
+                        fig, df_pre, 'pre',
+                        '現金（蓄積期）', '株式（蓄積期）',
+                        _COLOR_PRE_FIRE_CASH, _COLOR_PRE_FIRE_STOCK,
+                        customdata_pre,
+                        '<b>蓄積期</b><br><b>%{x|%Y年%m月}</b><br>現金: <b>¥%{y:,.0f}万</b><extra></extra>',
+                        '<b>蓄積期</b><br><b>%{x|%Y年%m月}</b><br>株式: <b>¥%{y:,.0f}万</b><extra></extra>',
                     )
-                else:
-                    # モンテカルロがあっても表示設定がTrueの場合や、モンテカルロがない場合はベースラインを描画
+
+                df_post = df[df['date'] >= achievement_date].copy()
+                if len(df_post) > 0:
                     customdata_post = df_post[get_customdata_column_names()].values
                     _add_stacked_asset_traces(
                         fig, df_post, 'post',
@@ -822,7 +829,6 @@ def create_fire_timeline_chart(
                         '<b>FIRE期</b><br><b>%{x|%Y年%m月}</b><br>現金: <b>¥%{y:,.0f}万</b><extra></extra>',
                         '<b>FIRE期</b><br><b>%{x|%Y年%m月}</b><br>株式: <b>¥%{y:,.0f}万</b><extra></extra>',
                     )
-                    
                     if monte_carlo_results and 'monthly_p50' in monte_carlo_results:
                         _add_monte_carlo_ranges(
                             fig, df_post, monte_carlo_results, achievement_date,
