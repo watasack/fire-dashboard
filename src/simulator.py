@@ -4457,7 +4457,7 @@ def run_mc_fixed_fire(
             'target_fire_month_int': None,
         }
 
-    # ── 本番MC（フル iterations, include_pre_fire=True） ──
+    # ── 本番MC（フル iterations, include_pre_fire=False: FIRE月時点資産から開始） ──
     print(f"run_mc_fixed_fire: final MC with {iterations} iterations at month={best_fire_month}")
 
     def _progress_final(p: float):
@@ -4474,7 +4474,6 @@ def run_mc_fixed_fire(
         monthly_expense=monthly_expense,
         override_start_ages=override_start_ages,
         min_fire_month=best_fire_month,
-        include_pre_fire=True,
         progress_callback=_progress_final,
     )
 
