@@ -14,7 +14,7 @@ from src.data_schema import get_column_names
 # ページ設定
 st.set_page_config(
     page_title="共働きFIREシミュレーター【フル版】",
-    page_icon="💰",
+    page_icon="📋",
     layout="wide",
 )
 
@@ -83,7 +83,7 @@ def check_password():
         st.text_input(
             "アクセスコードを入力してください", type="password", on_change=password_entered, key="password"
         )
-        st.error("😕 アクセスコードが正しくありません。")
+        st.error("アクセスコードが正しくありません。")
         return False
     else:
         return True
@@ -92,7 +92,7 @@ if not check_password():
     st.stop()
 
 # --- ヘッダー ---
-st.markdown("<h1 style='text-align: center;'>💰 共働きFIREシミュレーター <span style='color:#6366f1'>【フル版】</span></h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center;'>共働きFIREシミュレーター <span style='color:#6366f1'>【フル版】</span></h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center; color: #64748b; margin-bottom: 2rem;'>〜 理想的な家族の未来を、データで具現化する 〜</p>", unsafe_allow_html=True)
 
 # --- 設定ファイルの読み込み ---
@@ -101,7 +101,7 @@ with open("demo_config.yaml", "r", encoding="utf-8") as f:
 
 # --- レイアウト: サイドバー ---
 with st.sidebar:
-    st.header("👤 世帯の基本情報")
+    st.header("世帯の基本情報")
     income_h = st.number_input("夫の月収 (手取り/万円)", value=40, min_value=1, step=1, help="現在の手取り月収（ボーナス除外）。毎年2%の昇給を想定して計算します。")
     age_h = st.number_input("夫の現在の年齢", value=35, min_value=20, max_value=70, step=1)
 
@@ -109,7 +109,7 @@ with st.sidebar:
     income_w = st.number_input("妻の月収 (手取り/万円)", value=35, min_value=1, step=1, help="通常勤務時の手取り月収。育休・時短期間以外は一定として計算します（昇給なし）。")
     age_w = st.number_input("妻の現在の年齢", value=35, min_value=20, max_value=70, step=1)
 
-    st.header("🏠 キャッシュフロー")
+    st.header("キャッシュフロー")
     expense = st.number_input("基本の月間支出 (万円)", value=28, min_value=5, step=1, help="住居費・食費・娯楽費など全ての合計（住宅ローンは別途10万円/月を加算して計算）")
     assets = st.number_input("現在の金融資産 (万円)", value=2000, min_value=0, step=100, help="現金・株式・投資信託の合計。うち30%を現金、70%を株式として計算します。NISAの既存残高は0円として扱います。")
 
@@ -129,7 +129,7 @@ with tab_input:
     
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown("#### 👩 妻のライフステージ")
+        st.markdown("#### 妻のライフステージ")
         w_leave_pre = st.slider("産前休暇 (月数)", 0, 6, 2, help="産前休暇中も「育休中の月収」を適用して計算します。")
         w_leave_post = st.slider("産後育休 (月数)", 0, 24, 12)
         w_leave_inc = st.slider("育休中の月収 (万円)", 0, 50, 15, help="産前休暇〜産後育休全期間の月収。育児休業給付金 = 通常給与の約67%（180日後50%）の平均値を入力してください。")
@@ -142,13 +142,13 @@ with tab_input:
             st.warning(f"⚠️ 時短終了（子供{w_red_end_age}歳）が育休終了（{w_leave_post}ヶ月後）より早いため、時短勤務期間が0になります。")
 
     with col2:
-        st.markdown("#### 👨 夫の育休")
+        st.markdown("#### 夫の育休")
         h_leave_post = st.slider("育休取得期間 (月数)", 0, 12, 1)
         h_leave_inc = st.slider("育休中の月収 (万円)", 0, 60, 30)
         st.caption("※給付金は「休業開始前賃金の67%（180日後50%）」の平均値を入力してください。")
 
 with tab_advanced:
-    st.info("💡 以下の前提条件は固定値です。変更には `demo_config.yaml` の編集が必要です（note マニュアル参照）。")
+    st.info("以下の前提条件は固定値です。変更には `demo_config.yaml` の編集が必要です（note マニュアル参照）。")
     st.json({
         "期待利回り（年率）": f"{base_cfg['simulation']['standard']['annual_return_rate']*100:.0f}%",
         "インフレ率（年率）": f"{base_cfg['simulation']['standard']['inflation_rate']*100:.0f}%",
@@ -237,7 +237,7 @@ if st.button("シミュレーションを開始", type="primary"):
 
         # 4. 比較用MC（育休なし、200sims）
         fire_row_no = df_no[df_no['fire_achieved']].iloc[0] if df_no['fire_achieved'].any() else None
-        status_text.text("📊 育休なし比較シミュレーション中...")
+        status_text.text("比較シミュレーション中...")
         mc_res_no = run_monte_carlo_simulation(
             cash, stocks, cfg_no, "standard", 200, monthly_inc, monthly_exp,
             include_pre_fire=True
@@ -247,7 +247,7 @@ if st.button("シミュレーションを開始", type="primary"):
     status_text.empty()
 
     # --- 結果表示 ---
-    st.markdown("## 📊 シミュレーション解析結果")
+    st.markdown("## シミュレーション解析結果")
     
     if fire_row is not None:
         fire_age_w = int(fire_row['sakura_age'])
@@ -269,10 +269,10 @@ if st.button("シミュレーションを開始", type="primary"):
                 st.metric("成功確率 (MC)", f"{mc_res['success_rate']*100:.1f}%")
 
         # タブで詳細を整理
-        tab_chart, tab_compare, tab_guide = st.tabs(["📈 未来の資産予測（確率分布）", "⚖️ 育休の経済的影響", "💡 資産を盤石にするガイド"])
+        tab_chart, tab_compare, tab_guide = st.tabs(["資産予測（確率分布）", "育休の経済的影響", "シミュレーション解釈ガイド"])
 
         with tab_chart:
-            st.markdown("#### 💹 1,000通りの未来シミュレーション")
+            st.markdown("#### 1,000通りの未来シミュレーション")
             st.caption("蓄積期は確実な貯蓄計画を、FIRE後は市場のボラティリティ（変動）を考慮した確率的な推移を表示しています。")
             
             current_status = {
@@ -310,11 +310,11 @@ if st.button("シミュレーションを開始", type="primary"):
                     dist_fig.update_layout(xaxis_title="最終資産 (万円)", yaxis_title="頻度", margin=dict(l=20, r=20, t=10, b=20), height=300)
                     st.plotly_chart(dist_fig, use_container_width=True)
                 with col_mc2:
-                    st.markdown("##### 📉 リスク解析結果")
+                    st.markdown("##### リスク解析結果")
                     st.write(f"**FIRE成功確率:** {mc_res['success_rate']*100:.1f}%")
                     st.write(f"**最悪ケース(下位5%):**  \n{mc_res['percentile_5']/10000:,.0f} 万円")
                     st.write(f"**標準的なケース(中央値):**  \n{mc_res['median_final_assets']/10000:,.0f} 万円")
-                    st.info("💡 中央値は『平均的な市場環境』を維持できた場合の予測です。最悪ケースでも資産が残るプランが理想的です。")
+                    st.info("中央値は『平均的な市場環境』を維持できた場合の予測です。最悪ケースでも資産が残るプランが理想的です。")
 
         with tab_compare:
             st.subheader("育休・時短の経済的インパクト")
@@ -347,7 +347,7 @@ if st.button("シミュレーションを開始", type="primary"):
 
         with tab_guide:
             st.markdown("### シミュレーション解釈ガイド")
-            with st.expander("📊 なぜ『一本の線』ではなく『範囲』で考えるのか？", expanded=True):
+            with st.expander("なぜ『一本の線』ではなく『範囲』で考えるのか？", expanded=True):
                 st.write("""
                 将来の資産推移を一本の線で予測することは、天気予報で「明日の12時00分に雨が0.5mm降る」と断定するようなものです。
                 実際には、市場は常に変動します。このシミュレーターでは、**1,000通りの異なる未来（好景気、不景気、数年続く暴落など）**を計算し、
@@ -362,7 +362,7 @@ if st.button("シミュレーションを開始", type="primary"):
                 これにより、リーマンショックのような「数年に一度の事象」への耐性を検証できます。
                 """)
             st.markdown("---")
-            st.markdown("#### 💡 プランをより盤石にするための3つのアドバイス")
+            st.markdown("#### プランをより盤石にするための3つのアドバイス")
             if mc_res and mc_res['success_rate'] >= 0.95:
                 st.success("**1. 完璧な準備状況です**  \n現在の貯蓄率と投資方針を維持できれば、ほぼ確実にFIREを維持できます。これ以上節約を強いるより、今を楽しむための支出に予算を割くことも検討してください。")
             elif mc_res and mc_res['success_rate'] >= 0.8:
@@ -371,7 +371,7 @@ if st.button("シミュレーションを開始", type="primary"):
                 st.error("**3. プランの修正が必要です**  \n成功確率が不十分です。FIRE年齢を1〜2年遅らせるか、時短勤務後の月収を数万円増やす、あるいは教育費の予算を調整することで、確率は劇的に改善します。")
 
     else:
-        st.error("🚨 警告: 90歳までにFIREを達成できません。支出の見直し、または投資利回りの再確認を行ってください。")
+        st.error("90歳までにFIREを達成できません。支出の見直し、または投資利回りの再確認を行ってください。")
 
 st.divider()
 st.caption("Produced by watasack/fire-dashboard. This simulator is for professional financial planning support.")
