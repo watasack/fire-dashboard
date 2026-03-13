@@ -327,13 +327,13 @@ class TestBackendFunctions:
                 "months_after": 12,
                 "monthly_income": 150_000
             }],
-            "sakura_reduced_hours": [{
+            "wife_reduced_hours": [{
                 "child": "お子さん",
                 "start_months_after": 12,
                 "end_months_after": 36,
                 "income_ratio": 0.7
             }],
-            "shuhei_parental_leave": [{
+            "husband_parental_leave": [{
                 "child": "お子さん",
                 "months_after": 1,
                 "monthly_income": 300_000,

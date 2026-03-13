@@ -30,8 +30,8 @@ SIMULATION_COLUMNS = OrderedDict([
     # 収入関連
     ('income', {'type': 'float', 'description': '月次総収入'}),
     ('labor_income', {'type': 'float', 'description': '労働収入'}),
-    ('shuhei_income', {'type': 'float', 'description': '修平の労働収入'}),
-    ('sakura_income', {'type': 'float', 'description': '桜の労働収入'}),
+    ('husband_income', {'type': 'float', 'description': '夫の労働収入'}),
+    ('wife_income', {'type': 'float', 'description': '妻の労働収入'}),
     ('pension_income', {'type': 'float', 'description': '年金収入'}),
     ('child_allowance', {'type': 'float', 'description': '児童手当'}),
 
@@ -66,8 +66,8 @@ SIMULATION_COLUMNS = OrderedDict([
 CUSTOMDATA_COLUMNS = [
     # 収入
     'labor_income',
-    'shuhei_income',
-    'sakura_income',
+    'husband_income',
+    'wife_income',
     'pension_income',
     'child_allowance',
 
@@ -108,8 +108,8 @@ DISPLAY_NAMES: Dict[str, str] = {
     # 収入
     'income': '収入合計',
     'labor_income': '労働収入',
-    'shuhei_income': '修平（会社員）',
-    'sakura_income': '桜（個人事業主）',
+    'husband_income': '夫（会社員）',
+    'wife_income': '妻（個人事業主）',
     'pension_income': '年金収入',
     'child_allowance': '児童手当',
 

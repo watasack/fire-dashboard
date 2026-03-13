@@ -5,8 +5,8 @@ FIRE達成時期と年金受給開始年齢を同時に最適化する。
 
 定式化:
     minimize   m*  (FIRE達成月)
-    subject to baseline_final_assets(m*, a_修平, a_桜) >= safety_margin
-    where      a_修平, a_桜 ∈ {62, 63, ..., 75}
+    subject to baseline_final_assets(m*, a_夫, a_妻) >= safety_margin
+    where      a_夫, a_妻 ∈ {62, 63, ..., 75}
 
 解法:
     Phase 1: FIRE前シミュレーション（FIRE判定なし、全月の状態記録）
@@ -379,7 +379,7 @@ def _compute_pension_income_array_vectorized(
             continue
         person_start_age = override_start_ages.get(person_name, default_start_age)
 
-        # 各人物の実年齢から年金開始月を計算（start_age_config は修平の年齢であり桜とは異なる）
+        # 各人物の実年齢から年金開始月を計算（start_age_config は夫の年齢であり妻とは異なる）
         person_age_at_fire = _get_age_at_offset(birthdate_str, years_offset)
         months_until = (person_start_age - person_age_at_fire) * 12.0
         start_month = max(0, math.ceil(months_until))
@@ -565,8 +565,8 @@ def _run_deterministic_screening(
     life_expectancy = config['simulation']['life_expectancy']
     start_age = config['simulation']['start_age']
     post_fire_income = (
-        config['simulation']['shuhei_post_fire_income']
-        + config['simulation']['sakura_post_fire_income']
+        config['simulation']['husband_post_fire_income']
+        + config['simulation']['wife_post_fire_income']
     )
 
     age_combos = list(product(pension_ages, repeat=len(person_names)))

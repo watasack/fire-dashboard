@@ -246,7 +246,7 @@ with tab_advanced:
         "夫の昇給率（年率）": _h_growth,
         "妻の昇給率（年率）": _w_growth,
         "住宅ローン": f"{base_cfg['mortgage']['monthly_payment']//10000:.0f}万円/月（{base_cfg['mortgage']['end_date']}まで）",
-        "FIRE後副収入": f"夫{base_cfg['simulation']['shuhei_post_fire_income']//10000:.0f}万 + 妻{base_cfg['simulation']['sakura_post_fire_income']//10000:.0f}万 = 計{(base_cfg['simulation']['shuhei_post_fire_income']+base_cfg['simulation']['sakura_post_fire_income'])//10000:.0f}万円/月",
+        "FIRE後副収入": f"夫{base_cfg['simulation']['husband_post_fire_income']//10000:.0f}万 + 妻{base_cfg['simulation']['wife_post_fire_income']//10000:.0f}万 = 計{(base_cfg['simulation']['husband_post_fire_income']+base_cfg['simulation']['wife_post_fire_income'])//10000:.0f}万円/月",
         "年金受給開始": f"夫{base_cfg['pension']['people'][0].get('override_start_age', 65)}歳 / 妻{base_cfg['pension']['people'][1].get('override_start_age', 65)}歳",
         "教育コース": "公立小中高 + 国立大学",
         "資産配分（初期）": "現金30% / 株式70%（NISA初期残高は0円）",
@@ -299,12 +299,12 @@ if st.button("シミュレーションを開始", type="primary"):
 
     cfg['simulation'].update({
         'start_age': age_h,
-        'shuhei_income': income_h * 10000,
-        'sakura_income': income_w * 10000,
+        'husband_income': income_h * 10000,
+        'wife_income': income_w * 10000,
         'maternity_leave': _maternity,
-        'sakura_reduced_hours': _w_reduced,
-        'shuhei_parental_leave': _h_parental,
-        'shuhei_reduced_hours': _h_reduced,
+        'wife_reduced_hours': _w_reduced,
+        'husband_parental_leave': _h_parental,
+        'husband_reduced_hours': _h_reduced,
     })
     cfg['education']['children'] = _edu_children
     # 年金のbirthdate をユーザーの年齢から逆算して更新・雇用形態を反映
@@ -318,13 +318,13 @@ if st.button("シミュレーションを開始", type="primary"):
         cfg['pension']['people'][1]['birthdate'] = f'{birth_year_w}/07/01'
         cfg['pension']['people'][1]['pension_type'] = 'employee' if type_w == '会社員' else 'national'
     # 雇用形態に応じた per-person 収入成長率を設定
-    cfg['simulation']['shuhei_income_growth_rate'] = _base_growth_rate if type_h == '会社員' else 0.0
-    cfg['simulation']['sakura_income_growth_rate'] = _base_growth_rate if type_w == '会社員' else 0.0
+    cfg['simulation']['husband_income_growth_rate'] = _base_growth_rate if type_h == '会社員' else 0.0
+    cfg['simulation']['wife_income_growth_rate'] = _base_growth_rate if type_w == '会社員' else 0.0
     # 専業主夫/主婦は収入を0に設定
     if type_h == '専業主夫':
-        cfg['simulation']['shuhei_income'] = 0
+        cfg['simulation']['husband_income'] = 0
     if type_w == '専業主婦':
-        cfg['simulation']['sakura_income'] = 0
+        cfg['simulation']['wife_income'] = 0
 
     progress_bar = st.progress(0)
     status_text = st.empty()
@@ -347,7 +347,7 @@ if st.button("シミュレーションを開始", type="primary"):
 
         df = mc_res['base_df']
         df['year_offset'] = df['month'] / 12
-        df['sakura_age'] = age_w + df['year_offset']
+        df['wife_age'] = age_w + df['year_offset']
 
     progress_bar.empty()
     status_text.empty()

@@ -914,7 +914,7 @@ def calculate_pension_income(
         fire_year_offset: FIRE達成時点の経過年数（年）
         current_assets: 現在の総資産（年金繰り下げ判定用）
         fire_target_assets: FIRE目標資産（年金繰り下げ判定用）
-        override_start_ages: 年金開始年齢を直接指定する辞書（例: {'修平': 70, '桜': 65}）。
+        override_start_ages: 年金開始年齢を直接指定する辞書（例: {'夫': 70, '妻': 65}）。
                              指定時は _determine_optimal_pension_start_age() をスキップ。
 
     Returns:
@@ -1142,7 +1142,7 @@ def calculate_national_health_insurance_premium(
     si = config['social_insurance']
 
     # --- 所得の算出 ---
-    # 副業収入（修平 + 桜の年額合計）- FIRE後固定額
+    # 副業収入（夫 + 妻の年額合計）- FIRE後固定額
     annual_side_income = _compute_post_fire_income(config) * 12
 
     # 前年の株式譲渡益（キャピタルゲイン）
@@ -1816,7 +1816,7 @@ def _build_monthly_result(
     date, month: int,
     cash: float, stocks: float, stocks_cost_basis: float, nisa_balance: float,
     total_income: float, monthly_pension_income: float, labor_income: float,
-    shuhei_income_monthly: float, sakura_income_monthly: float,
+    husband_income_monthly: float, wife_income_monthly: float,
     monthly_child_allowance: float,
     expense: float, base_expense: float, monthly_education_expense: float,
     monthly_mortgage_payment: float, monthly_maintenance_cost: float,
@@ -1835,8 +1835,8 @@ def _build_monthly_result(
         'income': total_income,
         'pension_income': monthly_pension_income,
         'labor_income': labor_income,
-        'shuhei_income': shuhei_income_monthly,
-        'sakura_income': sakura_income_monthly,
+        'husband_income': husband_income_monthly,
+        'wife_income': wife_income_monthly,
         'child_allowance': monthly_child_allowance,
         'expense': expense, 'base_expense': base_expense,
         'education_expense': monthly_education_expense,
@@ -1854,17 +1854,17 @@ def _build_monthly_result(
     }
 
 
-def _sakura_income_for_month(date: datetime, sakura_income_base: float, config: dict) -> float:
+def _wife_income_for_month(date: datetime, wife_income_base: float, config: dict) -> float:
     """
-    指定月の桜の月収を返す。産休・育休期間中は config の monthly_income を使用する。
+    指定月の妻の月収を返す。産休・育休期間中は config の monthly_income を使用する。
 
     Args:
         date: 判定する月の日付
-        sakura_income_base: 通常時の桜の月収
+        wife_income_base: 通常時の妻の月収
         config: 設定辞書
 
     Returns:
-        その月の桜の月収（円）
+        その月の妻の月収（円）
     """
     leave_list = config['simulation']['maternity_leave']
     children = config['education']['children']
@@ -1891,7 +1891,7 @@ def _sakura_income_for_month(date: datetime, sakura_income_base: float, config: 
             return income_during_leave
 
     # 時短勤務判定
-    reduced_list = config['simulation'].get('sakura_reduced_hours', [])
+    reduced_list = config['simulation'].get('wife_reduced_hours', [])
     for rh in reduced_list:
         child_name = rh['child']
         start_months = rh['start_months_after']
@@ -1911,29 +1911,29 @@ def _sakura_income_for_month(date: datetime, sakura_income_base: float, config: 
         rh_end = birthdate + relativedelta(months=end_months)
 
         if rh_start <= date <= rh_end:
-            return sakura_income_base * ratio
+            return wife_income_base * ratio
 
-    return sakura_income_base
+    return wife_income_base
 
 
-def _shuhei_income_for_month(date: datetime, shuhei_income_grown: float, config: dict) -> float:
+def _husband_income_for_month(date: datetime, husband_income_grown: float, config: dict) -> float:
     """
-    指定月の修平の月収を返す。
+    指定月の夫の月収を返す。
     育休期間中は育児休業給付金、時短勤務期間中は減額した給与を適用。
 
     Args:
         date: 判定する月の日付
-        shuhei_income_grown: 成長率適用後の通常時の修平の月収
+        husband_income_grown: 成長率適用後の通常時の夫の月収
         config: 設定辞書
 
     Returns:
-        その月の修平の月収（円）
+        その月の夫の月収（円）
     """
     sim = config['simulation']
     children = config['education']['children']
 
     # 育休判定（優先）
-    leave_list = sim['shuhei_parental_leave']
+    leave_list = sim['husband_parental_leave']
     for leave in leave_list:
         child_name = leave['child']
         months_after = leave['months_after']
@@ -1958,7 +1958,7 @@ def _shuhei_income_for_month(date: datetime, shuhei_income_grown: float, config:
             return income_later
 
     # 時短勤務判定
-    reduced_list = sim['shuhei_reduced_hours']
+    reduced_list = sim['husband_reduced_hours']
     for rh in reduced_list:
         child_name = rh['child']
         start_months = rh['start_months_after']
@@ -1977,9 +1977,9 @@ def _shuhei_income_for_month(date: datetime, shuhei_income_grown: float, config:
         rh_end = birthdate + relativedelta(months=end_months)
 
         if rh_start <= date <= rh_end:
-            return shuhei_income_grown * ratio
+            return husband_income_grown * ratio
 
-    return shuhei_income_grown
+    return husband_income_grown
 
 
 def _compute_post_fire_income(config: Dict[str, Any]) -> float:
@@ -1988,9 +1988,9 @@ def _compute_post_fire_income(config: Dict[str, Any]) -> float:
     年金受給開始までの間、設定された固定額の収入を得る。
     """
     sim = config['simulation']
-    shuhei_base = sim['shuhei_post_fire_income']
-    sakura_base = sim['sakura_post_fire_income']
-    return shuhei_base + sakura_base
+    husband_base = sim['husband_post_fire_income']
+    wife_base = sim['wife_post_fire_income']
+    return husband_base + wife_base
 
 
 def _calculate_monthly_income(
@@ -1998,10 +1998,10 @@ def _calculate_monthly_income(
     date: datetime,
     fire_achieved: bool,
     fire_month,
-    shuhei_income_base: float,
-    sakura_income_base: float,
+    husband_income_base: float,
+    wife_income_base: float,
     monthly_income: float,
-    shuhei_ratio: float,
+    husband_ratio: float,
     income_growth_rate: float,
     config: dict,
     current_assets: float = None,
@@ -2015,12 +2015,12 @@ def _calculate_monthly_income(
 
     Returns:
       total_income:          月次合計収入
-      labor_income:               労働収入（FIRE後は shuhei + sakura の post_fire 合計）
+      labor_income:               労働収入（FIRE後は husband + wife の post_fire 合計）
       pension_income:             月次年金収入
       child_allowance:            月次児童手当
-      shuhei_income_monthly:      修平の月収（FIRE後は shuhei_post_fire_income）
-      sakura_income_monthly:      桜の月収（FIRE後は sakura_post_fire_income）
-      post_fire_income:           修平の FIRE後副収入設定値
+      husband_income_monthly:      夫の月収（FIRE後は husband_post_fire_income）
+      wife_income_monthly:      妻の月収（FIRE後は wife_post_fire_income）
+      post_fire_income:           夫の FIRE後副収入設定値
     """
 
     if fire_achieved:
@@ -2033,19 +2033,19 @@ def _calculate_monthly_income(
         labor_income = _inc['post_fire_income']
         sim = config['simulation']
         if _inc['pension_income'] > 0:
-            shuhei_pf = 0
-            sakura_pf = 0
+            husband_pf = 0
+            wife_pf = 0
         else:
-            shuhei_pf = sim['shuhei_post_fire_income']
-            sakura_pf = sim['sakura_post_fire_income']
+            husband_pf = sim['husband_post_fire_income']
+            wife_pf = sim['wife_post_fire_income']
         return {
             'total_income': _inc['total'],
             'labor_income': labor_income,
             'pension_income': _inc['pension_income'],
             'child_allowance': _inc['child_allowance'],
-            'shuhei_income_monthly': shuhei_pf,
-            'sakura_income_monthly': sakura_pf,
-            'post_fire_income': shuhei_pf,
+            'husband_income_monthly': husband_pf,
+            'wife_income_monthly': wife_pf,
+            'post_fire_income': husband_pf,
         }
 
     # FIRE前: 年金収入の計算
@@ -2062,32 +2062,32 @@ def _calculate_monthly_income(
     monthly_pension_income = annual_pension_income / 12
     monthly_child_allowance = calculate_child_allowance(years, config) / 12
 
-    shuhei_post_fire_income = config['simulation']['shuhei_post_fire_income']
-    sakura_post_fire_income = config['simulation']['sakura_post_fire_income']
+    husband_post_fire_income = config['simulation']['husband_post_fire_income']
+    wife_post_fire_income = config['simulation']['wife_post_fire_income']
 
     # FIRE前: 労働収入を成長率に応じて計算（per-person設定があればそちらを優先）
-    shuhei_growth = config['simulation'].get('shuhei_income_growth_rate', income_growth_rate)
-    sakura_growth = config['simulation'].get('sakura_income_growth_rate', 0.0)
+    husband_growth = config['simulation'].get('husband_income_growth_rate', income_growth_rate)
+    wife_growth = config['simulation'].get('wife_income_growth_rate', 0.0)
 
-    if shuhei_income_base + sakura_income_base > 0:
-        shuhei_income_grown = shuhei_income_base * (1 + shuhei_growth) ** years
-        sakura_income_grown = sakura_income_base * (1 + sakura_growth) ** years
-        shuhei_income_monthly = _shuhei_income_for_month(date, shuhei_income_grown, config)
-        sakura_income_monthly = _sakura_income_for_month(date, sakura_income_grown, config)
-        income = shuhei_income_monthly + sakura_income_monthly
+    if husband_income_base + wife_income_base > 0:
+        husband_income_grown = husband_income_base * (1 + husband_growth) ** years
+        wife_income_grown = wife_income_base * (1 + wife_growth) ** years
+        husband_income_monthly = _husband_income_for_month(date, husband_income_grown, config)
+        wife_income_monthly = _wife_income_for_month(date, wife_income_grown, config)
+        income = husband_income_monthly + wife_income_monthly
     else:
         income = monthly_income * (1 + income_growth_rate) ** years
-        shuhei_income_monthly = income * shuhei_ratio
-        sakura_income_monthly = income * (1 - shuhei_ratio)
+        husband_income_monthly = income * husband_ratio
+        wife_income_monthly = income * (1 - husband_ratio)
 
     return {
         'total_income': income + monthly_pension_income + monthly_child_allowance,
         'labor_income': income,
         'pension_income': monthly_pension_income,
         'child_allowance': monthly_child_allowance,
-        'shuhei_income_monthly': shuhei_income_monthly,
-        'sakura_income_monthly': sakura_income_monthly,
-        'post_fire_income': shuhei_post_fire_income,
+        'husband_income_monthly': husband_income_monthly,
+        'wife_income_monthly': wife_income_monthly,
+        'post_fire_income': husband_post_fire_income,
     }
 
 
@@ -2132,8 +2132,8 @@ def _initialize_post_fire_simulation(
 
     # FIRE後の収入
     post_fire_income = (
-        config['simulation']['shuhei_post_fire_income']
-        + config['simulation']['sakura_post_fire_income']
+        config['simulation']['husband_post_fire_income']
+        + config['simulation']['wife_post_fire_income']
     )
 
     return {
@@ -3222,12 +3222,12 @@ def _initialize_future_simulation(
         capital_gains_tax_rate = 0.20315
 
     # 夫婦別収入の比率を計算
-    shuhei_income_base = config['simulation']['shuhei_income']
-    sakura_income_base = config['simulation']['sakura_income']
-    if shuhei_income_base + sakura_income_base > 0:
-        shuhei_ratio = shuhei_income_base / (shuhei_income_base + sakura_income_base)
+    husband_income_base = config['simulation']['husband_income']
+    wife_income_base = config['simulation']['wife_income']
+    if husband_income_base + wife_income_base > 0:
+        husband_ratio = husband_income_base / (husband_income_base + wife_income_base)
     else:
-        shuhei_ratio = 1.0
+        husband_ratio = 1.0
 
     return {
         # 資産
@@ -3256,9 +3256,9 @@ def _initialize_future_simulation(
         'expense_growth_rate': expense_growth_rate,
 
         # その他
-        'shuhei_ratio': shuhei_ratio,
-        'shuhei_income_base': shuhei_income_base,
-        'sakura_income_base': sakura_income_base,
+        'husband_ratio': husband_ratio,
+        'husband_income_base': husband_income_base,
+        'wife_income_base': wife_income_base,
         'income': monthly_income,
         'expense': monthly_expense,
     }
@@ -3280,9 +3280,9 @@ def _process_future_monthly_cycle(
     prev_year_capital_gains: float,
     config: Dict[str, Any],
     scenario: str,
-    shuhei_income_base: float,
-    sakura_income_base: float,
-    shuhei_ratio: float,
+    husband_income_base: float,
+    wife_income_base: float,
+    husband_ratio: float,
     income: float,
     expense: float,
     monthly_return_rate: float,
@@ -3340,8 +3340,8 @@ def _process_future_monthly_cycle(
     current_total_assets = cash + stocks
     _income = _calculate_monthly_income(
         years, date, fire_achieved, fire_month,
-        shuhei_income_base, sakura_income_base, income,
-        shuhei_ratio, income_growth_rate, config,
+        husband_income_base, wife_income_base, income,
+        husband_ratio, income_growth_rate, config,
         current_assets=current_total_assets,
         override_start_ages=override_start_ages,
     )
@@ -3349,8 +3349,8 @@ def _process_future_monthly_cycle(
     labor_income = _income['labor_income']
     monthly_pension_income = _income['pension_income']
     monthly_child_allowance = _income['child_allowance']
-    shuhei_income_monthly = _income['shuhei_income_monthly']
-    sakura_income_monthly = _income['sakura_income_monthly']
+    husband_income_monthly = _income['husband_income_monthly']
+    wife_income_monthly = _income['wife_income_monthly']
 
     # 支出計算
     _years_since_fire_fut = max(0.0, years - fire_month / 12) if fire_achieved and fire_month is not None else 0.0
@@ -3495,7 +3495,7 @@ def _process_future_monthly_cycle(
     monthly_result = _build_monthly_result(
         date, month, cash, stocks, stocks_cost_basis, nisa_balance,
         total_income, monthly_pension_income, labor_income,
-        shuhei_income_monthly, sakura_income_monthly, monthly_child_allowance,
+        husband_income_monthly, wife_income_monthly, monthly_child_allowance,
         expense, base_expense, monthly_education_expense,
         monthly_mortgage_payment, monthly_maintenance_cost, monthly_workation_cost,
         monthly_pension_premium, monthly_health_insurance_premium,
@@ -3584,9 +3584,9 @@ def simulate_future_assets(
     income_growth_rate = init['income_growth_rate']
     expense_growth_rate = init['expense_growth_rate']
 
-    shuhei_ratio = init['shuhei_ratio']
-    shuhei_income_base = init['shuhei_income_base']
-    sakura_income_base = init['sakura_income_base']
+    husband_ratio = init['husband_ratio']
+    husband_income_base = init['husband_income_base']
+    wife_income_base = init['wife_income_base']
     income = init['income']
     expense = init['expense']
 
@@ -3613,7 +3613,7 @@ def simulate_future_assets(
             current_date, current_year, nisa_used_this_year,
             capital_gains_this_year, prev_year_capital_gains,
             config, scenario,
-            shuhei_income_base, sakura_income_base, shuhei_ratio,
+            husband_income_base, wife_income_base, husband_ratio,
             income, expense,
             monthly_return_rate, income_growth_rate, expense_growth_rate,
             allocation_enabled, cash_buffer_months, min_cash_balance,
@@ -3773,8 +3773,8 @@ def run_monte_carlo_simulation(
         post_fire_income = post_fire_income_override
     else:
         post_fire_income = (
-            config['simulation']['shuhei_post_fire_income']
-            + config['simulation']['sakura_post_fire_income']
+            config['simulation']['husband_post_fire_income']
+            + config['simulation']['wife_post_fire_income']
         )
 
     # override_start_ages が未指定の場合:

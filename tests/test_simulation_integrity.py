@@ -22,8 +22,8 @@ sys.path.insert(0, str(project_root / 'src'))
 from config import load_config
 from simulator import (
     _compute_post_fire_income,
-    _shuhei_income_for_month,
-    _sakura_income_for_month,
+    _husband_income_for_month,
+    _wife_income_for_month,
     _calculate_monthly_income,
     _get_life_stage,
     _set_reference_date,
@@ -77,14 +77,14 @@ def _minimal_config(**overrides):
             'years': 50,
             'start_age': 35,
             'life_expectancy': 90,
-            'shuhei_income': 465875,
-            'sakura_income': 500000,
+            'husband_income': 465875,
+            'wife_income': 500000,
             'initial_labor_income': 965875,
-            'shuhei_post_fire_income': 100000,
-            'sakura_post_fire_income': 300000,
+            'husband_post_fire_income': 100000,
+            'wife_post_fire_income': 300000,
             'maternity_leave': [],
-            'shuhei_parental_leave': [],
-            'shuhei_reduced_hours': [],
+            'husband_parental_leave': [],
+            'husband_reduced_hours': [],
             'standard': {
                 'annual_return_rate': 0.05,
                 'inflation_rate': 0.02,
@@ -174,7 +174,7 @@ def _minimal_config(**overrides):
             'start_age': 65,
             'people': [
                 {
-                    'name': '修平',
+                    'name': '夫',
                     'birthdate': '1990/05/13',
                     'pension_type': 'employee',
                     'work_start_age': 21,
@@ -184,7 +184,7 @@ def _minimal_config(**overrides):
                     'override_start_age': 75,
                 },
                 {
-                    'name': '桜',
+                    'name': '妻',
                     'birthdate': '1991/04/20',
                     'pension_type': 'national',
                     'override_start_age': 62,
@@ -267,29 +267,29 @@ class TestComputePostFireIncome:
         assert _compute_post_fire_income(cfg) == 100000 + 300000
 
     def test_one_zero(self):
-        cfg = _minimal_config(**{'simulation.shuhei_post_fire_income': 0})
+        cfg = _minimal_config(**{'simulation.husband_post_fire_income': 0})
         assert _compute_post_fire_income(cfg) == 300000
 
     def test_both_zero(self):
         cfg = _minimal_config(
-            **{'simulation.shuhei_post_fire_income': 0, 'simulation.sakura_post_fire_income': 0}
+            **{'simulation.husband_post_fire_income': 0, 'simulation.wife_post_fire_income': 0}
         )
         assert _compute_post_fire_income(cfg) == 0
 
     def test_both_explicitly_zero(self):
         cfg = _minimal_config(
-            **{'simulation.shuhei_post_fire_income': 0, 'simulation.sakura_post_fire_income': 0}
+            **{'simulation.husband_post_fire_income': 0, 'simulation.wife_post_fire_income': 0}
         )
         assert _compute_post_fire_income(cfg) == 0
 
 
-class TestShuheiIncomeForMonth:
-    """修平の月収: 育休→時短→通常の遷移テスト"""
+class TestHusbandIncomeForMonth:
+    """夫の月収: 育休→時短→通常の遷移テスト"""
 
     def _config_with_leave_and_reduced(self):
         return _minimal_config(
             **{
-                'simulation.shuhei_parental_leave': [
+                'simulation.husband_parental_leave': [
                     {
                         'child': '楓',
                         'months_after': 12,
@@ -297,7 +297,7 @@ class TestShuheiIncomeForMonth:
                         'monthly_income_after_180days': 231000,
                     }
                 ],
-                'simulation.shuhei_reduced_hours': [
+                'simulation.husband_reduced_hours': [
                     {
                         'child': '楓',
                         'start_months_after': 12,
@@ -312,20 +312,20 @@ class TestShuheiIncomeForMonth:
         """育休前は通常給与"""
         cfg = self._config_with_leave_and_reduced()
         date = datetime(2027, 1, 1)  # 楓出生前
-        assert _shuhei_income_for_month(date, 500000, cfg) == 500000
+        assert _husband_income_for_month(date, 500000, cfg) == 500000
 
     def test_parental_leave_first_half(self):
         """育休前半（180日以内）: 31万円"""
         cfg = self._config_with_leave_and_reduced()
         date = datetime(2027, 6, 1)  # 楓出生(4/15)後~2ヶ月
-        result = _shuhei_income_for_month(date, 500000, cfg)
+        result = _husband_income_for_month(date, 500000, cfg)
         assert result == 310000
 
     def test_parental_leave_second_half(self):
         """育休後半（180日以降）: 23.1万円"""
         cfg = self._config_with_leave_and_reduced()
         date = datetime(2028, 2, 1)  # 出生後~10ヶ月（180日超）
-        result = _shuhei_income_for_month(date, 500000, cfg)
+        result = _husband_income_for_month(date, 500000, cfg)
         assert result == 231000
 
     def test_boundary_leave_end_equals_reduced_start(self):
@@ -334,14 +334,14 @@ class TestShuheiIncomeForMonth:
         # 育休: birthdate + 12months = 2028/4/15
         # 時短: birthdate + 12months = 2028/4/15
         date = datetime(2028, 4, 15)
-        result = _shuhei_income_for_month(date, 500000, cfg)
+        result = _husband_income_for_month(date, 500000, cfg)
         assert result == 231000  # 育休が優先（先に判定される）
 
     def test_reduced_hours_period(self):
         """時短勤務期間: grown * 0.75"""
         cfg = self._config_with_leave_and_reduced()
         date = datetime(2028, 5, 1)  # 育休終了後、時短期間中
-        result = _shuhei_income_for_month(date, 500000, cfg)
+        result = _husband_income_for_month(date, 500000, cfg)
         assert result == 500000 * 0.75
 
     def test_after_reduced_hours(self):
@@ -349,45 +349,45 @@ class TestShuheiIncomeForMonth:
         cfg = self._config_with_leave_and_reduced()
         # 時短終了: birthdate + 36months = 2030/4/15
         date = datetime(2030, 5, 1)
-        result = _shuhei_income_for_month(date, 500000, cfg)
+        result = _husband_income_for_month(date, 500000, cfg)
         assert result == 500000
 
     def test_no_matching_child(self):
         """該当する子がいない場合は通常給与"""
         cfg = _minimal_config(
             **{
-                'simulation.shuhei_reduced_hours': [
+                'simulation.husband_reduced_hours': [
                     {'child': '存在しない子', 'start_months_after': 12, 'end_months_after': 36, 'income_ratio': 0.75}
                 ]
             }
         )
         date = datetime(2029, 1, 1)
-        assert _shuhei_income_for_month(date, 500000, cfg) == 500000
+        assert _husband_income_for_month(date, 500000, cfg) == 500000
 
 
-class TestSakuraIncomeForMonth:
-    """桜の月収: 産休期間テスト"""
+class TestWifeIncomeForMonth:
+    """妻の月収: 産休期間テスト"""
 
     def test_normal_period(self):
         cfg = _minimal_config(
             **{'simulation.maternity_leave': [{'child': '楓', 'months_before': 2, 'months_after': 12, 'monthly_income': 0}]}
         )
         date = datetime(2027, 1, 1)  # 産休開始前
-        assert _sakura_income_for_month(date, 500000, cfg) == 500000
+        assert _wife_income_for_month(date, 500000, cfg) == 500000
 
     def test_during_maternity_leave(self):
         cfg = _minimal_config(
             **{'simulation.maternity_leave': [{'child': '楓', 'months_before': 2, 'months_after': 12, 'monthly_income': 0}]}
         )
         date = datetime(2027, 6, 1)  # 産休期間中
-        assert _sakura_income_for_month(date, 500000, cfg) == 0
+        assert _wife_income_for_month(date, 500000, cfg) == 0
 
     def test_after_maternity_leave(self):
         cfg = _minimal_config(
             **{'simulation.maternity_leave': [{'child': '楓', 'months_before': 2, 'months_after': 12, 'monthly_income': 0}]}
         )
         date = datetime(2028, 6, 1)  # 産休終了後
-        assert _sakura_income_for_month(date, 500000, cfg) == 500000
+        assert _wife_income_for_month(date, 500000, cfg) == 500000
 
 
 class TestHealthInsurancePremium:
@@ -516,7 +516,7 @@ class TestPensionCalculation:
     def test_person_pension_before_start_age(self):
         """受給開始前は0"""
         person = {
-            'name': '修平', 'birthdate': '1990/05/13',
+            'name': '夫', 'birthdate': '1990/05/13',
             'pension_type': 'employee', 'work_start_age': 21,
             'avg_monthly_salary': 625615,
             'past_pension_base_annual': 236929, 'past_contribution_months': 177,
@@ -529,21 +529,21 @@ class TestPensionCalculation:
     def test_pension_deferral_increase(self):
         """繰下げ: +8.4%/年"""
         cfg = _minimal_config()
-        override = {'修平': 70, '桜': 65}
-        # year_offset large enough for age > 70 (修平) and > 65 (桜)
+        override = {'夫': 70, '妻': 65}
+        # year_offset large enough for age > 70 (夫) and > 65 (妻)
         pension_70 = calculate_pension_income(40, cfg, fire_achieved=True,
                                               fire_year_offset=3, override_start_ages=override)
-        override_65 = {'修平': 65, '桜': 65}
+        override_65 = {'夫': 65, '妻': 65}
         pension_65 = calculate_pension_income(40, cfg, fire_achieved=True,
                                               fire_year_offset=3, override_start_ages=override_65)
-        # 修平の70歳繰下げ分だけ pension_70 > pension_65
+        # 夫の70歳繰下げ分だけ pension_70 > pension_65
         assert pension_70 > pension_65
 
     def test_pension_early_decrease(self):
         """繰上げ: -4.8%/年"""
         cfg = _minimal_config()
-        override_62 = {'修平': 65, '桜': 62}
-        override_65 = {'修平': 65, '桜': 65}
+        override_62 = {'夫': 65, '妻': 62}
+        override_65 = {'夫': 65, '妻': 65}
         # year_offset for age > 65 for both
         pension_62 = calculate_pension_income(35, cfg, fire_achieved=True,
                                               fire_year_offset=3, override_start_ages=override_62)
@@ -554,7 +554,7 @@ class TestPensionCalculation:
     def test_pension_inflation_applied(self):
         """年金にインフレ（pension_growth_rate）が適用される"""
         cfg = _minimal_config()
-        override = {'修平': 65, '桜': 65}
+        override = {'夫': 65, '妻': 65}
         p0 = calculate_pension_income(30, cfg, fire_achieved=True,
                                       fire_year_offset=3, override_start_ages=override)
         p10 = calculate_pension_income(40, cfg, fire_achieved=True,
@@ -662,16 +662,16 @@ class TestNationalPensionPremium:
     def test_fire_achieved_in_range(self):
         """FIRE後、20-60歳の人のみ保険料を支払う"""
         cfg = _minimal_config()
-        # year_offset=0: 修平35歳, 桜33.9歳 → 両方 20-60 の範囲内
+        # year_offset=0: 夫35歳, 妻33.9歳 → 両方 20-60 の範囲内
         premium = calculate_national_pension_premium(0, cfg, fire_achieved=True)
         assert premium == 16980 * 12 * 2
 
     def test_fire_achieved_over_60(self):
         """60歳以上は保険料なし"""
         cfg = _minimal_config()
-        # year_offset=30: 修平65歳, 桜64歳 → 桜のみ(ギリギリ)
+        # year_offset=30: 夫65歳, 妻64歳 → 妻のみ(ギリギリ)
         premium = calculate_national_pension_premium(30, cfg, fire_achieved=True)
-        # 修平: 65 >= 60 → 対象外, 桜: 63.9 >= 60 → 対象外
+        # 夫: 65 >= 60 → 対象外, 妻: 63.9 >= 60 → 対象外
         assert premium == 0
 
 
@@ -754,7 +754,7 @@ class TestInvariants:
             monthly_expense=real_config['fire']['base_expense_by_stage']['young_child'] / 12,
             config=real_config,
             scenario='standard',
-            override_start_ages={'修平': 75, '桜': 62},
+            override_start_ages={'夫': 75, '妻': 62},
         )
         return df
 
@@ -822,10 +822,10 @@ class TestInvariants:
             pytest.skip("No pension income in simulation")
 
         first_pension_date = pension_start.iloc[0]['date']
-        # 桜(1991/4/20)の62歳受給: 2053/4/20
-        expected_sakura_62 = datetime(2053, 4, 1)
-        assert first_pension_date.year == expected_sakura_62.year or \
-               first_pension_date.year == expected_sakura_62.year + 1, \
+        # 妻(1991/4/20)の62歳受給: 2053/4/20
+        expected_wife_62 = datetime(2053, 4, 1)
+        assert first_pension_date.year == expected_wife_62.year or \
+               first_pension_date.year == expected_wife_62.year + 1, \
             f"First pension at {first_pension_date}, expected ~2053"
 
     def test_mortgage_ends_after_end_date(self, simulation_df):
@@ -852,7 +852,7 @@ class TestInvariants:
 # ============================================================
 
 class TestIncomeTimeline:
-    """修平・桜の収入タイムライン全体を検証"""
+    """夫・妻の収入タイムライン全体を検証"""
 
     @pytest.fixture(scope='class')
     def full_df(self, real_config):
@@ -864,12 +864,12 @@ class TestIncomeTimeline:
             monthly_expense=real_config['fire']['base_expense_by_stage']['young_child'] / 12,
             config=real_config,
             scenario='standard',
-            override_start_ages={'修平': 75, '桜': 62},
+            override_start_ages={'夫': 75, '妻': 62},
         )
         return df
 
-    def test_shuhei_parental_leave_income(self, full_df):
-        """修平の育休期間中の収入が正しい"""
+    def test_husband_parental_leave_income(self, full_df):
+        """夫の育休期間中の収入が正しい"""
         # 楓: 2027/4/15 出生, 育休: ~2028/4/15
         leave_rows = full_df[
             (full_df['date'] >= datetime(2027, 5, 1)) &
@@ -878,11 +878,11 @@ class TestIncomeTimeline:
         ]
         if len(leave_rows) > 0:
             for _, row in leave_rows.iterrows():
-                assert row['shuhei_income'] == 310000 or row['shuhei_income'] == 231000, \
-                    f"During parental leave, expected 310000 or 231000, got {row['shuhei_income']}"
+                assert row['husband_income'] == 310000 or row['husband_income'] == 231000, \
+                    f"During parental leave, expected 310000 or 231000, got {row['husband_income']}"
 
-    def test_shuhei_reduced_hours_income(self, full_df):
-        """修平の時短勤務期間中の収入が通常の75%"""
+    def test_husband_reduced_hours_income(self, full_df):
+        """夫の時短勤務期間中の収入が通常の75%"""
         reduced_rows = full_df[
             (full_df['date'] >= datetime(2028, 6, 1)) &
             (full_df['date'] <= datetime(2030, 3, 1)) &
@@ -893,15 +893,15 @@ class TestIncomeTimeline:
                 normal = full_df[
                     (full_df['date'] < datetime(2027, 4, 1)) &
                     (full_df['fire_achieved'] == False)
-                ]['shuhei_income']
+                ]['husband_income']
                 if len(normal) > 0:
                     expected_approx = normal.iloc[-1] * 0.75
-                    assert abs(row['shuhei_income'] - expected_approx) / expected_approx < 0.15, \
-                        f"Reduced hours: expected ~{expected_approx:.0f}, got {row['shuhei_income']:.0f}"
+                    assert abs(row['husband_income'] - expected_approx) / expected_approx < 0.15, \
+                        f"Reduced hours: expected ~{expected_approx:.0f}, got {row['husband_income']:.0f}"
                 break
 
-    def test_sakura_maternity_leave_zero(self, full_df):
-        """桜の産休期間中は収入0"""
+    def test_wife_maternity_leave_zero(self, full_df):
+        """妻の産休期間中は収入0"""
         leave_rows = full_df[
             (full_df['date'] >= datetime(2027, 3, 1)) &
             (full_df['date'] <= datetime(2028, 3, 1)) &
@@ -909,28 +909,28 @@ class TestIncomeTimeline:
         ]
         if len(leave_rows) > 0:
             for _, row in leave_rows.iterrows():
-                assert row['sakura_income'] == 0 or row['sakura_income'] == 500000, \
-                    f"Expected 0 (during leave) or 500000 (before/after), got {row['sakura_income']}"
+                assert row['wife_income'] == 0 or row['wife_income'] == 500000, \
+                    f"Expected 0 (during leave) or 500000 (before/after), got {row['wife_income']}"
 
     def test_fire_post_income_values(self, full_df, real_config):
-        """FIRE後の修平/桜の収入が config の固定値と一致（遷移月を除く）"""
+        """FIRE後の夫/妻の収入が config の固定値と一致（遷移月を除く）"""
         fire_rows = full_df[full_df['fire_achieved'] == True]
         if len(fire_rows) < 2:
             pytest.skip("Not enough FIRE months")
 
         sim = real_config['simulation']
-        expected_shuhei = sim.get('shuhei_post_fire_income', 0)
-        expected_sakura = sim.get('sakura_post_fire_income', 0)
+        expected_husband = sim.get('husband_post_fire_income', 0)
+        expected_wife = sim.get('wife_post_fire_income', 0)
 
         # FIRE遷移月を除外（pre-FIRE収入で記録されるため）
         fire_stable = fire_rows.iloc[1:]
         fire_no_pension = fire_stable[fire_stable['pension_income'] == 0]
         if len(fire_no_pension) > 0:
             row = fire_no_pension.iloc[0]
-            assert row['shuhei_income'] == expected_shuhei, \
-                f"Post-FIRE shuhei income: {row['shuhei_income']} (expected {expected_shuhei})"
-            assert row['sakura_income'] == expected_sakura, \
-                f"Post-FIRE sakura income: {row['sakura_income']} (expected {expected_sakura})"
+            assert row['husband_income'] == expected_husband, \
+                f"Post-FIRE husband income: {row['husband_income']} (expected {expected_husband})"
+            assert row['wife_income'] == expected_wife, \
+                f"Post-FIRE wife income: {row['wife_income']} (expected {expected_wife})"
 
     def test_final_assets_positive(self, full_df):
         """シミュレーション終了時の資産がプラス"""
@@ -964,7 +964,7 @@ class TestMonteCarloSanity:
 
         _set_reference_date(FIXED_REF_DATE)
 
-        override_ages = {'修平': 75, '桜': 62}
+        override_ages = {'夫': 75, '妻': 62}
         fire_month = mc_config['fire'].get('optimal_fire_month', 40)
 
         planned = run_monte_carlo_simulation(
@@ -1011,7 +1011,7 @@ class TestMonteCarloSanity:
             iterations=100,
             monthly_income=mc_config['simulation']['initial_labor_income'],
             monthly_expense=mc_config['fire']['base_expense_by_stage']['young_child'] / 12,
-            override_start_ages={'修平': 75, '桜': 62},
+            override_start_ages={'夫': 75, '妻': 62},
             min_fire_month=40,
         )
         rate = result.get('success_rate', -1)
@@ -1031,52 +1031,52 @@ class TestCalculateMonthlyIncome:
         result = _calculate_monthly_income(
             years=5, date=datetime(2030, 3, 1),
             fire_achieved=True, fire_month=12,
-            shuhei_income_base=465875, sakura_income_base=500000,
-            monthly_income=965875, shuhei_ratio=0.48,
+            husband_income_base=465875, wife_income_base=500000,
+            monthly_income=965875, husband_ratio=0.48,
             income_growth_rate=0.02, config=cfg,
-            override_start_ages={'修平': 75, '桜': 62},
+            override_start_ages={'夫': 75, '妻': 62},
         )
-        assert result['shuhei_income_monthly'] == 100000
-        assert result['sakura_income_monthly'] == 300000
+        assert result['husband_income_monthly'] == 100000
+        assert result['wife_income_monthly'] == 300000
         assert result['labor_income'] == 400000
 
     def test_fire_after_pension_returns_zero_labor(self):
         """FIRE後・年金受給開始後: 労働収入が0"""
         cfg = _minimal_config()
-        # year_offset=30 → start_age(35)+30=65歳。桜62歳 → pension > 0
+        # year_offset=30 → start_age(35)+30=65歳。妻62歳 → pension > 0
         result = _calculate_monthly_income(
             years=30, date=datetime(2055, 3, 1),
             fire_achieved=True, fire_month=12,
-            shuhei_income_base=465875, sakura_income_base=500000,
-            monthly_income=965875, shuhei_ratio=0.48,
+            husband_income_base=465875, wife_income_base=500000,
+            monthly_income=965875, husband_ratio=0.48,
             income_growth_rate=0.02, config=cfg,
-            override_start_ages={'修平': 75, '桜': 62},
+            override_start_ages={'夫': 75, '妻': 62},
         )
         assert result['labor_income'] == 0
-        assert result['shuhei_income_monthly'] == 0
-        assert result['sakura_income_monthly'] == 0
+        assert result['husband_income_monthly'] == 0
+        assert result['wife_income_monthly'] == 0
         assert result['pension_income'] > 0
 
     def test_pre_fire_income_growth(self):
-        """FIRE前: 修平の収入に成長率が適用される"""
+        """FIRE前: 夫の収入に成長率が適用される"""
         cfg = _minimal_config()
         r0 = _calculate_monthly_income(
             years=0, date=datetime(2025, 3, 1),
             fire_achieved=False, fire_month=None,
-            shuhei_income_base=465875, sakura_income_base=500000,
-            monthly_income=965875, shuhei_ratio=0.48,
+            husband_income_base=465875, wife_income_base=500000,
+            monthly_income=965875, husband_ratio=0.48,
             income_growth_rate=0.02, config=cfg,
         )
         r5 = _calculate_monthly_income(
             years=5, date=datetime(2030, 3, 1),
             fire_achieved=False, fire_month=None,
-            shuhei_income_base=465875, sakura_income_base=500000,
-            monthly_income=965875, shuhei_ratio=0.48,
+            husband_income_base=465875, wife_income_base=500000,
+            monthly_income=965875, husband_ratio=0.48,
             income_growth_rate=0.02, config=cfg,
         )
-        # 修平は成長率適用、桜は固定
-        assert r5['shuhei_income_monthly'] > r0['shuhei_income_monthly']
-        assert r5['sakura_income_monthly'] == r0['sakura_income_monthly']
+        # 夫は成長率適用、妻は固定
+        assert r5['husband_income_monthly'] > r0['husband_income_monthly']
+        assert r5['wife_income_monthly'] == r0['wife_income_monthly']
 
     def test_pension_and_labor_never_both_nonzero(self):
         """FIRE後は年金と労働収入が同時に正にならない"""
@@ -1086,10 +1086,10 @@ class TestCalculateMonthlyIncome:
             result = _calculate_monthly_income(
                 years=year_offset, date=date.to_pydatetime(),
                 fire_achieved=True, fire_month=12,
-                shuhei_income_base=465875, sakura_income_base=500000,
-                monthly_income=965875, shuhei_ratio=0.48,
+                husband_income_base=465875, wife_income_base=500000,
+                monthly_income=965875, husband_ratio=0.48,
                 income_growth_rate=0.02, config=cfg,
-                override_start_ages={'修平': 75, '桜': 62},
+                override_start_ages={'夫': 75, '妻': 62},
             )
             if result['pension_income'] > 0:
                 assert result['labor_income'] == 0, \
@@ -1156,7 +1156,7 @@ class TestPensionWithFire:
     def test_employee_pension_capped_at_fire(self):
         """FIREした時点で厚生年金の加入が停止"""
         person = {
-            'name': '修平', 'birthdate': '1990/05/13',
+            'name': '夫', 'birthdate': '1990/05/13',
             'pension_type': 'employee', 'work_start_age': 21,
             'avg_monthly_salary': 625615,
             'past_pension_base_annual': 236929, 'past_contribution_months': 177,
@@ -1178,7 +1178,7 @@ class TestPensionWithFire:
     def test_national_pension_unaffected_by_fire(self):
         """国民年金タイプはFIREの影響を受けない（常に40年加入）"""
         person = {
-            'name': '桜', 'birthdate': '1991/04/20',
+            'name': '妻', 'birthdate': '1991/04/20',
             'pension_type': 'national',
         }
         pension_fire = _calculate_person_pension(
@@ -1318,11 +1318,11 @@ class TestNationalPensionPremiumAdditional:
     """国民年金保険料の追加境界テスト"""
 
     def test_boundary_one_person_in_range(self):
-        """修平のみ20-60歳範囲内のケース"""
+        """夫のみ20-60歳範囲内のケース"""
         cfg = _minimal_config()
-        # year_offset=25: 修平60歳, 桜58.9歳
+        # year_offset=25: 夫60歳, 妻58.9歳
         premium = calculate_national_pension_premium(25, cfg, fire_achieved=True)
-        # 修平: 34.8+25=59.8 < 60 → 対象, 桜: 33.9+25=58.9 < 60 → 対象
+        # 夫: 34.8+25=59.8 < 60 → 対象, 妻: 33.9+25=58.9 < 60 → 対象
         assert premium == 16980 * 12 * 2
 
     def test_pension_disabled(self):
@@ -1406,7 +1406,7 @@ class TestInvariantsAdditional:
             monthly_expense=real_config['fire']['base_expense_by_stage']['young_child'] / 12,
             config=real_config,
             scenario='standard',
-            override_start_ages={'修平': 75, '桜': 62},
+            override_start_ages={'夫': 75, '妻': 62},
         )
         return df
 
@@ -1417,7 +1417,7 @@ class TestInvariantsAdditional:
             "stocks_cost_basis went negative"
 
     def test_pre_fire_income_monotonically_increases(self, simulation_df):
-        """FIRE前の通常勤務期間中、修平の収入は(育休/時短を除いて)概ね増加"""
+        """FIRE前の通常勤務期間中、夫の収入は(育休/時短を除いて)概ね増加"""
         df = simulation_df
         pre_fire = df[df['fire_achieved'] == False]
         if len(pre_fire) < 12:
@@ -1431,8 +1431,8 @@ class TestInvariantsAdditional:
         if len(normal) < 2:
             pytest.skip("Not enough normal work months")
 
-        first_income = normal.iloc[0]['shuhei_income']
-        last_income = normal.iloc[-1]['shuhei_income']
+        first_income = normal.iloc[0]['husband_income']
+        last_income = normal.iloc[-1]['husband_income']
         assert last_income >= first_income, \
             f"Income should grow: first={first_income}, last={last_income}"
 
@@ -2193,7 +2193,7 @@ class TestInvariantsExpanded:
             monthly_expense=real_config['fire']['base_expense_by_stage']['young_child'] / 12,
             config=real_config,
             scenario='standard',
-            override_start_ages={'修平': 75, '桜': 62},
+            override_start_ages={'夫': 75, '妻': 62},
         )
         return df
 

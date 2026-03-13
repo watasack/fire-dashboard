@@ -79,14 +79,14 @@ class SimulationConfig(BaseModel):
     years: int
     start_age: int
     life_expectancy: int
-    shuhei_income: int
-    sakura_income: int
+    husband_income: int
+    wife_income: int
     initial_labor_income: int
-    shuhei_post_fire_income: int
-    sakura_post_fire_income: int
+    husband_post_fire_income: int
+    wife_post_fire_income: int
     maternity_leave: List[MaternityLeaveEntry]
-    shuhei_parental_leave: List[ParentalLeaveEntry]
-    shuhei_reduced_hours: List[ReducedHoursEntry]
+    husband_parental_leave: List[ParentalLeaveEntry]
+    husband_reduced_hours: List[ReducedHoursEntry]
     standard: StandardScenarioConfig
     monte_carlo: MonteCarloConfig
 

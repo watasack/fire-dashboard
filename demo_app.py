@@ -155,10 +155,10 @@ if calc_button:
 
     cfg = copy.deepcopy(base_config)
 
-    # --- 収入: 修平・桜の個別収入を0にして monthly_income パラメータに委譲 ---
-    # _calculate_monthly_income の分岐: shuhei + sakura == 0 のとき monthly_income を使用
-    cfg["simulation"]["shuhei_income"] = 0
-    cfg["simulation"]["sakura_income"] = 0
+    # --- 収入: 夫・妻の個別収入を0にして monthly_income パラメータに委譲 ---
+    # _calculate_monthly_income の分岐: husband + wife == 0 のとき monthly_income を使用
+    cfg["simulation"]["husband_income"] = 0
+    cfg["simulation"]["wife_income"] = 0
 
     # --- 支出: カテゴリ別予算を無効化し、manual_annual_expense で固定 ---
     cfg["fire"]["expense_categories"]["enabled"] = False
@@ -173,8 +173,8 @@ if calc_button:
 
     # --- 産休・育休・時短を無効化（個人設定を排除） ---
     cfg["simulation"]["maternity_leave"] = []
-    cfg["simulation"]["shuhei_parental_leave"] = []
-    cfg["simulation"]["shuhei_reduced_hours"] = []
+    cfg["simulation"]["husband_parental_leave"] = []
+    cfg["simulation"]["husband_reduced_hours"] = []
 
     # --- FIRE後支出のターゲット計算用（4%ルールの分母として使用される）を更新 ---
     # base_expense_by_stage['empty_nest'] は FIRE判定の目標資産算出に使われる

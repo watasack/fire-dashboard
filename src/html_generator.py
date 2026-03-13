@@ -48,10 +48,10 @@ def _build_assumptions_html(config: Dict[str, Any], monte_carlo: Dict[str, Any])
     life_exp = sim['life_expectancy']
     start_age = sim['start_age']
 
-    shuhei_income = sim['shuhei_income']
-    sakura_income = sim['sakura_income']
-    shuhei_post = sim['shuhei_post_fire_income']
-    sakura_post = sim['sakura_post_fire_income']
+    husband_income = sim['husband_income']
+    wife_income = sim['wife_income']
+    husband_post = sim['husband_post_fire_income']
+    wife_post = sim['wife_post_fire_income']
 
     safety_margin = post_fire_cash['safety_margin']
     target_cash_reserve = post_fire_cash['target_cash_reserve']
@@ -72,10 +72,10 @@ def _build_assumptions_html(config: Dict[str, Any], monte_carlo: Dict[str, Any])
         <tr><td>想定寿命</td><td>{life_exp}歳</td></tr>
         <tr><td>MCシミュレーション回数</td><td>{mc_iters:,}回</td></tr>
         <tr class="group-header"><td colspan="2">収入設定</td></tr>
-        <tr><td>修平 手取り月額</td><td>¥{shuhei_income/10000:.1f}万</td></tr>
-        <tr><td>桜 手取り月額</td><td>¥{sakura_income/10000:.1f}万</td></tr>
-        <tr><td>FIRE後 修平 副収入</td><td>¥{shuhei_post/10000:.1f}万/月</td></tr>
-        <tr><td>FIRE後 桜 事業収入</td><td>¥{sakura_post/10000:.1f}万/月</td></tr>
+        <tr><td>夫 手取り月額</td><td>¥{husband_income/10000:.1f}万</td></tr>
+        <tr><td>妻 手取り月額</td><td>¥{wife_income/10000:.1f}万</td></tr>
+        <tr><td>FIRE後 夫 副収入</td><td>¥{husband_post/10000:.1f}万/月</td></tr>
+        <tr><td>FIRE後 妻 事業収入</td><td>¥{wife_post/10000:.1f}万/月</td></tr>
         <tr class="group-header"><td colspan="2">リスク管理</td></tr>
         <tr><td>安全マージン</td><td>{_format_man_yen(safety_margin)}（シミュレーション打ち切り・最適化制約）</td></tr>
         <tr><td>現金確保目標</td><td>{_format_man_yen(target_cash_reserve)}（FIRE後の現金管理目標）</td></tr>
@@ -372,8 +372,8 @@ def generate_dashboard_html(
     # FIRE後副収入の合計（セミFIRE前提の表示用）
     sim_cfg = config['simulation']
     post_fire_income_monthly = (
-        sim_cfg['shuhei_post_fire_income']
-        + sim_cfg['sakura_post_fire_income']
+        sim_cfg['husband_post_fire_income']
+        + sim_cfg['wife_post_fire_income']
     )
 
     # 前提条件の短縮表示
@@ -585,8 +585,8 @@ def generate_dashboard_html(
 
           if (customdata && customdata.length >= Object.keys(CUSTOMDATA_SCHEMA).length) {{
             const laborIncome = getCustomDataValue(customdata, 'labor_income');
-            const shuheiIncome = getCustomDataValue(customdata, 'shuhei_income');
-            const sakuraIncome = getCustomDataValue(customdata, 'sakura_income');
+            const husbandIncome = getCustomDataValue(customdata, 'husband_income');
+            const wifeIncome = getCustomDataValue(customdata, 'wife_income');
             const pensionIncome = getCustomDataValue(customdata, 'pension_income');
             const childAllowance = getCustomDataValue(customdata, 'child_allowance');
             const baseExpense = getCustomDataValue(customdata, 'base_expense');
@@ -664,8 +664,8 @@ def generate_dashboard_html(
             addRow('収入', '', 'section-header');
             if (laborIncome > 0) {{
               addRow('労働収入', '+¥' + (laborIncome / 10000).toFixed(1) + '万', 'income');
-              if (shuheiIncome > 0) addRow('└ 修平', '+¥' + (shuheiIncome / 10000).toFixed(1) + '万', 'subcategory');
-              if (sakuraIncome > 0) addRow('└ 桜', '+¥' + (sakuraIncome / 10000).toFixed(1) + '万', 'subcategory');
+              if (husbandIncome > 0) addRow('└ 夫', '+¥' + (husbandIncome / 10000).toFixed(1) + '万', 'subcategory');
+              if (wifeIncome > 0) addRow('└ 妻', '+¥' + (wifeIncome / 10000).toFixed(1) + '万', 'subcategory');
             }}
             if (pensionIncome > 0) addRow('年金収入', '+¥' + (pensionIncome / 10000).toFixed(1) + '万', 'income');
             if (childAllowance > 0) addRow('児童手当', '+¥' + (childAllowance / 10000).toFixed(1) + '万', 'income');

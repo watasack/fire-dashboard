@@ -24,14 +24,14 @@ simulation:
   start_age: 35                # 現在の年齢（デモアプリが上書き）
   life_expectancy: 90          # 想定寿命
 
-  # 労働収入（デモアプリが shuhei_income=0, sakura_income=0 に上書きし monthly_income に委譲）
-  shuhei_income: 500000        # 夫の手取り月額（円）: 共働き世帯の一般的想定値
-  sakura_income: 400000        # 妻の手取り月額（円）: 共働き世帯の一般的想定値
+  # 労働収入（デモアプリが husband_income=0, wife_income=0 に上書きし monthly_income に委譲）
+  husband_income: 500000        # 夫の手取り月額（円）: 共働き世帯の一般的想定値
+  wife_income: 400000        # 妻の手取り月額（円）: 共働き世帯の一般的想定値
   initial_labor_income: 900000 # 世帯手取り合計
 
   # FIRE後副収入（月額・円）
-  shuhei_post_fire_income: 100000   # 夫のFIRE後副収入
-  sakura_post_fire_income: 100000   # 妻のFIRE後副収入
+  husband_post_fire_income: 100000   # 夫のFIRE後副収入
+  wife_post_fire_income: 100000   # 妻のFIRE後副収入
 
   # 産休・育休（デモアプリが [] に上書き）
   maternity_leave:
@@ -41,14 +41,14 @@ simulation:
       monthly_income: 0
 
   # 育休（デモアプリが [] に上書き）
-  shuhei_parental_leave:
+  husband_parental_leave:
     - child: '子B'
       months_after: 12
       monthly_income: 310000
       monthly_income_after_180days: 231000
 
   # 時短勤務（デモアプリが [] に上書き）
-  shuhei_reduced_hours:
+  husband_reduced_hours:
     - child: '子B'
       start_months_after: 12
       end_months_after: 36

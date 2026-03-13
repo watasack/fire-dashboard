@@ -121,13 +121,13 @@ class TestIncomeConsistency:
         years = 15.0
         fire_month = 48
         current_assets = 50_000_000.0
-        override_ages = {'修平': 74, '桜': 73}
+        override_ages = {'夫': 74, '妻': 73}
 
         via_calc = _calculate_monthly_income(
             years, FIXED_REF_DATE,
             fire_achieved=True, fire_month=fire_month,
-            shuhei_income_base=0, sakura_income_base=0,
-            monthly_income=0, shuhei_ratio=0.5,
+            husband_income_base=0, wife_income_base=0,
+            monthly_income=0, husband_ratio=0.5,
             income_growth_rate=0.03, config=config,
             current_assets=current_assets,
             override_start_ages=override_ages,
@@ -150,7 +150,7 @@ class TestIncomeConsistency:
         """_precompute_monthly_cashflows の収入が共通関数と一致"""
         years_offset = 4.0
         total_months = 24
-        override_ages = {'修平': 74, '桜': 73}
+        override_ages = {'夫': 74, '妻': 73}
 
         _, income_arr, _, _, _ = _precompute_monthly_cashflows(
             years_offset, total_months, config,
@@ -176,7 +176,7 @@ class TestAusterityConsistency:
 
     def test_austerity_period_calculation(self, config):
         """_compute_austerity_period が正しい期間を計算"""
-        override_ages = {'修平': 74, '桜': 73}
+        override_ages = {'夫': 74, '妻': 73}
         fire_years_offset = 4.0
 
         start, end, rate = _compute_austerity_period(

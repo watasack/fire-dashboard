@@ -27,34 +27,34 @@ simulation:
   start_age: 35                # 現在の年齢（オプション）
   life_expectancy: 90          # 想定寿命
   # 労働収入（夫婦別設定）
-  shuhei_income: 465875  # 修平の手取り月額（円）: 年収7,507,388→社保・税引後
-  sakura_income: 450000  # 桜の手取り月額（円）: 個人事業主の想定手取り
-  initial_labor_income: 965875 # 世帯手取り合計（shuhei_income + sakura_income）
+  husband_income: 465875  # 夫の手取り月額（円）: 年収7,507,388→社保・税引後
+  wife_income: 450000  # 妻の手取り月額（円）: 個人事業主の想定手取り
+  initial_labor_income: 965875 # 世帯手取り合計（husband_income + wife_income）
   # FIRE後収入（固定額モデル）
   # FIRE後は年金受給開始まで、設定した固定額の収入を得る。
-  shuhei_post_fire_income: 100000               # 修平のFIRE後副収入（月額・円）: 開発業務など
-  sakura_post_fire_income: 200000              # 桜のFIRE後月収（個人事業を縮小して継続）
+  husband_post_fire_income: 100000               # 夫のFIRE後副収入（月額・円）: 開発業務など
+  wife_post_fire_income: 200000              # 妻のFIRE後月収（個人事業を縮小して継続）
 
   # 産休・育休による収入変動
-  # 桜（個人事業主のため育休給付金なし → 期間中は0円）
+  # 妻（個人事業主のため育休給付金なし → 期間中は0円）
   maternity_leave:
     - child: '楓'              # education.children の name と一致させる
       months_before: 2         # 産前2ヶ月前から
       months_after: 12         # 産後12ヶ月まで（計14ヶ月）
-      monthly_income: 0        # 期間中の桜の月収
+      monthly_income: 0        # 期間中の妻の月収
 
-  # 修平の育休（会社員のため育児休業給付金あり）
+  # 夫の育休（会社員のため育児休業給付金あり）
   # 給付金: 最初の180日は67%、以降は50%（上限あり）
-  shuhei_parental_leave:
+  husband_parental_leave:
     - child: '楓'              # education.children の name と一致させる
       months_after: 12         # 産後12ヶ月間取得
       monthly_income: 310000   # 育児休業給付金（手取り相当）: 最初6ヶ月は上限約31万円/月（非課税）
       monthly_income_after_180days: 231000  # 181日目以降: 50%相当、上限約23万円/月（非課税）
 
-  # 修平の時短勤務（育休復帰後）
+  # 夫の時短勤務（育休復帰後）
   # 育児短時間勤務制度: 子が3歳まで利用可能（育児・介護休業法）
   # 6時間勤務/8時間 = 給与75%
-  shuhei_reduced_hours:
+  husband_reduced_hours:
     - child: '楓'
       start_months_after: 12   # 育休復帰（産後12ヶ月後）から開始
       end_months_after: 36     # 子が3歳まで（法定上限）
@@ -618,7 +618,7 @@ pension:
   #   - employee: 厚生年金 + 国民年金（会社員）
   #   - national: 国民年金のみ（自営業・専業主婦など）
   people:
-    - name: '修平'
+    - name: '夫'
       birthdate: '1990/05/13'     # 生年月日（YYYY/MM/DD形式）
       pension_type: 'employee'    # 厚生年金 + 国民年金
       work_start_age: 21          # 加入開始年齢（177ヶ月実績から逆算: 35.8歳 - 14.75年）
@@ -628,11 +628,11 @@ pension:
       past_contribution_months: 177      # ねんきん定期便: これまでの加入月数
       # 計算方式: 過去実績(236,929円) + 残り期間(625,615円 × 将来月数 × 0.005481)
       override_start_age: 74      # 最適化結果: 75歳繰下げ（+84.0%増額）
-    - name: '桜'
+    - name: '妻'
       birthdate: '1991/04/20'     # 生年月日（YYYY/MM/DD形式）
       pension_type: 'national'    # 国民年金のみ
       # 動的計算により、国民年金満額: 約81.6万円/年
-      override_start_age: 73      # 最適化結果: 62歳早期受給（桜）
+      override_start_age: 73      # 最適化結果: 62歳早期受給（妻）
   # 注: annual_amountを指定すると、動的計算をスキップして固定値を使用（後方互換性）
 
 # 社会保険料設定（FIRE後の支出）
@@ -660,7 +660,7 @@ social_insurance:
   health_insurance_per_household: 30000  # 約3万円/世帯（全国平均）
 
   # 加入者数（健康保険に加入する世帯員数）
-  health_insurance_members: 2           # 修平 + 桜（子供は別途扶養で加算なし）
+  health_insurance_members: 2           # 夫 + 妻（子供は別途扶養で加算なし）
 
   # 基礎控除（所得割の計算に使用）
   health_insurance_basic_deduction: 430000  # 43万円（2024年度）

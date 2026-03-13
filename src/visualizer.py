@@ -843,8 +843,8 @@ def create_income_expense_stream_chart(
 
     df['year'] = df['date'].dt.year
     yearly = df.groupby('year').agg({
-        'shuhei_income': 'sum',
-        'sakura_income': 'sum',
+        'husband_income': 'sum',
+        'wife_income': 'sum',
         'pension_income': 'sum',
         'child_allowance': 'sum',
         'base_expense': 'sum',
@@ -863,8 +863,8 @@ def create_income_expense_stream_chart(
     fig = go.Figure()
 
     income_items = [
-        ('shuhei_income', '修平 収入', '#1d4ed8'),
-        ('sakura_income', '桜 収入', '#3b82f6'),
+        ('husband_income', '夫 収入', '#1d4ed8'),
+        ('wife_income', '妻 収入', '#3b82f6'),
         ('pension_income', '年金収入', '#6366f1'),
         ('child_allowance', '児童手当', '#818cf8'),
     ]
