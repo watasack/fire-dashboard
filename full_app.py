@@ -109,7 +109,7 @@ with open("demo_config.yaml", "r", encoding="utf-8") as f:
 
 # --- レイアウト: サイドバー ---
 _EMP_OPTIONS_H = ["会社員", "個人事業主", "専業主夫"]
-_EMP_OPTIONS_W = ["個人事業主", "会社員", "専業主婦"]
+_EMP_OPTIONS_W = ["会社員", "個人事業主", "専業主婦"]
 _EMP_HELP = (
     "会社員：厚生年金+国民年金・収入は毎年2%成長。\n"
     "個人事業主：国民年金のみ・収入は固定。\n"
@@ -123,7 +123,7 @@ with st.sidebar:
         st.markdown("**夫**")
         type_h = st.selectbox("雇用形態　", _EMP_OPTIONS_H, index=0, help=_EMP_HELP)
         _income_h_disabled = (type_h == "専業主夫")
-        income_h = st.number_input("月収(万円)", value=0 if _income_h_disabled else 40,
+        income_h = st.number_input("月収(万円)", value=0 if _income_h_disabled else 35,
             min_value=0, step=1, disabled=_income_h_disabled,
             help="手取り月収（ボーナス除外）。")
         age_h = st.number_input("年齢", value=35, min_value=20, max_value=70, step=1)
@@ -166,34 +166,12 @@ with tab_input:
                 key=f"birth_{_ci}",
                 help="この日付を基準に教育費・育休期間を算出します。",
             )
-            col_w, col_h = st.columns(2)
+            col_h, col_w = st.columns(2)  # 夫LEFT・妻RIGHT
 
-            # ── 妻 ──
-            with col_w:
-                with st.container(border=True):
-                    st.caption("妻の育休・時短")
-                    _r1a, _r1b = st.columns(2)
-                    with _r1a:
-                        _w_lp = st.number_input("産前(月)", 0, 6, 2, step=1, key=f"w_lp_{_ci}",
-                            disabled=(type_w == "専業主婦"))
-                    with _r1b:
-                        _w_la = st.number_input("産後(月)", 0, 24, 12, step=1, key=f"w_la_{_ci}",
-                            disabled=(type_w == "専業主婦"))
-                    _r2a, _r2b = st.columns(2)
-                    with _r2a:
-                        _w_li = st.number_input("育休月収(万)", 0, 50, 15, step=1, key=f"w_li_{_ci}",
-                            disabled=(type_w == "専業主婦"),
-                            help="育児休業給付金の平均値（通常給与の約67%→50%）を入力してください。")
-                    with _r2b:
-                        _w_re = st.number_input("時短終了(歳)", 0, 10, 3 if _ci == 0 else 0,
-                            step=1, key=f"w_re_{_ci}", disabled=(type_w == "専業主婦"),
-                            help="育休終了後〜この年齢まで時短。0で時短なし。")
-                    _w_ri = st.number_input("時短月収(万)", 0, 60, income_w, step=1, key=f"w_ri_{_ci}",
-                        disabled=(type_w == "専業主婦" or _w_re == 0))
-                    if _w_re > 0 and _w_re * 12 <= _w_la:
-                        st.warning(f"⚠️ 時短終了({_w_re}歳)が育休終了({_w_la}ヶ月後)より早い")
+            _leave_help = "育児休業給付金の平均値（通常給与の約67%→50%）を入力してください。"
+            _tantan_help = "育休終了後〜この年齢まで時短。0で時短なし。"
 
-            # ── 夫 ──
+            # ── 夫（LEFT）──
             with col_h:
                 with st.container(border=True):
                     st.caption("夫の育休・時短")
@@ -202,19 +180,42 @@ with tab_input:
                         _h_la = st.number_input("育休(月)", 0, 12, 1 if _ci == 0 else 0,
                             step=1, key=f"h_la_{_ci}", disabled=(type_h == "専業主夫"))
                     with _r1b:
-                        _h_li = st.number_input("育休月収(万)", 0, 60, 30, step=1, key=f"h_li_{_ci}",
-                            disabled=(type_h == "専業主夫"),
-                            help="育児休業給付金の平均値（通常給与の約67%→50%）を入力してください。")
+                        _h_li = st.number_input("育休月収(万)", 0, 60, 20, step=1, key=f"h_li_{_ci}",
+                            disabled=(type_h == "専業主夫"), help=_leave_help)
                     _r2a, _r2b = st.columns(2)
                     with _r2a:
                         _h_re = st.number_input("時短終了(歳)", 0, 10, 0, step=1, key=f"h_re_{_ci}",
-                            disabled=(type_h == "専業主夫"),
-                            help="育休終了後〜この年齢まで時短。0で時短なし。")
+                            disabled=(type_h == "専業主夫"), help=_tantan_help)
                     with _r2b:
                         _h_ri = st.number_input("時短月収(万)", 0, 60, income_h, step=1, key=f"h_ri_{_ci}",
                             disabled=(type_h == "専業主夫" or _h_re == 0))
                     if _h_re > 0 and _h_re * 12 <= _h_la:
                         st.warning(f"⚠️ 時短終了({_h_re}歳)が育休終了({_h_la}ヶ月後)より早い")
+
+            # ── 妻（RIGHT）──
+            with col_w:
+                with st.container(border=True):
+                    st.caption("妻の育休・時短")
+                    # 妻のみ: 産前(月) ＋ 産後(月) を1行目に
+                    _r0a, _r0b = st.columns(2)
+                    with _r0a:
+                        _w_lp = st.number_input("産前(月)", 0, 6, 2, step=1, key=f"w_lp_{_ci}",
+                            disabled=(type_w == "専業主婦"))
+                    with _r0b:
+                        _w_la = st.number_input("産後(月)", 0, 24, 12, step=1, key=f"w_la_{_ci}",
+                            disabled=(type_w == "専業主婦"))
+                    # 以降は夫と同じ構成: 育休月収 | 時短終了、時短月収
+                    _r1a, _r1b = st.columns(2)
+                    with _r1a:
+                        _w_li = st.number_input("育休月収(万)", 0, 50, 20, step=1, key=f"w_li_{_ci}",
+                            disabled=(type_w == "専業主婦"), help=_leave_help)
+                    with _r1b:
+                        _w_re = st.number_input("時短終了(歳)", 0, 10, 0, step=1, key=f"w_re_{_ci}",
+                            disabled=(type_w == "専業主婦"), help=_tantan_help)
+                    _w_ri = st.number_input("時短月収(万)", 0, 60, income_w, step=1, key=f"w_ri_{_ci}",
+                        disabled=(type_w == "専業主婦" or _w_re == 0))
+                    if _w_re > 0 and _w_re * 12 <= _w_la:
+                        st.warning(f"⚠️ 時短終了({_w_re}歳)が育休終了({_w_la}ヶ月後)より早い")
 
             children_ui.append({
                 "birth": _birth, "name": f"子{_ci+1}",
