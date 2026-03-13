@@ -156,11 +156,9 @@ with tab_input:
         st.caption("※給付金は「休業開始前賃金の67%（180日後50%）」の平均値を入力してください。")
 
 with tab_advanced:
-    target_rate = st.select_slider(
-        "FIRE維持の目標確率",
-        options=[50, 60, 70, 80, 90],
-        value=90,
-        format_func=lambda x: f"{x}%",
+    target_rate = st.number_input(
+        "FIRE維持の目標確率 (%)",
+        min_value=50, max_value=95, value=90, step=5,
         help=(
             "市場変動があっても、この割合のシナリオでFIREが実現できる時期を計算します。\n"
             "高くするほど保守的（遅めのFIRE）、低くするほど楽観的（早めのFIRE）になります。"
