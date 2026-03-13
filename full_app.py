@@ -145,6 +145,64 @@ with st.sidebar:
     st.divider()
     st.caption("詳細な計算設定は note のマニュアルを参照してください。")
 
+_LEAVE_HELP  = "育児休業給付金の平均値（通常給与の約67%→50%）を入力してください。"
+_TANTAN_HELP = "育休終了後〜この年齢まで時短。0で時短なし。"
+
+def _leave_inputs(label: str, prefix: str, ci: int, disabled: bool,
+                  default_leave: int, default_income: int, maternity: bool = False) -> dict:
+    """育休・時短の入力コンテナを描画し、値の dict を返す。
+
+    Args:
+        label:          コンテナ見出し（例: "夫の育休・時短"）
+        prefix:         widget key のプレフィックス（"h" or "w"）
+        ci:             子どものインデックス
+        disabled:       専業主夫/主婦のとき True
+        default_leave:  育休(月) or 産後(月) のデフォルト値
+        default_income: 時短月収のデフォルト値
+        maternity:      True のとき産前/産後行を追加（妻用）
+
+    Returns:
+        {"la", "li", "re", "ri"} ＋ maternity=True のとき "lp" も含む
+    """
+    with st.container(border=True):
+        st.caption(label)
+        if maternity:
+            _a, _b = st.columns(2)
+            with _a:
+                lp = st.number_input("産前(月)", 0, 6, 2, step=1, key=f"{prefix}_lp_{ci}", disabled=disabled)
+            with _b:
+                la = st.number_input("産後(月)", 0, 24, default_leave, step=1, key=f"{prefix}_la_{ci}", disabled=disabled)
+            _a, _b = st.columns(2)
+            with _a:
+                li = st.number_input("育休月収(万)", 0, 50, 20, step=1, key=f"{prefix}_li_{ci}",
+                    disabled=disabled, help=_LEAVE_HELP)
+            with _b:
+                re = st.number_input("時短終了(歳)", 0, 10, 0, step=1, key=f"{prefix}_re_{ci}",
+                    disabled=disabled, help=_TANTAN_HELP)
+            ri = st.number_input("時短月収(万)", 0, 60, default_income, step=1, key=f"{prefix}_ri_{ci}",
+                disabled=(disabled or re == 0))
+            if re > 0 and re * 12 <= la:
+                st.warning(f"⚠️ 時短終了({re}歳)が育休終了({la}ヶ月後)より早い")
+            return {"lp": lp, "la": la, "li": li, "re": re, "ri": ri}
+        else:
+            _a, _b = st.columns(2)
+            with _a:
+                la = st.number_input("育休(月)", 0, 12, default_leave, step=1, key=f"{prefix}_la_{ci}", disabled=disabled)
+            with _b:
+                li = st.number_input("育休月収(万)", 0, 60, 20, step=1, key=f"{prefix}_li_{ci}",
+                    disabled=disabled, help=_LEAVE_HELP)
+            _a, _b = st.columns(2)
+            with _a:
+                re = st.number_input("時短終了(歳)", 0, 10, 0, step=1, key=f"{prefix}_re_{ci}",
+                    disabled=disabled, help=_TANTAN_HELP)
+            with _b:
+                ri = st.number_input("時短月収(万)", 0, 60, default_income, step=1, key=f"{prefix}_ri_{ci}",
+                    disabled=(disabled or re == 0))
+            if re > 0 and re * 12 <= la:
+                st.warning(f"⚠️ 時短終了({re}歳)が育休終了({la}ヶ月後)より早い")
+            return {"la": la, "li": li, "re": re, "ri": ri}
+
+
 # --- メインコンテンツ: 育休・時短の設定 ---
 st.subheader("ライフイベント・詳細設定")
 tab_input, tab_advanced = st.tabs(["育休・子供の設定", "⚙️ 詳細シミュレーション設定"])
@@ -167,60 +225,16 @@ with tab_input:
                 help="この日付を基準に教育費・育休期間を算出します。",
             )
             col_h, col_w = st.columns(2)  # 夫LEFT・妻RIGHT
-
-            _leave_help = "育児休業給付金の平均値（通常給与の約67%→50%）を入力してください。"
-            _tantan_help = "育休終了後〜この年齢まで時短。0で時短なし。"
-
-            # ── 夫（LEFT）──
             with col_h:
-                with st.container(border=True):
-                    st.caption("夫の育休・時短")
-                    _r1a, _r1b = st.columns(2)
-                    with _r1a:
-                        _h_la = st.number_input("育休(月)", 0, 12, 1 if _ci == 0 else 0,
-                            step=1, key=f"h_la_{_ci}", disabled=(type_h == "専業主夫"))
-                    with _r1b:
-                        _h_li = st.number_input("育休月収(万)", 0, 60, 20, step=1, key=f"h_li_{_ci}",
-                            disabled=(type_h == "専業主夫"), help=_leave_help)
-                    _r2a, _r2b = st.columns(2)
-                    with _r2a:
-                        _h_re = st.number_input("時短終了(歳)", 0, 10, 0, step=1, key=f"h_re_{_ci}",
-                            disabled=(type_h == "専業主夫"), help=_tantan_help)
-                    with _r2b:
-                        _h_ri = st.number_input("時短月収(万)", 0, 60, income_h, step=1, key=f"h_ri_{_ci}",
-                            disabled=(type_h == "専業主夫" or _h_re == 0))
-                    if _h_re > 0 and _h_re * 12 <= _h_la:
-                        st.warning(f"⚠️ 時短終了({_h_re}歳)が育休終了({_h_la}ヶ月後)より早い")
-
-            # ── 妻（RIGHT）──
+                h = _leave_inputs("夫の育休・時短", "h", _ci, type_h == "専業主夫",
+                    default_leave=1 if _ci == 0 else 0, default_income=income_h)
             with col_w:
-                with st.container(border=True):
-                    st.caption("妻の育休・時短")
-                    # 妻のみ: 産前(月) ＋ 産後(月) を1行目に
-                    _r0a, _r0b = st.columns(2)
-                    with _r0a:
-                        _w_lp = st.number_input("産前(月)", 0, 6, 2, step=1, key=f"w_lp_{_ci}",
-                            disabled=(type_w == "専業主婦"))
-                    with _r0b:
-                        _w_la = st.number_input("産後(月)", 0, 24, 12, step=1, key=f"w_la_{_ci}",
-                            disabled=(type_w == "専業主婦"))
-                    # 以降は夫と同じ構成: 育休月収 | 時短終了、時短月収
-                    _r1a, _r1b = st.columns(2)
-                    with _r1a:
-                        _w_li = st.number_input("育休月収(万)", 0, 50, 20, step=1, key=f"w_li_{_ci}",
-                            disabled=(type_w == "専業主婦"), help=_leave_help)
-                    with _r1b:
-                        _w_re = st.number_input("時短終了(歳)", 0, 10, 0, step=1, key=f"w_re_{_ci}",
-                            disabled=(type_w == "専業主婦"), help=_tantan_help)
-                    _w_ri = st.number_input("時短月収(万)", 0, 60, income_w, step=1, key=f"w_ri_{_ci}",
-                        disabled=(type_w == "専業主婦" or _w_re == 0))
-                    if _w_re > 0 and _w_re * 12 <= _w_la:
-                        st.warning(f"⚠️ 時短終了({_w_re}歳)が育休終了({_w_la}ヶ月後)より早い")
-
+                w = _leave_inputs("妻の育休・時短", "w", _ci, type_w == "専業主婦",
+                    default_leave=12, default_income=income_w, maternity=True)
             children_ui.append({
                 "birth": _birth, "name": f"子{_ci+1}",
-                "w_lp": _w_lp, "w_la": _w_la, "w_li": _w_li, "w_re": _w_re, "w_ri": _w_ri,
-                "h_la": _h_la, "h_li": _h_li, "h_re": _h_re, "h_ri": _h_ri,
+                "w_lp": w.get("lp", 0), "w_la": w["la"], "w_li": w["li"], "w_re": w["re"], "w_ri": w["ri"],
+                "h_la": h["la"], "h_li": h["li"], "h_re": h["re"], "h_ri": h["ri"],
             })
 
 target_rate = 90
@@ -445,7 +459,3 @@ if st.button("シミュレーションを開始", type="primary"):
 残り{100 - target_rate}%のシナリオでは、市場環境によってFIREが数年先にずれる可能性があります。
 目標確率を変えると、FIRE時期がどう変わるか「詳細シミュレーション設定」タブで確認できます。
 """)
-
-st.divider()
-st.caption("Produced by watasack/fire-dashboard. This simulator is for professional financial planning support.")
-
