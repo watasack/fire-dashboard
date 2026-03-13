@@ -1,15 +1,10 @@
 import streamlit as st
-import pandas as pd
-import numpy as np
 from datetime import datetime, date
 from dateutil.relativedelta import relativedelta
 import yaml
 import copy
-import plotly.express as px
-import plotly.graph_objects as go
-from src.simulator import simulate_future_assets, run_monte_carlo_simulation, run_mc_fixed_fire
+from src.simulator import run_mc_fixed_fire
 from src.visualizer import create_fire_timeline_chart
-from src.data_schema import get_column_names
 
 def fmt_oku(yen: float) -> str:
     """円単位の値を億/万円で表記する"""
