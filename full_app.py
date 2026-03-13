@@ -222,7 +222,7 @@ with tab_input:
             col_h, col_w = st.columns(2)  # 夫LEFT・妻RIGHT
             with col_h:
                 h = _leave_inputs("夫の育休・時短", "h", _ci, type_h == "専業主夫",
-                    default_leave=1 if _ci == 0 else 0, default_income=income_h)
+                    default_leave=12 if _ci == 0 else 0, default_income=income_h)
             with col_w:
                 w = _leave_inputs("妻の育休・時短", "w", _ci, type_w == "専業主婦",
                     default_leave=12, default_income=income_w, maternity=True)
