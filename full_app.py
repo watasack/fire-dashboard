@@ -155,18 +155,12 @@ with tab_input:
         h_leave_inc = st.slider("育休中の月収 (万円)", 0, 60, 30)
         st.caption("※給付金は「休業開始前賃金の67%（180日後50%）」の平均値を入力してください。")
 
+target_rate = 90
+
 with tab_advanced:
-    target_rate = st.number_input(
-        "FIRE維持の目標確率 (%)",
-        min_value=50, max_value=95, value=90, step=5,
-        help=(
-            "市場変動があっても、この割合のシナリオでFIREが実現できる時期を計算します。\n"
-            "高くするほど保守的（遅めのFIRE）、低くするほど楽観的（早めのFIRE）になります。"
-        ),
-    )
-    st.divider()
     st.info("以下の前提条件は固定値です。変更には `demo_config.yaml` の編集が必要です（note マニュアル参照）。")
     st.json({
+        "FIRE維持の目標確率": f"{target_rate}%",
         "期待利回り（年率）": f"{base_cfg['simulation']['standard']['annual_return_rate']*100:.0f}%",
         "インフレ率（年率）": f"{base_cfg['simulation']['standard']['inflation_rate']*100:.0f}%",
         "夫の昇給率（年率）": f"{base_cfg['simulation']['standard']['income_growth_rate']*100:.0f}% ※妻は成長なし",
