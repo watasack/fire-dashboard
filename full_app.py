@@ -103,6 +103,20 @@ with open("demo_config.yaml", "r", encoding="utf-8") as f:
     base_cfg = yaml.safe_load(f)
 
 # --- レイアウト: サイドバー ---
+# --- デフォルト値 / 入力範囲 ---
+_DEFAULT_INCOME     = 35    # 月収デフォルト（万円）
+_DEFAULT_AGE        = 35    # 年齢デフォルト（歳）
+_MIN_AGE            = 20    # 年齢入力下限
+_MAX_AGE            = 70    # 年齢入力上限
+_DEFAULT_EXPENSE    = 28    # 月間支出デフォルト（万円）
+_DEFAULT_ASSETS     = 2000  # 金融資産デフォルト（万円）
+_DEFAULT_LEAVE_MONTHS   = 12  # 育休デフォルト（月）
+_DEFAULT_LEAVE_INCOME   = 20  # 育休月収デフォルト（万円）
+_DEFAULT_PRENATAL_MONTHS = 2  # 産前休業デフォルト（月）
+_CASH_RATIO         = 0.3   # 現金比率（初期資産配分）
+_STOCKS_RATIO       = 0.7   # 株式比率（初期資産配分）
+_MC_ITERATIONS      = 1000  # MCシミュレーション試行回数
+
 _EMP_OPTIONS_H = ["会社員", "個人事業主", "専業主夫"]
 _EMP_OPTIONS_W = ["会社員", "個人事業主", "専業主婦"]
 _EMP_HELP = (
@@ -118,23 +132,23 @@ with st.sidebar:
         st.markdown("**夫**")
         type_h = st.selectbox("雇用形態　", _EMP_OPTIONS_H, index=0, help=_EMP_HELP)
         _income_h_disabled = (type_h == "専業主夫")
-        income_h = st.number_input("月収(万円)", value=0 if _income_h_disabled else 35,
+        income_h = st.number_input("月収(万円)", value=0 if _income_h_disabled else _DEFAULT_INCOME,
             min_value=0, step=1, disabled=_income_h_disabled,
             help="手取り月収（ボーナス除外）。")
-        age_h = st.number_input("年齢", value=35, min_value=20, max_value=70, step=1)
+        age_h = st.number_input("年齢", value=_DEFAULT_AGE, min_value=_MIN_AGE, max_value=_MAX_AGE, step=1)
     with _sw:
         st.markdown("**妻**")
         type_w = st.selectbox("雇用形態", _EMP_OPTIONS_W, index=0, help=_EMP_HELP)
         _income_w_disabled = (type_w == "専業主婦")
-        income_w = st.number_input("月収(万円) ", value=0 if _income_w_disabled else 35,
+        income_w = st.number_input("月収(万円) ", value=0 if _income_w_disabled else _DEFAULT_INCOME,
             min_value=0, step=1, disabled=_income_w_disabled,
             help="手取り月収。育休・時短期間以外は一定として計算します。")
-        age_w = st.number_input("年齢 ", value=35, min_value=20, max_value=70, step=1)
+        age_w = st.number_input("年齢 ", value=_DEFAULT_AGE, min_value=_MIN_AGE, max_value=_MAX_AGE, step=1)
 
     st.header("キャッシュフロー")
-    expense = st.number_input("月間支出(万円)", value=28, min_value=5, step=1,
+    expense = st.number_input("月間支出(万円)", value=_DEFAULT_EXPENSE, min_value=5, step=1,
         help="住居費・食費・娯楽費など全ての合計（住宅ローンは別途10万円/月を加算して計算）")
-    assets = st.number_input("金融資産(万円)", value=2000, min_value=0, step=100,
+    assets = st.number_input("金融資産(万円)", value=_DEFAULT_ASSETS, min_value=0, step=100,
         help="現金・株式・投資信託の合計。うち30%を現金、70%を株式として計算します。NISAの既存残高は0円として扱います。")
 
     st.divider()
@@ -164,12 +178,12 @@ def _leave_inputs(label: str, prefix: str, ci: int, disabled: bool,
         if maternity:
             _a, _b = st.columns(2)
             with _a:
-                lp = st.number_input("産前(月)", 0, 6, 2, step=1, key=f"{prefix}_lp_{ci}", disabled=disabled)
+                lp = st.number_input("産前(月)", 0, 6, _DEFAULT_PRENATAL_MONTHS, step=1, key=f"{prefix}_lp_{ci}", disabled=disabled)
             with _b:
                 la = st.number_input("産後(月)", 0, 24, default_leave, step=1, key=f"{prefix}_la_{ci}", disabled=disabled)
             _a, _b = st.columns(2)
             with _a:
-                li = st.number_input("育休月収(万)", 0, 50, 20, step=1, key=f"{prefix}_li_{ci}",
+                li = st.number_input("育休月収(万)", 0, 50, _DEFAULT_LEAVE_INCOME, step=1, key=f"{prefix}_li_{ci}",
                     disabled=disabled, help=_LEAVE_HELP)
             with _b:
                 re = st.number_input("時短終了(歳)", 0, 10, 0, step=1, key=f"{prefix}_re_{ci}",
@@ -184,7 +198,7 @@ def _leave_inputs(label: str, prefix: str, ci: int, disabled: bool,
             with _a:
                 la = st.number_input("育休(月)", 0, 12, default_leave, step=1, key=f"{prefix}_la_{ci}", disabled=disabled)
             with _b:
-                li = st.number_input("育休月収(万)", 0, 60, 20, step=1, key=f"{prefix}_li_{ci}",
+                li = st.number_input("育休月収(万)", 0, 60, _DEFAULT_LEAVE_INCOME, step=1, key=f"{prefix}_li_{ci}",
                     disabled=disabled, help=_LEAVE_HELP)
             _a, _b = st.columns(2)
             with _a:
@@ -222,10 +236,10 @@ with tab_input:
             col_h, col_w = st.columns(2)  # 夫LEFT・妻RIGHT
             with col_h:
                 h = _leave_inputs("夫の育休・時短", "h", _ci, type_h == "専業主夫",
-                    default_leave=12 if _ci == 0 else 0, default_income=income_h)
+                    default_leave=_DEFAULT_LEAVE_MONTHS if _ci == 0 else 0, default_income=income_h)
             with col_w:
                 w = _leave_inputs("妻の育休・時短", "w", _ci, type_w == "専業主婦",
-                    default_leave=12, default_income=income_w, maternity=True)
+                    default_leave=_DEFAULT_LEAVE_MONTHS, default_income=income_w, maternity=True)
             children_ui.append({
                 "birth": _birth, "name": f"子{_ci+1}",
                 "w_lp": w.get("lp", 0), "w_la": w["la"], "w_li": w["li"], "w_re": w["re"], "w_ri": w["ri"],
@@ -258,8 +272,8 @@ st.markdown("---")
 if st.button("シミュレーションを開始", type="primary"):
     cfg = copy.deepcopy(base_cfg)
     current_date = datetime.today()
-    cash = assets * 0.3 * 10000
-    stocks = assets * 0.7 * 10000
+    cash = assets * _CASH_RATIO * 10000
+    stocks = assets * _STOCKS_RATIO * 10000
     monthly_inc = (income_h + income_w) * 10000
     monthly_exp = expense * 10000
 
@@ -341,7 +355,7 @@ if st.button("シミュレーションを開始", type="primary"):
             monthly_income=monthly_inc,
             monthly_expense=monthly_exp,
             scenario="standard",
-            iterations=1000,
+            iterations=_MC_ITERATIONS,
             progress_callback=update_progress,
         )
 
