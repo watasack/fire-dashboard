@@ -359,7 +359,7 @@ with st.sidebar:
         help=_expense_help)
     _housing_cost = rent if housing_type == "賃貸" else mortgage_payment
     _total_exp = expense + _housing_cost
-    st.caption(f"支出合計: {_housing_cost}万（住宅費）＋ {expense}万（生活費）＝ **{_total_exp}万円/月**")
+    st.caption(f"支出合計: {_housing_cost}万(住宅費) ＋ {expense}万(生活費) ＝ **{_total_exp}万円/月**")
     assets = st.number_input("金融資産(万円)", value=_DEFAULT_ASSETS, min_value=0, step=100,
         help="現金・株式・投資信託の合計。うち30%を現金、70%を株式として計算します。NISAの既存残高は0円として扱います。")
 
