@@ -5,23 +5,46 @@ import yaml
 import copy
 from src.simulator import run_mc_fixed_fire
 from src.visualizer import create_fire_timeline_chart
+from src.utils import fmt_oku
 
-def fmt_oku(yen: float) -> str:
-    """円単位の値を億/万円で表記する"""
-    man = yen / 10000
-    if man >= 10000:
-        return f"{man/10000:.1f}億円"
-    return f"{man:,.0f}万円"
+# =============================================================================
+# 定数
+# =============================================================================
+_DEFAULT_INCOME          = 35    # 月収デフォルト（万円）
+_DEFAULT_AGE             = 35    # 年齢デフォルト（歳）
+_MIN_AGE                 = 20    # 年齢入力下限
+_MAX_AGE                 = 70    # 年齢入力上限
+_DEFAULT_EXPENSE         = 28    # 月間支出デフォルト（万円）
+_DEFAULT_ASSETS          = 2000  # 金融資産デフォルト（万円）
+_DEFAULT_LEAVE_MONTHS    = 12    # 育休デフォルト（月）
+_DEFAULT_LEAVE_INCOME    = 20    # 育休月収デフォルト（万円）
+_DEFAULT_PRENATAL_MONTHS = 2     # 産前休業デフォルト（月）
+_CASH_RATIO              = 0.3   # 現金比率（初期資産配分）
+_STOCKS_RATIO            = 0.7   # 株式比率（初期資産配分）
+_MC_ITERATIONS           = 1000  # MCシミュレーション試行回数
 
+_EMP_OPTIONS_H = ["会社員", "個人事業主", "専業主夫"]
+_EMP_OPTIONS_W = ["会社員", "個人事業主", "専業主婦"]
+_EMP_HELP = (
+    "会社員：厚生年金+国民年金・収入は毎年2%成長。\n"
+    "個人事業主：国民年金のみ・収入は固定。\n"
+    "専業主夫/主婦：収入なし・国民年金のみ。"
+)
+_LEAVE_HELP  = "育児休業給付金の平均値（通常給与の約67%→50%）を入力してください。"
+_TANTAN_HELP = "育休終了後〜この年齢まで時短。0で時短なし。"
+_ORDINALS      = ["第1子", "第2子", "第3子", "第4子"]
+_DEFAULT_BIRTHS = [6, 30, 54, 78]  # 子ごとの誕生予定日オフセット（月）
 
-# ページ設定
+# =============================================================================
+# ページ設定・CSS
+# =============================================================================
 st.set_page_config(
     page_title="共働きFIREシミュレーター【フル版】",
     page_icon="📋",
     layout="wide",
 )
 
-# --- カスタムCSSの適用 ---
+
 def inject_custom_css():
     st.markdown("""
         <style>
@@ -61,10 +84,13 @@ def inject_custom_css():
         </style>
     """, unsafe_allow_html=True)
 
+
 inject_custom_css()
 
-# --- Step 1: アクセスコード認証 ---
-def check_password():
+# =============================================================================
+# アクセスコード認証
+# =============================================================================
+def check_password() -> bool:
     """Returns `True` if the user had the correct password."""
     def password_entered():
         valid_codes = st.secrets.get("access_codes", [])
@@ -88,43 +114,197 @@ def check_password():
         )
         st.error("アクセスコードが正しくありません。")
         return False
-    else:
-        return True
+    return True
+
 
 if not check_password():
     st.stop()
 
-# --- ヘッダー ---
+# =============================================================================
+# 純粋関数（UIなし・テスト可能）
+# =============================================================================
+def _build_children_config(children_ui: list, income_h: int, income_w: int) -> tuple:
+    """子どもUI入力から simulator に渡す5つの config リストを構築する。
+
+    Returns:
+        (edu_children, maternity, w_reduced, h_parental, h_reduced)
+    """
+    edu_children, maternity, w_reduced, h_parental, h_reduced = [], [], [], [], []
+    for cd in children_ui:
+        n  = cd["name"]
+        bs = cd["birth"].strftime('%Y/%m/%d')
+        edu_children.append({
+            'name': n, 'birthdate': bs, 'nursery': 'public', 'kindergarten': 'public',
+            'elementary': 'public', 'junior_high': 'public', 'high': 'public', 'university': 'national',
+        })
+        maternity.append({
+            'child': n, 'months_before': cd["w_lp"], 'months_after': cd["w_la"],
+            'monthly_income': cd["w_li"] * 10000,
+        })
+        if cd["w_re"] * 12 > cd["w_la"]:
+            w_reduced.append({
+                'child': n, 'start_months_after': cd["w_la"], 'end_months_after': cd["w_re"] * 12,
+                'income_ratio': (cd["w_ri"] * 10000) / (income_w * 10000) if income_w > 0 else 0,
+            })
+        h_parental.append({
+            'child': n, 'months_after': cd["h_la"],
+            'monthly_income': cd["h_li"] * 10000,
+            'monthly_income_after_180days': cd["h_li"] * 10000,
+        })
+        if cd["h_re"] * 12 > cd["h_la"]:
+            h_reduced.append({
+                'child': n, 'start_months_after': cd["h_la"], 'end_months_after': cd["h_re"] * 12,
+                'income_ratio': (cd["h_ri"] * 10000) / (income_h * 10000) if income_h > 0 else 0,
+            })
+    return edu_children, maternity, w_reduced, h_parental, h_reduced
+
+
+def _build_simulation_config(
+    base_cfg: dict, *,
+    age_h: int, age_w: int, type_h: str, type_w: str,
+    income_h: int, income_w: int, monthly_exp: int,
+    edu_children: list, maternity: list, w_reduced: list,
+    h_parental: list, h_reduced: list,
+) -> dict:
+    """ユーザー入力を base_cfg に適用して simulator 用の完全な config を返す。"""
+    cfg = copy.deepcopy(base_cfg)
+    current_year = datetime.today().year
+    base_growth_rate = cfg['simulation']['standard']['income_growth_rate']
+
+    cfg['fire']['expense_categories']['enabled'] = False
+    cfg['fire']['manual_annual_expense'] = monthly_exp * 12
+
+    cfg['simulation'].update({
+        'start_age': age_h,
+        'husband_income': income_h * 10000,
+        'wife_income': income_w * 10000,
+        'maternity_leave': maternity,
+        'wife_reduced_hours': w_reduced,
+        'husband_parental_leave': h_parental,
+        'husband_reduced_hours': h_reduced,
+    })
+    cfg['education']['children'] = edu_children
+
+    if len(cfg['pension']['people']) >= 1:
+        cfg['pension']['people'][0]['birthdate'] = f'{current_year - age_h}/07/01'
+        cfg['pension']['people'][0]['pension_type'] = 'employee' if type_h == '会社員' else 'national'
+    if len(cfg['pension']['people']) >= 2:
+        cfg['pension']['people'][1]['birthdate'] = f'{current_year - age_w}/07/01'
+        cfg['pension']['people'][1]['pension_type'] = 'employee' if type_w == '会社員' else 'national'
+
+    cfg['simulation']['husband_income_growth_rate'] = base_growth_rate if type_h == '会社員' else 0.0
+    cfg['simulation']['wife_income_growth_rate']    = base_growth_rate if type_w == '会社員' else 0.0
+    if type_h == '専業主夫':
+        cfg['simulation']['husband_income'] = 0
+    if type_w == '専業主婦':
+        cfg['simulation']['wife_income'] = 0
+
+    return cfg
+
+
+# =============================================================================
+# UI 部品
+# =============================================================================
+def _leave_inputs(label: str, prefix: str, ci: int, disabled: bool,
+                  default_leave: int, default_income: int, maternity: bool = False) -> dict:
+    """育休・時短の入力コンテナを描画し、値の dict を返す。
+
+    Args:
+        label:          コンテナ見出し（例: "夫の育休・時短"）
+        prefix:         widget key のプレフィックス（"h" or "w"）
+        ci:             子どものインデックス
+        disabled:       専業主夫/主婦のとき True
+        default_leave:  育休(月) or 産後(月) のデフォルト値
+        default_income: 時短月収のデフォルト値
+        maternity:      True のとき産前/産後行を追加（妻用）
+
+    Returns:
+        {"la", "li", "re", "ri"} ＋ maternity=True のとき "lp" も含む
+    """
+    with st.container(border=True):
+        st.caption(label)
+        _a, _b = st.columns(2)
+        if maternity:
+            with _a:
+                lp = st.number_input("産前(月)", 0, 6, _DEFAULT_PRENATAL_MONTHS, step=1,
+                    key=f"{prefix}_lp_{ci}", disabled=disabled)
+            with _b:
+                la = st.number_input("産後(月)", 0, 24, default_leave, step=1,
+                    key=f"{prefix}_la_{ci}", disabled=disabled)
+            _a, _b = st.columns(2)
+            with _a:
+                li = st.number_input("育休月収(万)", 0, 50, _DEFAULT_LEAVE_INCOME, step=1,
+                    key=f"{prefix}_li_{ci}", disabled=disabled, help=_LEAVE_HELP)
+            with _b:
+                re = st.number_input("時短終了(歳)", 0, 10, 0, step=1,
+                    key=f"{prefix}_re_{ci}", disabled=disabled, help=_TANTAN_HELP)
+            ri = st.number_input("時短月収(万)", 0, 60, default_income, step=1,
+                key=f"{prefix}_ri_{ci}", disabled=(disabled or re == 0))
+        else:
+            lp = None
+            with _a:
+                la = st.number_input("育休(月)", 0, 12, default_leave, step=1,
+                    key=f"{prefix}_la_{ci}", disabled=disabled)
+            with _b:
+                li = st.number_input("育休月収(万)", 0, 60, _DEFAULT_LEAVE_INCOME, step=1,
+                    key=f"{prefix}_li_{ci}", disabled=disabled, help=_LEAVE_HELP)
+            _a, _b = st.columns(2)
+            with _a:
+                re = st.number_input("時短終了(歳)", 0, 10, 0, step=1,
+                    key=f"{prefix}_re_{ci}", disabled=disabled, help=_TANTAN_HELP)
+            with _b:
+                ri = st.number_input("時短月収(万)", 0, 60, default_income, step=1,
+                    key=f"{prefix}_ri_{ci}", disabled=(disabled or re == 0))
+
+        if re > 0 and re * 12 <= la:
+            st.warning(f"⚠️ 時短終了({re}歳)が育休終了({la}ヶ月後)より早い")
+
+        result = {"la": la, "li": li, "re": re, "ri": ri}
+        if lp is not None:
+            result["lp"] = lp
+        return result
+
+
+def _render_guide_tab(target_rate: int) -> None:
+    """シミュレーション解釈ガイドタブの静的コンテンツを描画する。"""
+    st.markdown("### シミュレーション解釈ガイド")
+    with st.expander("なぜ『一本の線』ではなく『範囲』で考えるのか？", expanded=True):
+        st.write("""
+        将来の資産推移を一本の線で予測することは、天気予報で「明日の12時00分に雨が0.5mm降る」と断定するようなものです。
+        実際には、市場は常に変動します。このシミュレーターでは、**1,000通りの異なる未来（好景気、不景気、数年続く暴落など）**を計算し、
+        各シナリオでFIREが実現できるタイミングの分布を算出しています。
+        """)
+    with st.expander("暴落や暴騰はどのように考慮されていますか？"):
+        st.write("""
+        このシミュレーターは、単純なランダム計算ではなく、以下の高度な金融工学モデルを採用しています：
+        1. **平均回帰性 (Mean Reversion)**: 暴騰が続いた後は調整が入りやすく、過度な暴落の後には本来の価値へ回復しやすい性質を再現。
+        2. **ボラティリティ・クラスタリング (GARCHモデル)**: 「大きな変動の後は、大きな変動が続きやすい」という連鎖性を考慮。
+        3. **非対称性**: 急激な暴落となだらかな上昇のスピード感の違いをモデル化。
+        これにより、リーマンショックのような「数年に一度の事象」への耐性を検証できます。
+        """)
+    st.markdown("---")
+    st.markdown("#### 目標成功確率の見方")
+    st.info(f"""
+**{target_rate}%の意味**: リーマンショック規模の暴落を含む1,000通りの市場シナリオのうち、
+**{target_rate}%のシナリオ**でこの時期にFIRE可能です。
+
+残り{100 - target_rate}%のシナリオでは、市場環境によってFIREが数年先にずれる可能性があります。
+目標確率を変えると、FIRE時期がどう変わるか「詳細シミュレーション設定」タブで確認できます。
+""")
+
+
+# =============================================================================
+# ヘッダー・設定ファイル読み込み
+# =============================================================================
 st.markdown("<h1 style='text-align: center;'>共働きFIREシミュレーター <span style='color:#6366f1'>【フル版】</span></h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center; color: #64748b; margin-bottom: 2rem;'>〜 理想的な家族の未来を、データで具現化する 〜</p>", unsafe_allow_html=True)
 
-# --- 設定ファイルの読み込み ---
 with open("demo_config.yaml", "r", encoding="utf-8") as f:
     base_cfg = yaml.safe_load(f)
 
-# --- レイアウト: サイドバー ---
-# --- デフォルト値 / 入力範囲 ---
-_DEFAULT_INCOME     = 35    # 月収デフォルト（万円）
-_DEFAULT_AGE        = 35    # 年齢デフォルト（歳）
-_MIN_AGE            = 20    # 年齢入力下限
-_MAX_AGE            = 70    # 年齢入力上限
-_DEFAULT_EXPENSE    = 28    # 月間支出デフォルト（万円）
-_DEFAULT_ASSETS     = 2000  # 金融資産デフォルト（万円）
-_DEFAULT_LEAVE_MONTHS   = 12  # 育休デフォルト（月）
-_DEFAULT_LEAVE_INCOME   = 20  # 育休月収デフォルト（万円）
-_DEFAULT_PRENATAL_MONTHS = 2  # 産前休業デフォルト（月）
-_CASH_RATIO         = 0.3   # 現金比率（初期資産配分）
-_STOCKS_RATIO       = 0.7   # 株式比率（初期資産配分）
-_MC_ITERATIONS      = 1000  # MCシミュレーション試行回数
-
-_EMP_OPTIONS_H = ["会社員", "個人事業主", "専業主夫"]
-_EMP_OPTIONS_W = ["会社員", "個人事業主", "専業主婦"]
-_EMP_HELP = (
-    "会社員：厚生年金+国民年金・収入は毎年2%成長。\n"
-    "個人事業主：国民年金のみ・収入は固定。\n"
-    "専業主夫/主婦：収入なし・国民年金のみ。"
-)
-
+# =============================================================================
+# サイドバー入力
+# =============================================================================
 with st.sidebar:
     st.header("世帯の基本情報")
     _sh, _sw = st.columns(2)
@@ -154,65 +334,11 @@ with st.sidebar:
     st.divider()
     st.caption("詳細な計算設定は note のマニュアルを参照してください。")
 
-_LEAVE_HELP  = "育児休業給付金の平均値（通常給与の約67%→50%）を入力してください。"
-_TANTAN_HELP = "育休終了後〜この年齢まで時短。0で時短なし。"
+# =============================================================================
+# メインコンテンツ: ライフイベント・詳細設定
+# =============================================================================
+target_rate = 90
 
-def _leave_inputs(label: str, prefix: str, ci: int, disabled: bool,
-                  default_leave: int, default_income: int, maternity: bool = False) -> dict:
-    """育休・時短の入力コンテナを描画し、値の dict を返す。
-
-    Args:
-        label:          コンテナ見出し（例: "夫の育休・時短"）
-        prefix:         widget key のプレフィックス（"h" or "w"）
-        ci:             子どものインデックス
-        disabled:       専業主夫/主婦のとき True
-        default_leave:  育休(月) or 産後(月) のデフォルト値
-        default_income: 時短月収のデフォルト値
-        maternity:      True のとき産前/産後行を追加（妻用）
-
-    Returns:
-        {"la", "li", "re", "ri"} ＋ maternity=True のとき "lp" も含む
-    """
-    with st.container(border=True):
-        st.caption(label)
-        if maternity:
-            _a, _b = st.columns(2)
-            with _a:
-                lp = st.number_input("産前(月)", 0, 6, _DEFAULT_PRENATAL_MONTHS, step=1, key=f"{prefix}_lp_{ci}", disabled=disabled)
-            with _b:
-                la = st.number_input("産後(月)", 0, 24, default_leave, step=1, key=f"{prefix}_la_{ci}", disabled=disabled)
-            _a, _b = st.columns(2)
-            with _a:
-                li = st.number_input("育休月収(万)", 0, 50, _DEFAULT_LEAVE_INCOME, step=1, key=f"{prefix}_li_{ci}",
-                    disabled=disabled, help=_LEAVE_HELP)
-            with _b:
-                re = st.number_input("時短終了(歳)", 0, 10, 0, step=1, key=f"{prefix}_re_{ci}",
-                    disabled=disabled, help=_TANTAN_HELP)
-            ri = st.number_input("時短月収(万)", 0, 60, default_income, step=1, key=f"{prefix}_ri_{ci}",
-                disabled=(disabled or re == 0))
-            if re > 0 and re * 12 <= la:
-                st.warning(f"⚠️ 時短終了({re}歳)が育休終了({la}ヶ月後)より早い")
-            return {"lp": lp, "la": la, "li": li, "re": re, "ri": ri}
-        else:
-            _a, _b = st.columns(2)
-            with _a:
-                la = st.number_input("育休(月)", 0, 12, default_leave, step=1, key=f"{prefix}_la_{ci}", disabled=disabled)
-            with _b:
-                li = st.number_input("育休月収(万)", 0, 60, _DEFAULT_LEAVE_INCOME, step=1, key=f"{prefix}_li_{ci}",
-                    disabled=disabled, help=_LEAVE_HELP)
-            _a, _b = st.columns(2)
-            with _a:
-                re = st.number_input("時短終了(歳)", 0, 10, 0, step=1, key=f"{prefix}_re_{ci}",
-                    disabled=disabled, help=_TANTAN_HELP)
-            with _b:
-                ri = st.number_input("時短月収(万)", 0, 60, default_income, step=1, key=f"{prefix}_ri_{ci}",
-                    disabled=(disabled or re == 0))
-            if re > 0 and re * 12 <= la:
-                st.warning(f"⚠️ 時短終了({re}歳)が育休終了({la}ヶ月後)より早い")
-            return {"la": la, "li": li, "re": re, "ri": ri}
-
-
-# --- メインコンテンツ: 育休・時短の設定 ---
 st.subheader("ライフイベント・詳細設定")
 tab_input, tab_advanced = st.tabs(["育休・子供の設定", "⚙️ 詳細シミュレーション設定"])
 
@@ -220,9 +346,6 @@ with tab_input:
     _nc_col, _ = st.columns([1, 3])
     with _nc_col:
         num_children = st.number_input("子どもの人数", min_value=1, max_value=4, value=1, step=1)
-
-    _ORDINALS = ["第1子", "第2子", "第3子", "第4子"]
-    _DEFAULT_BIRTHS = [6, 30, 54, 78]
 
     children_ui = []
     for _ci in range(num_children):
@@ -246,8 +369,6 @@ with tab_input:
                 "h_la": h["la"], "h_li": h["li"], "h_re": h["re"], "h_ri": h["ri"],
             })
 
-target_rate = 90
-
 with tab_advanced:
     st.info("以下の前提条件は固定値です。変更には `demo_config.yaml` の編集が必要です（note マニュアル参照）。")
     _base_growth = base_cfg['simulation']['standard']['income_growth_rate'] * 100
@@ -268,87 +389,35 @@ with tab_advanced:
 
 st.markdown("---")
 
-# --- 計算実行 ---
+# =============================================================================
+# シミュレーション実行・結果表示
+# =============================================================================
 if st.button("シミュレーションを開始", type="primary"):
-    cfg = copy.deepcopy(base_cfg)
-    current_date = datetime.today()
-    cash = assets * _CASH_RATIO * 10000
-    stocks = assets * _STOCKS_RATIO * 10000
+    cash      = assets * _CASH_RATIO   * 10000
+    stocks    = assets * _STOCKS_RATIO * 10000
     monthly_inc = (income_h + income_w) * 10000
     monthly_exp = expense * 10000
+    current_date = datetime.today()
 
-    # --- 子ども別 config リストを構築 ---
-    _edu_children, _maternity, _w_reduced, _h_parental, _h_reduced = [], [], [], [], []
-    for _cd in children_ui:
-        _n = _cd["name"]
-        _bs = _cd["birth"].strftime('%Y/%m/%d')
-        _edu_children.append({
-            'name': _n, 'birthdate': _bs, 'nursery': 'public', 'kindergarten': 'public',
-            'elementary': 'public', 'junior_high': 'public', 'high': 'public', 'university': 'national'
-        })
-        _maternity.append({
-            'child': _n, 'months_before': _cd["w_lp"], 'months_after': _cd["w_la"],
-            'monthly_income': _cd["w_li"] * 10000
-        })
-        if _cd["w_re"] * 12 > _cd["w_la"]:
-            _w_reduced.append({
-                'child': _n, 'start_months_after': _cd["w_la"], 'end_months_after': _cd["w_re"] * 12,
-                'income_ratio': (_cd["w_ri"] * 10000) / (income_w * 10000) if income_w > 0 else 0
-            })
-        _h_parental.append({
-            'child': _n, 'months_after': _cd["h_la"],
-            'monthly_income': _cd["h_li"] * 10000,
-            'monthly_income_after_180days': _cd["h_li"] * 10000
-        })
-        if _cd["h_re"] * 12 > _cd["h_la"]:
-            _h_reduced.append({
-                'child': _n, 'start_months_after': _cd["h_la"], 'end_months_after': _cd["h_re"] * 12,
-                'income_ratio': (_cd["h_ri"] * 10000) / (income_h * 10000) if income_h > 0 else 0
-            })
-
-    # Config生成
-    # --- 支出: カテゴリ別予算を無効化し、ユーザー入力を反映 ---
-    cfg['fire']['expense_categories']['enabled'] = False
-    cfg['fire']['manual_annual_expense'] = monthly_exp * 12  # 月次 → 年次に変換
-
-    cfg['simulation'].update({
-        'start_age': age_h,
-        'husband_income': income_h * 10000,
-        'wife_income': income_w * 10000,
-        'maternity_leave': _maternity,
-        'wife_reduced_hours': _w_reduced,
-        'husband_parental_leave': _h_parental,
-        'husband_reduced_hours': _h_reduced,
-    })
-    cfg['education']['children'] = _edu_children
-    # 年金のbirthdate をユーザーの年齢から逆算して更新・雇用形態を反映
-    _base_growth_rate = cfg['simulation']['standard']['income_growth_rate']
-    birth_year_h = current_date.year - age_h
-    birth_year_w = current_date.year - age_w
-    if len(cfg['pension']['people']) >= 1:
-        cfg['pension']['people'][0]['birthdate'] = f'{birth_year_h}/07/01'
-        cfg['pension']['people'][0]['pension_type'] = 'employee' if type_h == '会社員' else 'national'
-    if len(cfg['pension']['people']) >= 2:
-        cfg['pension']['people'][1]['birthdate'] = f'{birth_year_w}/07/01'
-        cfg['pension']['people'][1]['pension_type'] = 'employee' if type_w == '会社員' else 'national'
-    # 雇用形態に応じた per-person 収入成長率を設定
-    cfg['simulation']['husband_income_growth_rate'] = _base_growth_rate if type_h == '会社員' else 0.0
-    cfg['simulation']['wife_income_growth_rate'] = _base_growth_rate if type_w == '会社員' else 0.0
-    # 専業主夫/主婦は収入を0に設定
-    if type_h == '専業主夫':
-        cfg['simulation']['husband_income'] = 0
-    if type_w == '専業主婦':
-        cfg['simulation']['wife_income'] = 0
+    edu_children, maternity, w_reduced, h_parental, h_reduced = _build_children_config(
+        children_ui, income_h, income_w
+    )
+    cfg = _build_simulation_config(
+        base_cfg,
+        age_h=age_h, age_w=age_w, type_h=type_h, type_w=type_w,
+        income_h=income_h, income_w=income_w, monthly_exp=monthly_exp,
+        edu_children=edu_children, maternity=maternity, w_reduced=w_reduced,
+        h_parental=h_parental, h_reduced=h_reduced,
+    )
 
     progress_bar = st.progress(0)
-    status_text = st.empty()
+    status_text  = st.empty()
 
     def update_progress(progress):
         progress_bar.progress(progress)
         status_text.text(f"1,000通りの未来をシミュレーション中... {int(progress * 100)}%")
 
     with st.spinner("シミュレーションを実行中..."):
-        # 目標成功確率を達成するFIRE月を二分探索で決定し、固定FIRE月でMCシミュレーション
         mc_res = run_mc_fixed_fire(
             cash, stocks, cfg,
             target_success_rate=target_rate / 100.0,
@@ -358,15 +427,13 @@ if st.button("シミュレーションを開始", type="primary"):
             iterations=_MC_ITERATIONS,
             progress_callback=update_progress,
         )
-
         df = mc_res['base_df']
         df['year_offset'] = df['month'] / 12
-        df['wife_age'] = age_w + df['year_offset']
+        df['wife_age']    = age_w + df['year_offset']
 
     progress_bar.empty()
     status_text.empty()
 
-    # --- 結果表示 ---
     st.markdown("## シミュレーション解析結果")
 
     if mc_res.get('impossible'):
@@ -377,21 +444,19 @@ if st.button("シミュレーションを開始", type="primary"):
             f"目標を{max_rate}%以下に変更するか、月間支出を減らすか、現在の金融資産を増やしてください。"
         )
     else:
-        fire_month_val = mc_res['fire_month']          # 目標パーセンタイルのFIRE月
+        fire_month_val = mc_res['fire_month']
         fire_date_val  = mc_res['fire_date']
         fire_age_h_val = mc_res['fire_age_h']
         fire_age_w_val = mc_res['fire_age_w']
 
-        # FIRE時資産（base_df の target_fire_month 行から取得）
-        base_df_for_assets = mc_res['base_df']
-        if fire_month_val < len(base_df_for_assets):
-            assets_at_fire = base_df_for_assets.iloc[fire_month_val]['assets']
-        else:
-            assets_at_fire = base_df_for_assets.iloc[-1]['assets']
-
+        base_df = mc_res['base_df']
+        assets_at_fire = (
+            base_df.iloc[fire_month_val]['assets']
+            if fire_month_val < len(base_df)
+            else base_df.iloc[-1]['assets']
+        )
         years_to_fire = fire_month_val / 12.0
 
-        # メトリクス表示
         col_m1, col_m2, col_m3 = st.columns(3)
         with col_m1:
             fire_age_label = (
@@ -404,7 +469,6 @@ if st.button("シミュレーションを開始", type="primary"):
         with col_m3:
             st.metric("FIRE時資産（目標シナリオ）", fmt_oku(assets_at_fire))
 
-        # タブで詳細を整理
         tab_chart, tab_guide = st.tabs(["資産予測（確率分布）", "シミュレーション解釈ガイド"])
 
         with tab_chart:
@@ -413,28 +477,14 @@ if st.button("シミュレーションを開始", type="primary"):
                 "全シナリオで現在から90歳まで通しでシミュレーションし、各パスで資産がFIREしきい値を超えた月を記録しています。"
                 f" 目標{target_rate}%ラインのFIRE時期: {fire_date_val.strftime('%Y年%m月') if fire_date_val else '—'}"
             )
-
-            # FIRE達成情報（チャート分割用）
-            fire_row_for_chart = df[df['fire_achieved']].iloc[0] if df['fire_achieved'].any() else None
-            if fire_row_for_chart is not None:
-                current_status = {
-                    'net_assets': assets * 10000,
-                    'cash_deposits': cash,
-                    'investment_trusts': stocks,
-                }
-                fire_achievement = {
-                    'achieved': False,
-                    'achievement_date': fire_row_for_chart['date'],
-                    'months_to_fire': int(fire_row_for_chart['month']),
-                }
-                fire_target = {
-                    'recommended_target': assets_at_fire,
-                    'annual_expense': expense * 12 * 10000,
-                }
-                simulations = {'standard': df}
-
+            fire_row = df[df['fire_achieved']].iloc[0] if df['fire_achieved'].any() else None
+            if fire_row is not None:
                 fig_timeline = create_fire_timeline_chart(
-                    current_status, fire_target, fire_achievement, simulations, cfg,
+                    current_status={'net_assets': assets * 10000, 'cash_deposits': cash, 'investment_trusts': stocks},
+                    fire_target={'recommended_target': assets_at_fire, 'annual_expense': expense * 12 * 10000},
+                    fire_achievement={'achieved': False, 'achievement_date': fire_row['date'], 'months_to_fire': int(fire_row['month'])},
+                    simulations={'standard': df},
+                    config=cfg,
                     monte_carlo_results=mc_res,
                     show_baseline_after_fire=False,
                     current_date=current_date,
@@ -442,29 +492,5 @@ if st.button("シミュレーションを開始", type="primary"):
                 fig_timeline.update_layout(height=500)
                 st.plotly_chart(fig_timeline, use_container_width=True)
 
-
         with tab_guide:
-            st.markdown("### シミュレーション解釈ガイド")
-            with st.expander("なぜ『一本の線』ではなく『範囲』で考えるのか？", expanded=True):
-                st.write("""
-                将来の資産推移を一本の線で予測することは、天気予報で「明日の12時00分に雨が0.5mm降る」と断定するようなものです。
-                実際には、市場は常に変動します。このシミュレーターでは、**1,000通りの異なる未来（好景気、不景気、数年続く暴落など）**を計算し、
-                各シナリオでFIREが実現できるタイミングの分布を算出しています。
-                """)
-            with st.expander("暴落や暴騰はどのように考慮されていますか？"):
-                st.write("""
-                このシミュレーターは、単純なランダム計算ではなく、以下の高度な金融工学モデルを採用しています：
-                1. **平均回帰性 (Mean Reversion)**: 暴騰が続いた後は調整が入りやすく、過度な暴落の後には本来の価値へ回復しやすい性質を再現。
-                2. **ボラティリティ・クラスタリング (GARCHモデル)**: 「大きな変動の後は、大きな変動が続きやすい」という連鎖性を考慮。
-                3. **非対称性**: 急激な暴落となだらかな上昇のスピード感の違いをモデル化。
-                これにより、リーマンショックのような「数年に一度の事象」への耐性を検証できます。
-                """)
-            st.markdown("---")
-            st.markdown("#### 目標成功確率の見方")
-            st.info(f"""
-**{target_rate}%の意味**: リーマンショック規模の暴落を含む1,000通りの市場シナリオのうち、
-**{target_rate}%のシナリオ**でこの時期にFIRE可能です。
-
-残り{100 - target_rate}%のシナリオでは、市場環境によってFIREが数年先にずれる可能性があります。
-目標確率を変えると、FIRE時期がどう変わるか「詳細シミュレーション設定」タブで確認できます。
-""")
+            _render_guide_tab(target_rate)
