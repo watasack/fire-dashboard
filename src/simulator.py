@@ -4509,7 +4509,10 @@ def run_mc_fixed_fire(
         'fire_date': fire_date,
         'fire_age_h': fire_age_h,
         'fire_age_w': fire_age_w,
-        'never_fire_rate': 1.0 - final_res['success_rate'],
+        # never_fire_rate はユーザー指定の目標リスク許容度を表示（1 - target）
+        # 実際のsuccess_rateはbest_fire_monthで≥targetになるよう設計されているため
+        # 実測値は目標を上回ることがあり、never_fire_rateは常に目標ベースで表示する
+        'never_fire_rate': 1.0 - target_success_rate,
         'impossible': False,
         'base_df': base_df,
         'target_fire_month_int': best_fire_month,
