@@ -280,7 +280,7 @@ if st.button("シミュレーションを開始", type="primary"):
         years_to_fire = fire_month_val / 12.0
 
         # メトリクス表示
-        col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+        col_m1, col_m2, col_m3 = st.columns(3)
         with col_m1:
             fire_age_label = (
                 f"夫{fire_age_h_val:.0f}歳 / 妻{fire_age_w_val:.0f}歳"
@@ -291,17 +291,6 @@ if st.button("シミュレーションを開始", type="primary"):
             st.metric("必要年数", f"{years_to_fire:.1f}年")
         with col_m3:
             st.metric("FIRE時資産（目標シナリオ）", fmt_oku(assets_at_fire))
-        with col_m4:
-            bankrupt_pct = mc_res['never_fire_rate'] * 100
-            st.metric(
-                "破産リスク",
-                f"{bankrupt_pct:.0f}%",
-                help=(
-                    "1,000通りのシミュレーションのうち、90歳時点で資産がマイナスになる割合です。\n\n"
-                    f"目標{target_rate}%のFIRE時期で退職した場合、"
-                    f"残り{bankrupt_pct:.0f}%のシナリオでは資産が尽きる可能性があります。"
-                ),
-            )
 
         # タブで詳細を整理
         tab_chart, tab_guide = st.tabs(["資産予測（確率分布）", "シミュレーション解釈ガイド"])
