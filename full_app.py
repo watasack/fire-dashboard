@@ -341,43 +341,6 @@ if st.button("シミュレーションを開始", type="primary"):
                 fig_timeline.update_layout(height=500)
                 st.plotly_chart(fig_timeline, use_container_width=True)
 
-            col_mc1, col_mc2 = st.columns([2, 1])
-            with col_mc1:
-                all_final = [r['final_assets'] for r in mc_res['all_results']]
-                surviving = [v for v in all_final if v > 0]
-                bankrupt_n = len(all_final) - len(surviving)
-                st.markdown(
-                    f"##### 90歳時点の資産分布（生存シナリオ {len(surviving)}件）"
-                    + (f" ／ 破産 {bankrupt_n}件" if bankrupt_n > 0 else "")
-                )
-                if surviving:
-                    dist_fig = px.histogram(
-                        x=np.array(surviving) / 10000, nbins=50,
-                        color_discrete_sequence=['#10b981'],
-                    )
-                    median_surviving = int(np.median(surviving) / 10000)
-                    dist_fig.add_vline(
-                        x=median_surviving,
-                        line_color="#6366f1", line_width=2, line_dash="dash",
-                        annotation_text=f"中央値 {fmt_oku(np.median(surviving))}",
-                        annotation_position="top right",
-                    )
-                    dist_fig.update_layout(
-                        xaxis_title="90歳時点の資産 (万円)", yaxis_title="頻度",
-                        margin=dict(l=20, r=20, t=30, b=20), height=300,
-                    )
-                    st.plotly_chart(dist_fig, use_container_width=True)
-                else:
-                    st.warning("全パスが破産しました。")
-            with col_mc2:
-                st.markdown("##### リスク解析結果")
-                never_pct = mc_res['never_fire_rate'] * 100
-                st.write(f"**目標確率:** {target_rate}%")
-                st.write(f"**破産リスク:** {never_pct:.1f}%")
-                if surviving:
-                    st.write(f"**生存時の中央値:**  \n{fmt_oku(np.median(surviving))}")
-                    st.write(f"**生存時の下位10%:**  \n{fmt_oku(np.percentile(surviving, 10))}")
-                st.info("中央値は生存した全シナリオの中間値です。")
 
         with tab_guide:
             st.markdown("### シミュレーション解釈ガイド")
