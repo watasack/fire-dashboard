@@ -164,10 +164,20 @@ with tab_input:
             st.warning(f"⚠️ 時短終了（子供{w_red_end_age}歳）が育休終了（{w_leave_post}ヶ月後）より早いため、時短勤務期間が0になります。")
 
     with col2:
-        st.markdown("#### 夫の育休")
+        st.markdown("#### 夫のライフステージ")
         h_leave_post = st.slider("育休取得期間 (月数)", 0, 12, 1)
-        h_leave_inc = st.slider("育休中の月収 (万円)", 0, 60, 30)
+        h_leave_inc = st.slider("育休中の月収 (万円)", 0, 60, 30,
+            disabled=(type_h == "専業主夫"))
         st.caption("※給付金は「休業開始前賃金の67%（180日後50%）」の平均値を入力してください。")
+
+        st.markdown("---")
+        h_red_end_age = st.slider("時短勤務終了 (子供が何歳まで)", 0, 10, 0,
+            help="育休終了後〜この年齢まで時短として計算します。0にすると時短なし。",
+            disabled=(type_h == "専業主夫"))
+        h_red_inc = st.slider("時短勤務中の月収 (万円)", 0, 60, income_h,
+            disabled=(type_h == "専業主夫" or h_red_end_age == 0))
+        if h_red_end_age > 0 and h_red_end_age * 12 <= h_leave_post:
+            st.warning(f"⚠️ 時短終了（子供{h_red_end_age}歳）が育休終了（{h_leave_post}ヶ月後）より早いため、時短期間が0になります。")
 
 target_rate = 90
 
@@ -222,7 +232,10 @@ if st.button("シミュレーションを開始", type="primary"):
             'child': 'お子さん', 'months_after': h_leave_post, 'monthly_income': h_leave_inc * 10000,
             'monthly_income_after_180days': h_leave_inc * 10000
         }],
-        'shuhei_reduced_hours': [],  # UIで設定しないため空に（夫の時短は入力なし）
+        'shuhei_reduced_hours': [{
+            'child': 'お子さん', 'start_months_after': h_leave_post, 'end_months_after': h_red_end_age * 12,
+            'income_ratio': (h_red_inc * 10000) / (income_h * 10000) if income_h > 0 else 0
+        }] if h_red_end_age * 12 > h_leave_post else [],
     })
     cfg['education']['children'] = [{
         'name': 'お子さん', 'birthdate': birth_str, 'nursery': 'public', 'kindergarten': 'public',
