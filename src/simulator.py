@@ -2065,14 +2065,15 @@ def _calculate_monthly_income(
     shuhei_post_fire_income = config['simulation']['shuhei_post_fire_income']
     sakura_post_fire_income = config['simulation']['sakura_post_fire_income']
 
-    # FIRE前: 労働収入を成長率に応じて計算
-    # 修平（会社員）: income_growth_rateを適用。育休期間中は給付金に置換
-    # 桜（個人事業主）: 固定（成長なし）。産休・育休期間中は月収を変動させる
-    sakura_income_current = _sakura_income_for_month(date, sakura_income_base, config)
+    # FIRE前: 労働収入を成長率に応じて計算（per-person設定があればそちらを優先）
+    shuhei_growth = config['simulation'].get('shuhei_income_growth_rate', income_growth_rate)
+    sakura_growth = config['simulation'].get('sakura_income_growth_rate', 0.0)
+
     if shuhei_income_base + sakura_income_base > 0:
-        shuhei_income_grown = shuhei_income_base * (1 + income_growth_rate) ** years
+        shuhei_income_grown = shuhei_income_base * (1 + shuhei_growth) ** years
+        sakura_income_grown = sakura_income_base * (1 + sakura_growth) ** years
         shuhei_income_monthly = _shuhei_income_for_month(date, shuhei_income_grown, config)
-        sakura_income_monthly = sakura_income_current
+        sakura_income_monthly = _sakura_income_for_month(date, sakura_income_grown, config)
         income = shuhei_income_monthly + sakura_income_monthly
     else:
         income = monthly_income * (1 + income_growth_rate) ** years

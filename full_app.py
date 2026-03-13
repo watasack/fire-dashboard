@@ -108,18 +108,28 @@ with open("demo_config.yaml", "r", encoding="utf-8") as f:
     base_cfg = yaml.safe_load(f)
 
 # --- レイアウト: サイドバー ---
+_EMP_OPTIONS_H = ["会社員", "個人事業主", "専業主夫"]
+_EMP_OPTIONS_W = ["個人事業主", "会社員", "専業主婦"]
+_EMP_HELP = (
+    "会社員：厚生年金+国民年金・収入は毎年2%成長。\n"
+    "個人事業主：国民年金のみ・収入は固定。\n"
+    "専業主夫/主婦：収入なし・国民年金のみ。"
+)
+
 with st.sidebar:
     st.header("世帯の基本情報")
-    income_h = st.number_input("夫の月収 (手取り/万円)", value=40, min_value=1, step=1, help="現在の手取り月収（ボーナス除外）。")
+    type_h = st.selectbox("夫の雇用形態", _EMP_OPTIONS_H, index=0, help=_EMP_HELP)
+    _income_h_disabled = (type_h == "専業主夫")
+    income_h = st.number_input("夫の月収 (手取り/万円)", value=0 if _income_h_disabled else 40,
+        min_value=0, step=1, disabled=_income_h_disabled, help="現在の手取り月収（ボーナス除外）。")
     age_h = st.number_input("夫の現在の年齢", value=35, min_value=20, max_value=70, step=1)
-    type_h = st.selectbox("夫の雇用形態", ["会社員", "個人事業主"], index=0,
-        help="会社員：厚生年金+国民年金・収入は毎年2%成長。個人事業主：国民年金のみ・収入は固定。")
 
     st.divider()
-    income_w = st.number_input("妻の月収 (手取り/万円)", value=35, min_value=1, step=1, help="通常勤務時の手取り月収。育休・時短期間以外は一定として計算します。")
+    type_w = st.selectbox("妻の雇用形態", _EMP_OPTIONS_W, index=0, help=_EMP_HELP)
+    _income_w_disabled = (type_w == "専業主婦")
+    income_w = st.number_input("妻の月収 (手取り/万円)", value=0 if _income_w_disabled else 35,
+        min_value=0, step=1, disabled=_income_w_disabled, help="通常勤務時の手取り月収。育休・時短期間以外は一定として計算します。")
     age_w = st.number_input("妻の現在の年齢", value=35, min_value=20, max_value=70, step=1)
-    type_w = st.selectbox("妻の雇用形態", ["個人事業主", "会社員"], index=0,
-        help="会社員：厚生年金+国民年金。個人事業主：国民年金のみ。")
 
     st.header("キャッシュフロー")
     expense = st.number_input("基本の月間支出 (万円)", value=28, min_value=5, step=1, help="住居費・食費・娯楽費など全ての合計（住宅ローンは別途10万円/月を加算して計算）")
@@ -163,12 +173,15 @@ target_rate = 90
 
 with tab_advanced:
     st.info("以下の前提条件は固定値です。変更には `demo_config.yaml` の編集が必要です（note マニュアル参照）。")
-    _h_growth = f"{base_cfg['simulation']['standard']['income_growth_rate']*100:.0f}%/年" if type_h == '会社員' else "なし（固定）"
+    _base_growth = base_cfg['simulation']['standard']['income_growth_rate'] * 100
+    _h_growth = f"{_base_growth:.0f}%/年" if type_h == '会社員' else "なし（固定）"
+    _w_growth = f"{_base_growth:.0f}%/年" if type_w == '会社員' else "なし（固定）"
     st.json({
         "FIRE維持の目標確率": f"{target_rate}%",
         "期待利回り（年率）": f"{base_cfg['simulation']['standard']['annual_return_rate']*100:.0f}%",
         "インフレ率（年率）": f"{base_cfg['simulation']['standard']['inflation_rate']*100:.0f}%",
-        "夫の昇給率（年率）": f"{_h_growth} ※妻は成長なし",
+        "夫の昇給率（年率）": _h_growth,
+        "妻の昇給率（年率）": _w_growth,
         "住宅ローン": f"{base_cfg['mortgage']['monthly_payment']//10000:.0f}万円/月（{base_cfg['mortgage']['end_date']}まで）",
         "FIRE後副収入": f"夫{base_cfg['simulation']['shuhei_post_fire_income']//10000:.0f}万 + 妻{base_cfg['simulation']['sakura_post_fire_income']//10000:.0f}万 = 計{(base_cfg['simulation']['shuhei_post_fire_income']+base_cfg['simulation']['sakura_post_fire_income'])//10000:.0f}万円/月",
         "年金受給開始": f"夫{base_cfg['pension']['people'][0].get('override_start_age', 65)}歳 / 妻{base_cfg['pension']['people'][1].get('override_start_age', 65)}歳",
@@ -215,7 +228,8 @@ if st.button("シミュレーションを開始", type="primary"):
         'name': 'お子さん', 'birthdate': birth_str, 'nursery': 'public', 'kindergarten': 'public',
         'elementary': 'public', 'junior_high': 'public', 'high': 'public', 'university': 'national'
     }]
-    # 年金のbirthdate をユーザーの年齢から逆算して更新
+    # 年金のbirthdate をユーザーの年齢から逆算して更新・雇用形態を反映
+    _base_growth_rate = cfg['simulation']['standard']['income_growth_rate']
     birth_year_h = current_date.year - age_h
     birth_year_w = current_date.year - age_w
     if len(cfg['pension']['people']) >= 1:
@@ -224,11 +238,14 @@ if st.button("シミュレーションを開始", type="primary"):
     if len(cfg['pension']['people']) >= 2:
         cfg['pension']['people'][1]['birthdate'] = f'{birth_year_w}/07/01'
         cfg['pension']['people'][1]['pension_type'] = 'employee' if type_w == '会社員' else 'national'
-    # 夫が個人事業主の場合は収入成長率を0に（シミュレーターは夫のみ成長率を適用）
-    if type_h == '個人事業主':
-        for _sc in ['standard', 'pessimistic', 'optimistic']:
-            if _sc in cfg['simulation']:
-                cfg['simulation'][_sc]['income_growth_rate'] = 0.0
+    # 雇用形態に応じた per-person 収入成長率を設定
+    cfg['simulation']['shuhei_income_growth_rate'] = _base_growth_rate if type_h == '会社員' else 0.0
+    cfg['simulation']['sakura_income_growth_rate'] = _base_growth_rate if type_w == '会社員' else 0.0
+    # 専業主夫/主婦は収入を0に設定
+    if type_h == '専業主夫':
+        cfg['simulation']['shuhei_income'] = 0
+    if type_w == '専業主婦':
+        cfg['simulation']['sakura_income'] = 0
 
     progress_bar = st.progress(0)
     status_text = st.empty()
