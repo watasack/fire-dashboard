@@ -22,6 +22,7 @@ _COLOR_MC_2SIGMA_FILL = 'rgba(148, 163, 184, 0.10)'
 _COLOR_MC_1SIGMA_LINE = 'rgba(100, 116, 139, 0.45)'
 _COLOR_MC_1SIGMA_FILL = 'rgba(100, 116, 139, 0.12)'
 _COLOR_MC_MEDIAN      = 'rgba(51, 65, 85, 0.80)'
+_COLOR_PRE_FIRE_LINE  = 'rgba(79, 70, 229, 0.85)'   # 蓄積期ライン（インディゴ）
 
 
 def _add_stacked_asset_traces(
@@ -706,17 +707,16 @@ def create_fire_timeline_chart(
             )
 
             if use_mc:
-                # MCモード: 蓄積期は決定論的積み上げチャート、FIRE期はMCレンジ
+                # MCモード: 蓄積期は合計資産ライン、FIRE期はMCレンジ
                 if len(df_pre) > 0:
-                    customdata_pre = df_pre[get_customdata_column_names()].values
-                    _add_stacked_asset_traces(
-                        fig, df_pre, 'pre',
-                        '現金（蓄積期）', '株式（蓄積期）',
-                        _COLOR_PRE_FIRE_CASH, _COLOR_PRE_FIRE_STOCK,
-                        customdata_pre,
-                        '<b>蓄積期</b><br><b>%{x|%Y年%m月}</b><br>現金: <b>¥%{y:,.0f}万</b><extra></extra>',
-                        '<b>蓄積期</b><br><b>%{x|%Y年%m月}</b><br>株式: <b>¥%{y:,.0f}万</b><extra></extra>',
-                    )
+                    fig.add_trace(go.Scatter(
+                        x=df_pre['date'],
+                        y=(df_pre['cash'] + df_pre['stocks']) / 10000,
+                        mode='lines',
+                        line=dict(color=_COLOR_PRE_FIRE_LINE, width=2, dash='solid'),
+                        name='総資産（蓄積期）',
+                        hovertemplate='<b>蓄積期</b><br>%{x|%Y年%m月}<br>%{y:,.0f}万円<extra></extra>'
+                    ))
                 df_post = df[df['date'] >= achievement_date].copy()
                 _add_monte_carlo_ranges(
                     fig, df_post, monte_carlo_results, achievement_date,
