@@ -344,7 +344,7 @@ with st.sidebar:
             help="毎月の家賃。シミュレーション期間中一定として計算します。")
         mortgage_payment = 0
         mortgage_end_date = None
-        _expense_help = "住居費・食費・娯楽費など全ての合計（家賃は別途加算して計算）"
+        _expense_help = "食費・光熱費・通信費など住宅費を除く生活費の合計。"
     else:
         rent = 0
         _mc1, _mc2 = st.columns(2)
@@ -354,12 +354,12 @@ with st.sidebar:
         with _mc2:
             mortgage_end_date = st.number_input("返済完了(西暦)", value=2060,
                 min_value=2025, max_value=2100, step=1, help="返済完了の年（12月末扱い）。")
-        _expense_help = "住居費・食費・娯楽費など全ての合計（住宅ローンは別途加算して計算）"
-    expense = st.number_input("月間支出(万円)", value=_DEFAULT_EXPENSE, min_value=5, step=1,
+        _expense_help = "食費・光熱費・通信費など住宅費を除く生活費の合計。"
+    expense = st.number_input("生活費(万円)", value=_DEFAULT_EXPENSE, min_value=5, step=1,
         help=_expense_help)
     _housing_cost = rent if housing_type == "賃貸" else mortgage_payment
     _total_exp = expense + _housing_cost
-    st.caption(f"住宅費込み合計: {expense}万（生活費）＋ {_housing_cost}万（住宅）＝ **{_total_exp}万円/月**")
+    st.caption(f"月間支出合計: {expense}万（生活費）＋ {_housing_cost}万（住宅費）＝ **{_total_exp}万円/月**")
     assets = st.number_input("金融資産(万円)", value=_DEFAULT_ASSETS, min_value=0, step=100,
         help="現金・株式・投資信託の合計。うち30%を現金、70%を株式として計算します。NISAの既存残高は0円として扱います。")
 
