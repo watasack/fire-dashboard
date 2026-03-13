@@ -22,6 +22,7 @@ _DEFAULT_PRENATAL_MONTHS = 2     # 産前休業デフォルト（月）
 _CASH_RATIO              = 0.3   # 現金比率（初期資産配分）
 _STOCKS_RATIO            = 0.7   # 株式比率（初期資産配分）
 _MC_ITERATIONS           = 1000  # MCシミュレーション試行回数
+_DEFAULT_RENT            = 15    # 家賃デフォルト（万円）
 
 _EMP_OPTIONS_H = ["会社員", "個人事業主", "専業主夫"]
 _EMP_OPTIONS_W = ["会社員", "個人事業主", "専業主婦"]
@@ -163,6 +164,7 @@ def _build_simulation_config(
     base_cfg: dict, *,
     age_h: int, age_w: int, type_h: str, type_w: str,
     income_h: int, income_w: int, monthly_exp: int,
+    housing_type: str, rent: int,
     edu_children: list, maternity: list, w_reduced: list,
     h_parental: list, h_reduced: list,
 ) -> dict:
@@ -173,6 +175,13 @@ def _build_simulation_config(
 
     cfg['fire']['expense_categories']['enabled'] = False
     cfg['fire']['manual_annual_expense'] = monthly_exp * 12
+
+    if housing_type == '賃貸':
+        cfg['mortgage']['enabled'] = False
+        cfg['house_maintenance']['enabled'] = False
+        cfg['simulation']['monthly_rent'] = rent * 10000
+    else:
+        cfg['simulation']['monthly_rent'] = 0
 
     cfg['simulation'].update({
         'start_age': age_h,
@@ -326,8 +335,16 @@ with st.sidebar:
         age_w = st.number_input("年齢 ", value=_DEFAULT_AGE, min_value=_MIN_AGE, max_value=_MAX_AGE, step=1)
 
     st.header("キャッシュフロー")
+    housing_type = st.radio("住宅形態", ["持ち家", "賃貸"], horizontal=True)
+    if housing_type == "賃貸":
+        rent = st.number_input("家賃(万円)", value=_DEFAULT_RENT, min_value=0, step=1,
+            help="毎月の家賃。シミュレーション期間中一定として計算します。")
+        _expense_help = "住居費・食費・娯楽費など全ての合計（家賃は別途加算して計算）"
+    else:
+        rent = 0
+        _expense_help = "住居費・食費・娯楽費など全ての合計（住宅ローンは別途設定値を加算して計算）"
     expense = st.number_input("月間支出(万円)", value=_DEFAULT_EXPENSE, min_value=5, step=1,
-        help="住居費・食費・娯楽費など全ての合計（住宅ローンは別途10万円/月を加算して計算）")
+        help=_expense_help)
     assets = st.number_input("金融資産(万円)", value=_DEFAULT_ASSETS, min_value=0, step=100,
         help="現金・株式・投資信託の合計。うち30%を現金、70%を株式として計算します。NISAの既存残高は0円として扱います。")
 
@@ -380,7 +397,11 @@ with tab_advanced:
         "インフレ率（年率）": f"{base_cfg['simulation']['standard']['inflation_rate']*100:.0f}%",
         "夫の昇給率（年率）": _h_growth,
         "妻の昇給率（年率）": _w_growth,
-        "住宅ローン": f"{base_cfg['mortgage']['monthly_payment']//10000:.0f}万円/月（{base_cfg['mortgage']['end_date']}まで）",
+        "住宅": (
+            f"賃貸 {rent}万円/月（一定）"
+            if housing_type == '賃貸'
+            else f"持ち家ローン {base_cfg['mortgage']['monthly_payment']//10000:.0f}万円/月（{base_cfg['mortgage']['end_date']}まで）"
+        ),
         "FIRE後副収入": f"夫{base_cfg['simulation']['husband_post_fire_income']//10000:.0f}万 + 妻{base_cfg['simulation']['wife_post_fire_income']//10000:.0f}万 = 計{(base_cfg['simulation']['husband_post_fire_income']+base_cfg['simulation']['wife_post_fire_income'])//10000:.0f}万円/月",
         "年金受給開始": f"夫{base_cfg['pension']['people'][0].get('override_start_age', 65)}歳 / 妻{base_cfg['pension']['people'][1].get('override_start_age', 65)}歳",
         "教育コース": "公立小中高 + 国立大学",
@@ -406,6 +427,7 @@ if st.button("シミュレーションを開始", type="primary"):
         base_cfg,
         age_h=age_h, age_w=age_w, type_h=type_h, type_w=type_w,
         income_h=income_h, income_w=income_w, monthly_exp=monthly_exp,
+        housing_type=housing_type, rent=rent,
         edu_children=edu_children, maternity=maternity, w_reduced=w_reduced,
         h_parental=h_parental, h_reduced=h_reduced,
     )

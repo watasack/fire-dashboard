@@ -1405,7 +1405,8 @@ def _calculate_monthly_expenses(
     fallback_annual = monthly_expense * 12 * (1 + expense_growth_rate) ** years
     base_expense = calculate_base_expense(years, config, fallback_annual, expense_growth_rate) / 12
     education_expense = calculate_education_expense(years, config) / 12
-    mortgage_payment = calculate_mortgage_payment(years, config)
+    monthly_rent = config['simulation'].get('monthly_rent', 0)
+    mortgage_payment = calculate_mortgage_payment(years, config) + monthly_rent
     maintenance_cost = calculate_house_maintenance(years, config) / 12
     workation_cost = calculate_workation_cost(years, config) / 12
     pension_premium = calculate_national_pension_premium(years, config, False) / 12
@@ -2195,7 +2196,8 @@ def _compute_post_fire_monthly_expenses(
     annual_base_expense = calculate_base_expense(years, config, 0)
     base_expense = annual_base_expense / 12
     education_expense = calculate_education_expense(years, config) / 12
-    mortgage_payment = calculate_mortgage_payment(years, config)
+    monthly_rent = config['simulation'].get('monthly_rent', 0)
+    mortgage_payment = calculate_mortgage_payment(years, config) + monthly_rent
     maintenance_cost = calculate_house_maintenance(years, config) / 12
     workation_cost = calculate_workation_cost(years, config) / 12
     pension_premium = calculate_national_pension_premium(years, config, fire_achieved=True) / 12
