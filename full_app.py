@@ -80,7 +80,7 @@ def check_password():
             st.session_state["password_correct"] = False
 
     if "password_correct" not in st.session_state:
-        st.markdown("<h2 style='text-align: center;'>🔐 会員限定コンテンツ</h2>", unsafe_allow_html=True)
+        st.markdown("<h2 style='text-align: center;'>会員限定コンテンツ</h2>", unsafe_allow_html=True)
         st.text_input(
             "アクセスコードを入力してください", type="password", on_change=password_entered, key="password"
         )
@@ -122,19 +122,6 @@ with st.sidebar:
     assets = st.number_input("現在の金融資産 (万円)", value=2000, min_value=0, step=100, help="現金・株式・投資信託の合計。うち30%を現金、70%を株式として計算します。NISAの既存残高は0円として扱います。")
 
     st.divider()
-    st.subheader("FIRE目標設定")
-    target_rate = st.select_slider(
-        "FIRE維持の目標確率",
-        options=[50, 60, 70, 80, 90],
-        value=70,
-        format_func=lambda x: f"{x}%",
-        help=(
-            "市場変動があっても、この割合のシナリオでFIREが実現できる時期を計算します。\n"
-            "高くするほど保守的（遅めのFIRE）、低くするほど楽観的（早めのFIRE）になります。"
-        ),
-    )
-
-    st.divider()
     st.caption("詳細な計算設定は note のマニュアルを参照してください。")
 
 # --- メインコンテンツ: 育休・時短の設定 ---
@@ -169,6 +156,17 @@ with tab_input:
         st.caption("※給付金は「休業開始前賃金の67%（180日後50%）」の平均値を入力してください。")
 
 with tab_advanced:
+    target_rate = st.select_slider(
+        "FIRE維持の目標確率",
+        options=[50, 60, 70, 80, 90],
+        value=90,
+        format_func=lambda x: f"{x}%",
+        help=(
+            "市場変動があっても、この割合のシナリオでFIREが実現できる時期を計算します。\n"
+            "高くするほど保守的（遅めのFIRE）、低くするほど楽観的（早めのFIRE）になります。"
+        ),
+    )
+    st.divider()
     st.info("以下の前提条件は固定値です。変更には `demo_config.yaml` の編集が必要です（note マニュアル参照）。")
     st.json({
         "期待利回り（年率）": f"{base_cfg['simulation']['standard']['annual_return_rate']*100:.0f}%",
@@ -354,7 +352,7 @@ if st.button("シミュレーションを開始", type="primary"):
 **{target_rate}%のシナリオ**でこの時期にFIRE可能です。
 
 残り{100 - target_rate}%のシナリオでは、市場環境によってFIREが数年先にずれる可能性があります。
-目標確率を変えると、FIRE時期がどう変わるか左のスライダーで確認できます。
+目標確率を変えると、FIRE時期がどう変わるか「詳細シミュレーション設定」タブで確認できます。
 """)
 
 st.divider()
