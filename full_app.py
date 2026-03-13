@@ -143,41 +143,52 @@ st.subheader("ライフイベント・詳細設定")
 tab_input, tab_advanced = st.tabs(["育休・子供の設定", "⚙️ 詳細シミュレーション設定"])
 
 with tab_input:
-    child_birth = st.date_input(
-        "第一子の誕生日（または予定日）",
-        value=date.today() + relativedelta(months=6),
-        help="この日付を基準に教育費や育休期間を算出します。"
-    )
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("#### 妻のライフステージ")
-        w_leave_pre = st.slider("産前休暇 (月数)", 0, 6, 2, help="産前休暇中も「育休中の月収」を適用して計算します。")
-        w_leave_post = st.slider("産後育休 (月数)", 0, 24, 12)
-        w_leave_inc = st.slider("育休中の月収 (万円)", 0, 50, 15, help="産前休暇〜産後育休全期間の月収。育児休業給付金 = 通常給与の約67%（180日後50%）の平均値を入力してください。")
-        
-        st.markdown("---")
-        w_red_end_age = st.slider("時短勤務終了 (子供が何歳まで)", 0, 10, 3, help="時短勤務からフルタイムに戻る年齢。育休終了後〜この年齢まで時短として計算します。")
-        w_red_inc = st.slider("時短勤務中の月収 (万円)", 0, 60, 28)
-        # 時短期間の整合チェック
-        if w_red_end_age * 12 <= w_leave_post:
-            st.warning(f"⚠️ 時短終了（子供{w_red_end_age}歳）が育休終了（{w_leave_post}ヶ月後）より早いため、時短勤務期間が0になります。")
+    num_children = st.number_input("子どもの人数", min_value=1, max_value=4, value=1, step=1)
 
-    with col2:
-        st.markdown("#### 夫のライフステージ")
-        h_leave_post = st.slider("育休取得期間 (月数)", 0, 12, 1)
-        h_leave_inc = st.slider("育休中の月収 (万円)", 0, 60, 30,
-            disabled=(type_h == "専業主夫"))
-        st.caption("※給付金は「休業開始前賃金の67%（180日後50%）」の平均値を入力してください。")
+    _ORDINALS = ["第1子", "第2子", "第3子", "第4子"]
+    _DEFAULT_BIRTHS = [6, 30, 54, 78]  # 誕生予定（月後）デフォルト
 
-        st.markdown("---")
-        h_red_end_age = st.slider("時短勤務終了 (子供が何歳まで)", 0, 10, 0,
-            help="育休終了後〜この年齢まで時短として計算します。0にすると時短なし。",
-            disabled=(type_h == "専業主夫"))
-        h_red_inc = st.slider("時短勤務中の月収 (万円)", 0, 60, income_h,
-            disabled=(type_h == "専業主夫" or h_red_end_age == 0))
-        if h_red_end_age > 0 and h_red_end_age * 12 <= h_leave_post:
-            st.warning(f"⚠️ 時短終了（子供{h_red_end_age}歳）が育休終了（{h_leave_post}ヶ月後）より早いため、時短期間が0になります。")
+    children_ui = []
+    for _ci in range(num_children):
+        with st.expander(_ORDINALS[_ci], expanded=(_ci == 0)):
+            _birth = st.date_input(
+                "誕生日（または予定日）",
+                value=date.today() + relativedelta(months=_DEFAULT_BIRTHS[_ci]),
+                key=f"birth_{_ci}",
+                help="この日付を基準に教育費・育休期間を算出します。",
+            )
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown("**妻の育休・時短**")
+                _w_lp = st.slider("産前休暇 (月数)", 0, 6, 2, key=f"w_lp_{_ci}")
+                _w_la = st.slider("産後育休 (月数)", 0, 24, 12, key=f"w_la_{_ci}")
+                _w_li = st.slider("育休中の月収 (万円)", 0, 50, 15, key=f"w_li_{_ci}",
+                    disabled=(type_w == "専業主婦"),
+                    help="育児休業給付金 = 通常給与の約67%（180日後50%）の平均値を入力してください。")
+                _w_re = st.slider("時短終了 (子が何歳まで)", 0, 10, 3 if _ci == 0 else 0,
+                    key=f"w_re_{_ci}", disabled=(type_w == "専業主婦"))
+                _w_ri = st.slider("時短中の月収 (万円)", 0, 60, income_w, key=f"w_ri_{_ci}",
+                    disabled=(type_w == "専業主婦" or _w_re == 0))
+                if _w_re > 0 and _w_re * 12 <= _w_la:
+                    st.warning(f"⚠️ 時短終了（{_w_re}歳）が育休終了（{_w_la}ヶ月後）より早いため時短期間が0になります。")
+            with col2:
+                st.markdown("**夫の育休・時短**")
+                _h_la = st.slider("育休 (月数)", 0, 12, 1 if _ci == 0 else 0, key=f"h_la_{_ci}",
+                    disabled=(type_h == "専業主夫"))
+                _h_li = st.slider("育休中の月収 (万円)", 0, 60, 30, key=f"h_li_{_ci}",
+                    disabled=(type_h == "専業主夫"),
+                    help="育児休業給付金 = 通常給与の約67%（180日後50%）の平均値を入力してください。")
+                _h_re = st.slider("時短終了 (子が何歳まで)", 0, 10, 0, key=f"h_re_{_ci}",
+                    disabled=(type_h == "専業主夫"))
+                _h_ri = st.slider("時短中の月収 (万円)", 0, 60, income_h, key=f"h_ri_{_ci}",
+                    disabled=(type_h == "専業主夫" or _h_re == 0))
+                if _h_re > 0 and _h_re * 12 <= _h_la:
+                    st.warning(f"⚠️ 時短終了（{_h_re}歳）が育休終了（{_h_la}ヶ月後）より早いため時短期間が0になります。")
+            children_ui.append({
+                "birth": _birth, "name": f"子{_ci+1}",
+                "w_lp": _w_lp, "w_la": _w_la, "w_li": _w_li, "w_re": _w_re, "w_ri": _w_ri,
+                "h_la": _h_la, "h_li": _h_li, "h_re": _h_re, "h_ri": _h_ri,
+            })
 
 target_rate = 90
 
@@ -205,12 +216,40 @@ st.markdown("---")
 if st.button("シミュレーションを開始", type="primary"):
     cfg = copy.deepcopy(base_cfg)
     current_date = datetime.today()
-    birth_str = child_birth.strftime('%Y/%m/%d')
     cash = assets * 0.3 * 10000
     stocks = assets * 0.7 * 10000
     monthly_inc = (income_h + income_w) * 10000
     monthly_exp = expense * 10000
-    
+
+    # --- 子ども別 config リストを構築 ---
+    _edu_children, _maternity, _w_reduced, _h_parental, _h_reduced = [], [], [], [], []
+    for _cd in children_ui:
+        _n = _cd["name"]
+        _bs = _cd["birth"].strftime('%Y/%m/%d')
+        _edu_children.append({
+            'name': _n, 'birthdate': _bs, 'nursery': 'public', 'kindergarten': 'public',
+            'elementary': 'public', 'junior_high': 'public', 'high': 'public', 'university': 'national'
+        })
+        _maternity.append({
+            'child': _n, 'months_before': _cd["w_lp"], 'months_after': _cd["w_la"],
+            'monthly_income': _cd["w_li"] * 10000
+        })
+        if _cd["w_re"] * 12 > _cd["w_la"]:
+            _w_reduced.append({
+                'child': _n, 'start_months_after': _cd["w_la"], 'end_months_after': _cd["w_re"] * 12,
+                'income_ratio': (_cd["w_ri"] * 10000) / (income_w * 10000) if income_w > 0 else 0
+            })
+        _h_parental.append({
+            'child': _n, 'months_after': _cd["h_la"],
+            'monthly_income': _cd["h_li"] * 10000,
+            'monthly_income_after_180days': _cd["h_li"] * 10000
+        })
+        if _cd["h_re"] * 12 > _cd["h_la"]:
+            _h_reduced.append({
+                'child': _n, 'start_months_after': _cd["h_la"], 'end_months_after': _cd["h_re"] * 12,
+                'income_ratio': (_cd["h_ri"] * 10000) / (income_h * 10000) if income_h > 0 else 0
+            })
+
     # Config生成
     # --- 支出: カテゴリ別予算を無効化し、ユーザー入力を反映 ---
     cfg['fire']['expense_categories']['enabled'] = False
@@ -218,29 +257,14 @@ if st.button("シミュレーションを開始", type="primary"):
 
     cfg['simulation'].update({
         'start_age': age_h,
-        'shuhei_income': income_h * 10000,   # ユーザー入力で上書き（必須）
-        'sakura_income': income_w * 10000,   # ユーザー入力で上書き（必須）
-        'maternity_leave': [{
-            'child': 'お子さん', 'months_before': w_leave_pre, 'months_after': w_leave_post,
-            'monthly_income': w_leave_inc * 10000
-        }],
-        'sakura_reduced_hours': [{
-            'child': 'お子さん', 'start_months_after': w_leave_post, 'end_months_after': w_red_end_age * 12,
-            'income_ratio': (w_red_inc * 10000) / (income_w * 10000) if income_w > 0 else 0
-        }],
-        'shuhei_parental_leave': [{
-            'child': 'お子さん', 'months_after': h_leave_post, 'monthly_income': h_leave_inc * 10000,
-            'monthly_income_after_180days': h_leave_inc * 10000
-        }],
-        'shuhei_reduced_hours': [{
-            'child': 'お子さん', 'start_months_after': h_leave_post, 'end_months_after': h_red_end_age * 12,
-            'income_ratio': (h_red_inc * 10000) / (income_h * 10000) if income_h > 0 else 0
-        }] if h_red_end_age * 12 > h_leave_post else [],
+        'shuhei_income': income_h * 10000,
+        'sakura_income': income_w * 10000,
+        'maternity_leave': _maternity,
+        'sakura_reduced_hours': _w_reduced,
+        'shuhei_parental_leave': _h_parental,
+        'shuhei_reduced_hours': _h_reduced,
     })
-    cfg['education']['children'] = [{
-        'name': 'お子さん', 'birthdate': birth_str, 'nursery': 'public', 'kindergarten': 'public',
-        'elementary': 'public', 'junior_high': 'public', 'high': 'public', 'university': 'national'
-    }]
+    cfg['education']['children'] = _edu_children
     # 年金のbirthdate をユーザーの年齢から逆算して更新・雇用形態を反映
     _base_growth_rate = cfg['simulation']['standard']['income_growth_rate']
     birth_year_h = current_date.year - age_h
