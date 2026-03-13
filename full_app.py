@@ -23,6 +23,7 @@ _CASH_RATIO              = 0.3   # 現金比率（初期資産配分）
 _STOCKS_RATIO            = 0.7   # 株式比率（初期資産配分）
 _MC_ITERATIONS           = 1000  # MCシミュレーション試行回数
 _DEFAULT_RENT            = 15    # 家賃デフォルト（万円）
+_DEFAULT_MORTGAGE        = 10    # 住宅ローンデフォルト（万円/月）
 
 _EMP_OPTIONS_H = ["会社員", "個人事業主", "専業主夫"]
 _EMP_OPTIONS_W = ["会社員", "個人事業主", "専業主婦"]
@@ -164,7 +165,7 @@ def _build_simulation_config(
     base_cfg: dict, *,
     age_h: int, age_w: int, type_h: str, type_w: str,
     income_h: int, income_w: int, monthly_exp: int,
-    housing_type: str, rent: int,
+    housing_type: str, rent: int, mortgage_payment: int, mortgage_end_date,
     edu_children: list, maternity: list, w_reduced: list,
     h_parental: list, h_reduced: list,
 ) -> dict:
@@ -182,6 +183,8 @@ def _build_simulation_config(
         cfg['simulation']['monthly_rent'] = rent * 10000
     else:
         cfg['simulation']['monthly_rent'] = 0
+        cfg['mortgage']['monthly_payment'] = mortgage_payment * 10000
+        cfg['mortgage']['end_date'] = f'{mortgage_end_date}/12/31'
 
     cfg['simulation'].update({
         'start_age': age_h,
@@ -339,10 +342,19 @@ with st.sidebar:
     if housing_type == "賃貸":
         rent = st.number_input("家賃(万円)", value=_DEFAULT_RENT, min_value=0, step=1,
             help="毎月の家賃。シミュレーション期間中一定として計算します。")
+        mortgage_payment = 0
+        mortgage_end_date = None
         _expense_help = "住居費・食費・娯楽費など全ての合計（家賃は別途加算して計算）"
     else:
         rent = 0
-        _expense_help = "住居費・食費・娯楽費など全ての合計（住宅ローンは別途設定値を加算して計算）"
+        _mc1, _mc2 = st.columns(2)
+        with _mc1:
+            mortgage_payment = st.number_input("ローン月額(万円)", value=_DEFAULT_MORTGAGE,
+                min_value=0, step=1, help="毎月の住宅ローン返済額。")
+        with _mc2:
+            mortgage_end_date = st.number_input("返済完了(西暦)", value=2060,
+                min_value=2025, max_value=2100, step=1, help="返済完了の年（12月末扱い）。")
+        _expense_help = "住居費・食費・娯楽費など全ての合計（住宅ローンは別途加算して計算）"
     expense = st.number_input("月間支出(万円)", value=_DEFAULT_EXPENSE, min_value=5, step=1,
         help=_expense_help)
     assets = st.number_input("金融資産(万円)", value=_DEFAULT_ASSETS, min_value=0, step=100,
@@ -400,7 +412,7 @@ with tab_advanced:
         "住宅": (
             f"賃貸 {rent}万円/月（一定）"
             if housing_type == '賃貸'
-            else f"持ち家ローン {base_cfg['mortgage']['monthly_payment']//10000:.0f}万円/月（{base_cfg['mortgage']['end_date']}まで）"
+            else f"持ち家ローン {mortgage_payment}万円/月（{mortgage_end_date}年末まで）"
         ),
         "FIRE後副収入": f"夫{base_cfg['simulation']['husband_post_fire_income']//10000:.0f}万 + 妻{base_cfg['simulation']['wife_post_fire_income']//10000:.0f}万 = 計{(base_cfg['simulation']['husband_post_fire_income']+base_cfg['simulation']['wife_post_fire_income'])//10000:.0f}万円/月",
         "年金受給開始": f"夫{base_cfg['pension']['people'][0].get('override_start_age', 65)}歳 / 妻{base_cfg['pension']['people'][1].get('override_start_age', 65)}歳",
@@ -428,6 +440,7 @@ if st.button("シミュレーションを開始", type="primary"):
         age_h=age_h, age_w=age_w, type_h=type_h, type_w=type_w,
         income_h=income_h, income_w=income_w, monthly_exp=monthly_exp,
         housing_type=housing_type, rent=rent,
+        mortgage_payment=mortgage_payment, mortgage_end_date=mortgage_end_date,
         edu_children=edu_children, maternity=maternity, w_reduced=w_reduced,
         h_parental=h_parental, h_reduced=h_reduced,
     )
