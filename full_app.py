@@ -140,6 +140,7 @@ def _build_children_config(children_ui: list, income_h: int, income_w: int) -> t
         edu_children.append({
             'name': n, 'birthdate': bs, 'nursery': 'public', 'kindergarten': 'public',
             'elementary': 'public', 'junior_high': 'public', 'high': 'public', 'university': 'national',
+            'policy': cd.get('policy', 'standard'),
         })
         maternity.append({
             'child': n, 'months_before': cd["w_lp"], 'months_after': cd["w_la"],
@@ -449,12 +450,27 @@ with tab_input:
     children_ui = []
     for _ci in range(num_children):
         with st.expander(_ORDINALS[_ci], expanded=(_ci == 0)):
-            _birth = st.date_input(
-                "誕生日（または予定日）",
-                value=date.today() + relativedelta(months=_DEFAULT_BIRTHS[_ci]),
-                key=f"birth_{_ci}",
-                help="この日付を基準に教育費・育休期間を算出します。",
-            )
+            _bc1, _bc2 = st.columns([2, 2])
+            with _bc1:
+                _birth = st.date_input(
+                    "誕生日（または予定日）",
+                    value=date.today() + relativedelta(months=_DEFAULT_BIRTHS[_ci]),
+                    key=f"birth_{_ci}",
+                    help="この日付を基準に教育費・育休期間を算出します。",
+                )
+            with _bc2:
+                _edu_policy = st.selectbox(
+                    "教育方針",
+                    options=["standard", "moderate", "private_heavy"],
+                    format_func=lambda x: {
+                        "standard": "標準（公立小中高＋国立大）",
+                        "moderate": "やや手厚め（高校のみ私立）",
+                        "private_heavy": "私立重視（私立中高＋私立文系大）",
+                    }[x],
+                    index=0,
+                    key=f"edu_policy_{_ci}",
+                    help="公立小中高+国立大: 〜693万 / 公立小中+私立高+国立大: 〜855万 / 公立小+私立中高+私立文系大: 〜1,272万（子1人あたり合計）",
+                )
             col_h, col_w = st.columns(2)  # 夫LEFT・妻RIGHT
             with col_h:
                 h = _leave_inputs("夫の育休・時短", "h", _ci, type_h == "専業主夫",
@@ -463,7 +479,7 @@ with tab_input:
                 w = _leave_inputs("妻の育休・時短", "w", _ci, type_w == "専業主婦",
                     default_leave=_DEFAULT_LEAVE_MONTHS, default_income=int(income_w), maternity=True)
             children_ui.append({
-                "birth": _birth, "name": f"子{_ci+1}",
+                "birth": _birth, "name": f"子{_ci+1}", "policy": _edu_policy,
                 "w_lp": w.get("lp", 0), "w_la": w["la"], "w_li": w["li"], "w_re": w["re"], "w_ri": w["ri"],
                 "h_la": h["la"], "h_li": h["li"], "h_re": h["re"], "h_ri": h["ri"],
             })
@@ -490,7 +506,13 @@ with tab_advanced:
             f"計{husband_post_fire_income + wife_post_fire_income:.0f}万円/月"
         ),
         "年金受給開始": f"夫{base_cfg['pension']['people'][0].get('override_start_age', 65)}歳 / 妻{base_cfg['pension']['people'][1].get('override_start_age', 65)}歳",
-        "教育コース": "公立小中高 + 国立大学",
+        "教育コース": "、".join(
+            "{}: {}".format(
+                f"子{i+1}",
+                {"standard": "標準（公立中心）", "moderate": "やや手厚め（高校のみ私立）", "private_heavy": "私立重視"}.get(cd.get("policy", "standard"), "標準")
+            )
+            for i, cd in enumerate(children_ui)
+        ) if children_ui else "公立小中高 + 国立大学",
         "資産の内訳（初期）": "現金30% / 株式70%（NISAの初期残高は0円）",
     })
 

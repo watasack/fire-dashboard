@@ -466,6 +466,23 @@ education:
       high: 'public'
       university: 'national'
 
+  policies:
+    standard:
+      elementary:  public
+      junior_high: public
+      high:        public
+      university:  national
+    moderate:
+      elementary:  public
+      junior_high: public
+      high:        private
+      university:  national
+    private_heavy:
+      elementary:  public
+      junior_high: private
+      high:        private
+      university:  private_arts
+
   costs:
     nursery:
       standard: 714000
