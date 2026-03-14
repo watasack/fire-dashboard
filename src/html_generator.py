@@ -386,6 +386,290 @@ def generate_dashboard_html(
     progress = fire_target['progress_rate']
     target_yen = fire_target['recommended_target']
     current_yen = fire_target.get('current_net_assets', current_status['net_assets'])
+    # HTMLテンプレート
+    css_content = """
+    :root {
+      --primary: #06b6d4;
+      --primary-dark: #0891b2;
+      --secondary: #64748b;
+      --bg-main: #f8fafc;
+      --card-bg: #ffffff;
+      --text-main: #1e293b;
+      --text-secondary: #475569;
+      --accent-teal: #0d9488;
+      --accent-blue: #2563eb;
+      --accent-amber: #d97706;
+      --accent-purple: #7c3aed;
+      --border: #e2e8f0;
+      --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg-main);
+      color: var(--text-main);
+      margin: 0;
+      line-height: 1.5;
+    }
+
+    .dashboard-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 40px 20px;
+    }
+
+    .dashboard-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      margin-bottom: 32px;
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 16px;
+    }
+
+    .header-brand h1 {
+      margin: 0;
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -0.025em;
+      color: var(--text-main);
+      background: linear-gradient(135deg, var(--primary), var(--accent-blue));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .header-update {
+      font-size: 13px;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      background-color: #10b981;
+      border-radius: 50%;
+      box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.1);
+    }
+
+    .hero-kpi {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1px;
+      background-color: var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+      margin-bottom: 32px;
+    }
+
+    .kpi-primary {
+      background-color: var(--card-bg);
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
+
+    .kpi-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+    }
+
+    .kpi-value--large {
+      font-size: 32px;
+      font-weight: 800;
+      color: var(--primary-dark);
+      margin-bottom: 8px;
+    }
+
+    .kpi-detail {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .kpi-detail--accent {
+      color: var(--accent-amber);
+      font-weight: 700;
+    }
+
+    .progress-bar-wrap {
+      width: 100%;
+      height: 6px;
+      background-color: var(--bg-main);
+      border-radius: 3px;
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--primary), var(--accent-blue));
+    }
+
+    .chart-panel {
+      background-color: var(--card-bg);
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: var(--shadow);
+      margin-bottom: 32px;
+    }
+
+    .chart-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin: 0 0 20px 0;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .title-accent {
+      width: 4px;
+      height: 18px;
+      border-radius: 2px;
+    }
+
+    .title-accent--teal { background-color: var(--primary); }
+    .title-accent--blue { background-color: var(--accent-blue); }
+    .title-accent--purple { background-color: var(--accent-purple); }
+    .title-accent--amber { background-color: var(--accent-amber); }
+    .title-accent--slate { background-color: var(--secondary); }
+
+    .dual-content {
+      display: grid;
+      grid-template-columns: 1.5fr 1fr;
+      gap: 32px;
+    }
+
+    .life-events-section {
+      background-color: var(--card-bg);
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: var(--shadow);
+      margin-bottom: 32px;
+    }
+
+    .life-events-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .life-events-table th {
+      text-align: left;
+      padding: 12px;
+      border-bottom: 2px solid var(--border);
+      color: var(--text-secondary);
+      font-weight: 600;
+    }
+
+    .life-events-table td {
+      padding: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .event-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 8px;
+    }
+
+    .impact-positive { color: #10b981; font-weight: 600; }
+    .impact-negative { color: #ef4444; font-weight: 600; }
+    .impact-neutral { color: var(--text-secondary); }
+
+    .bottom-layout {
+      display: grid;
+      grid-template-columns: 1.5fr 1fr;
+      gap: 32px;
+    }
+
+    .info-panels-stacked {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .info-detail {
+      background-color: var(--card-bg);
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    .info-summary {
+      padding: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background-color: #fdfdfd;
+      list-style: none;
+    }
+
+    .summary-badge {
+      margin-left: auto;
+      font-size: 11px;
+      font-weight: normal;
+      background-color: var(--bg-main);
+      padding: 2px 8px;
+      border-radius: 4px;
+      color: var(--text-secondary);
+    }
+
+    .info-detail-body {
+      padding: 16px;
+      border-top: 1px solid var(--border);
+    }
+
+    .assumptions-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .assumptions-table td {
+      padding: 8px 4px;
+      border-bottom: 1px solid #f1f5f9;
+    }
+
+    .assumptions-table tr.group-header td {
+      background-color: #f8fafc;
+      font-weight: 700;
+      color: var(--secondary);
+      padding: 12px 8px 4px 8px;
+      border-bottom: none;
+    }
+
+    .optimization-note {
+      margin-top: 16px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      background-color: #fffbeb;
+      padding: 12px;
+      border-radius: 6px;
+      border-left: 4px solid var(--accent-amber);
+    }
+
+    @media (max-width: 1024px) {
+      .dual-content, .bottom-layout { grid-template-columns: 1fr; }
+      .hero-kpi { grid-template-columns: repeat(2, 1fr); }
+    }
+    """
+
     progress_detail = f"目標{_format_man_yen(target_yen)} / 現在{_format_man_yen(current_yen)}"
 
     # データスキーマ
@@ -431,7 +715,9 @@ def generate_dashboard_html(
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FIREダッシュボード</title>
-    <link rel="stylesheet" href="assets/styles.css">
+    <style>
+    {css_content}
+    </style>
 </head>
 <body>
   <div class="dashboard-container">
@@ -566,7 +852,7 @@ def generate_dashboard_html(
 
     window.addEventListener('load', function() {{
       setTimeout(function() {{
-        const graphDiv = document.querySelector('.main-chart:first-of-type .chart-content .plotly-graph-div');
+        const graphDiv = document.querySelector('.chart-content .plotly-graph-div');
         if (!graphDiv) return;
 
         graphDiv.on('plotly_click', function(data) {{
@@ -615,38 +901,30 @@ def generate_dashboard_html(
               const cellLabel = document.createElement('td');
               cellLabel.textContent = label;
               cellLabel.style.padding = '8px 12px';
-              cellLabel.style.borderBottom = '1px solid #e0f2fe';
+              cellLabel.style.borderBottom = '1px solid #e2e8f0';
               const cellValue = document.createElement('td');
               cellValue.textContent = value;
               cellValue.style.padding = '8px 12px';
               cellValue.style.textAlign = 'right';
-              cellValue.style.borderBottom = '1px solid #e0f2fe';
+              cellValue.style.borderBottom = '1px solid #e2e8f0';
               cellValue.style.fontWeight = className.includes('bold') ? '600' : 'normal';
               if (className.includes('section-header')) {{
-                cellLabel.style.background = '#cffafe';
-                cellLabel.style.fontWeight = '600';
-                cellLabel.style.color = '#0c4a6e';
-                cellValue.style.background = '#cffafe';
-                cellValue.style.fontWeight = '600';
-                cellValue.style.color = '#0c4a6e';
+                cellLabel.style.background = '#f1f5f9';
+                cellLabel.style.fontWeight = '700';
+                cellLabel.style.color = '#334155';
+                cellValue.style.background = '#f1f5f9';
               }} else if (className.includes('subtotal')) {{
                 cellLabel.style.fontWeight = '600';
-                cellLabel.style.color = '#334155';
-                cellValue.style.fontWeight = '600';
-                cellValue.style.color = '#334155';
+                cellLabel.style.color = '#1e293b';
               }} else if (className.includes('total')) {{
-                cellLabel.style.background = '#e0f2fe';
+                cellLabel.style.background = '#f0f9ff';
                 cellLabel.style.fontWeight = '700';
-                cellLabel.style.color = '#0891b2';
-                cellValue.style.background = '#e0f2fe';
-                cellValue.style.fontWeight = '700';
-                cellValue.style.color = '#0891b2';
+                cellLabel.style.color = '#0369a1';
+                cellValue.style.background = '#f0f9ff';
               }} else if (className.includes('subcategory')) {{
                 cellLabel.style.paddingLeft = '24px';
                 cellLabel.style.fontSize = '12px';
                 cellLabel.style.color = '#64748b';
-                cellValue.style.fontSize = '12px';
-                cellValue.style.color = '#64748b';
               }}
               row.appendChild(cellLabel);
               row.appendChild(cellValue);
@@ -682,14 +960,16 @@ def generate_dashboard_html(
                   const categoryExpense = baseExpenseManEn * percentage;
                   if (categoryExpense > 0.1) addRow('  - ' + category, '-¥' + categoryExpense.toFixed(1) + '万', 'subcategory');
                 }}
+              }} else {{
+                items.push({{ label: '基本生活費', value: -baseExpenseManEn, measure: 'relative' }});
               }}
             }}
             if (educationExpense > 0) addRow('教育費', '-¥' + (educationExpense / 10000).toFixed(1) + '万', 'expense');
             if (mortgagePayment > 0) addRow('住宅ローン', '-¥' + (mortgagePayment / 10000).toFixed(1) + '万', 'expense');
             if (maintenanceCost > 0) addRow('メンテナンス費用', '-¥' + (maintenanceCost / 10000).toFixed(1) + '万', 'expense');
             if (workationCost > 0) addRow('ワーケーション', '-¥' + (workationCost / 10000).toFixed(1) + '万', 'expense');
-            if (pensionPremium > 0) addRow('国民年金保険料', '-¥' + (pensionPremium / 10000).toFixed(1) + '万', 'expense');
-            if (healthInsurancePremium > 0) addRow('国民健康保険料', '-¥' + (healthInsurancePremium / 10000).toFixed(1) + '万', 'expense');
+            if (pensionPremium > 0) addRow('国民年金', '-¥' + (pensionPremium / 10000).toFixed(1) + '万', 'expense');
+            if (healthInsurancePremium > 0) addRow('国民健康保険', '-¥' + (healthInsurancePremium / 10000).toFixed(1) + '万', 'expense');
             addRow('支出合計', '-¥' + (totalExpense / 10000).toFixed(1) + '万', 'subtotal bold');
 
             addRow('資産構成', '', 'section-header');
@@ -752,7 +1032,7 @@ def generate_dashboard_html(
               margin: {{ t: 40, b: 50, l: 50, r: 20 }},
               yaxis: {{ title: '万円', tickformat: ',.0f', gridcolor: '#e0f2fe' }},
               xaxis: {{ tickangle: 0 }},
-              plot_bgcolor: '#f0f9ff', paper_bgcolor: '#f0f9ff'
+              plot_bgcolor: '#ffffff', paper_bgcolor: '#ffffff'
             }};
             Plotly.newPlot('waterfall-chart', waterfallData, waterfallLayout, {{ displayModeBar: false, responsive: true }});
           }} else {{
