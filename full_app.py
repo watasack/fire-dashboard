@@ -4,6 +4,7 @@ from dateutil.relativedelta import relativedelta
 import yaml
 import copy
 import numpy as np
+import pandas as pd
 from src.simulator import run_mc_fixed_fire
 from src.visualizer import create_fire_timeline_chart
 from src.utils import fmt_oku
@@ -313,6 +314,33 @@ def _leave_inputs(label: str, prefix: str, ci: int, disabled: bool,
         if lp is not None:
             result["lp"] = lp
         return result
+
+
+def build_annual_table(base_df: pd.DataFrame, fire_month: int, age_h: int, age_w: int) -> pd.DataFrame:
+    """月次 DataFrame から年次収支テーブルを生成する。"""
+    df = base_df.copy()
+    df["year"] = df["month"] // 12
+
+    annual = df.groupby("year").agg(
+        annual_income=("income", "sum"),
+        annual_expense=("expense", "sum"),
+        year_end_assets=("assets", "last"),
+    ).reset_index()
+
+    annual["age_h"] = age_h + annual["year"]
+    annual["age_w"] = age_w + annual["year"]
+    annual["annual_cashflow"] = annual["annual_income"] - annual["annual_expense"]
+    annual["is_post_fire"] = annual["year"] * 12 >= fire_month
+
+    annual["age_display"]     = annual.apply(lambda r: f"{r['age_h']:.0f} / {r['age_w']:.0f}", axis=1)
+    annual["income_display"]  = annual["annual_income"].apply(lambda x: f"{x/10000:.0f}万")
+    annual["expense_display"] = annual["annual_expense"].apply(lambda x: f"{x/10000:.0f}万")
+    annual["cashflow_display"] = annual["annual_cashflow"].apply(
+        lambda x: f"+{x/10000:.0f}万" if x >= 0 else f"{x/10000:.0f}万"
+    )
+    annual["assets_display"]  = annual["year_end_assets"].apply(lambda x: f"{x/10000:.0f}万")
+
+    return annual
 
 
 def _render_guide_tab(target_rate: int) -> None:
@@ -677,3 +705,39 @@ if st.button("シミュレーションを開始", type="primary"):
 
         with tab_guide:
             _render_guide_tab(target_rate)
+
+        # ── 年次収支テーブル ──────────────────────────────────────────────
+        with st.expander("📊 年次収支テーブル（詳細）", expanded=False):
+            annual_df = build_annual_table(base_df, fire_month_val, age_h, age_w)
+
+            display_df = annual_df[[
+                "age_display", "income_display", "expense_display",
+                "cashflow_display", "assets_display",
+            ]].rename(columns={
+                "age_display":     "夫/妻 年齢",
+                "income_display":  "年収入",
+                "expense_display": "年支出",
+                "cashflow_display": "年収支",
+                "assets_display":  "年末資産",
+            })
+
+            is_post_fire = annual_df["is_post_fire"].tolist()
+
+            def _highlight_post_fire(row):
+                idx = row.name
+                color = "background-color: #e8f4fd" if is_post_fire[idx] else ""
+                return [color] * len(row)
+
+            st.dataframe(
+                display_df.style.apply(_highlight_post_fire, axis=1),
+                use_container_width=True,
+                height=400,
+            )
+
+            csv = annual_df.to_csv(index=False, encoding="utf-8-sig")
+            st.download_button(
+                "📥 CSVダウンロード",
+                data=csv,
+                file_name="fire_simulation.csv",
+                mime="text/csv",
+            )
