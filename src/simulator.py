@@ -688,41 +688,51 @@ def calculate_education_expense(year_offset: float, config: Dict[str, Any]) -> f
 
         child_age = _get_age_at_offset(birthdate_str, year_offset)
 
+        # policy キーがあればポリシーマッピングから各段階の種別を取得（後方互換: なければ個別設定を使用）
+        policy_key = child.get('policy')
+        policy_stages = config['education']['policies'].get(policy_key) if policy_key else None
+
+        def _stage_type(stage: str) -> str:
+            """policy が設定されていればそちらを優先、なければ child の個別設定を使用"""
+            if policy_stages is not None and stage in policy_stages:
+                return policy_stages[stage]
+            return child[stage]
+
         # 年齢に応じた教育段階と費用を計算
         if 0 <= child_age < 3:
-            # 保育園（0-2歳）
+            # 保育園（0-2歳）: policy の対象外（個別設定を使用）
             nursery_type = child['nursery']
             if nursery_type != 'none':
                 annual_cost = costs['nursery'].get(nursery_type, 0)
                 total_education_expense += annual_cost
 
         elif 3 <= child_age < 6:
-            # 幼稚園（3-5歳）
+            # 幼稚園（3-5歳）: policy の対象外（個別設定を使用）
             stage_type = child['kindergarten']
             annual_cost = costs['kindergarten'][stage_type]
             total_education_expense += annual_cost
 
         elif 6 <= child_age < 12:
             # 小学校（6-11歳）
-            stage_type = child['elementary']
+            stage_type = _stage_type('elementary')
             annual_cost = costs['elementary'][stage_type]
             total_education_expense += annual_cost
 
         elif 12 <= child_age < 15:
             # 中学校（12-14歳）
-            stage_type = child['junior_high']
+            stage_type = _stage_type('junior_high')
             annual_cost = costs['junior_high'][stage_type]
             total_education_expense += annual_cost
 
         elif 15 <= child_age < 18:
             # 高校（15-17歳）
-            stage_type = child['high']
+            stage_type = _stage_type('high')
             annual_cost = costs['high'][stage_type]
             total_education_expense += annual_cost
 
         elif 18 <= child_age < 22:
             # 大学（18-21歳）
-            stage_type = child['university']
+            stage_type = _stage_type('university')
             annual_cost = costs['university'][stage_type]
             total_education_expense += annual_cost
 

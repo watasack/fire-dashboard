@@ -195,6 +195,7 @@ class ChildConfig(BaseModel):
     junior_high: str
     high: str
     university: str
+    policy: Optional[Literal["standard", "moderate", "private_heavy"]] = None
 
 
 class NurseryCosts(BaseModel):
@@ -221,9 +222,23 @@ class EducationCosts(BaseModel):
     university: UniversityCosts
 
 
+class EducationPolicyStages(BaseModel):
+    elementary: str
+    junior_high: str
+    high: str
+    university: str
+
+
+class EducationPolicies(BaseModel):
+    standard: EducationPolicyStages
+    moderate: EducationPolicyStages
+    private_heavy: EducationPolicyStages
+
+
 class EducationConfig(BaseModel):
     enabled: bool
     children: List[ChildConfig]
+    policies: EducationPolicies
     costs: EducationCosts
 
 

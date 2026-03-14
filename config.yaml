@@ -552,6 +552,24 @@ education:
       high: 'public'           # private or public
       university: 'national'   # national, private_arts, private_science
 
+  # 教育方針プリセット（policy キーで子どもごとに指定可能）
+  policies:
+    standard:       # 標準: 公立小中高 + 国立大学
+      elementary:  public
+      junior_high: public
+      high:        public
+      university:  national
+    moderate:       # やや手厚め: 公立小中 + 私立高 + 国立大学
+      elementary:  public
+      junior_high: public
+      high:        private
+      university:  national
+    private_heavy:  # 私立重視: 公立小 + 私立中高 + 私立文系大学
+      elementary:  public
+      junior_high: private
+      high:        private
+      university:  private_arts
+
   # 教育段階別の年間費用（円）- 文部科学省の調査を基にした標準値
   costs:
     nursery:                   # 保育園（0-2歳）
