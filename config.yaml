@@ -689,6 +689,12 @@ social_insurance:
   # 医療分65万 + 支援金分24万 + 介護分17万
   health_insurance_max_premium: 1060000
 
+  # FIRE前の世帯年収（国保スパイク計算用）
+  # FIRE後1年目の国保保険料は前年（給与）収入を基準に算定されるため、退職前年収が必要。
+  # 夫: 7,507,388円（avg_monthly_salary × 12）+ 妻: 7,000,000円（個人事業主、概算）
+  # お住まいの自治体によって実際の保険料は異なります。
+  pre_fire_annual_income: 14507388
+
 # ワーケーション費用設定
 workation:
   enabled: true                # ワーケーション費用を有効化

@@ -1132,11 +1132,16 @@ def calculate_national_health_insurance_premium(
     国民健康保険料 = 所得割 + 均等割 + 平等割（上限あり）
     所得割は前年の所得（副業収入 + 株式譲渡益）に基づいて計算する。
 
+    FIRE後1年目スパイク:
+        前年の給与収入（pre_fire_annual_income）を基準に算定するため、
+        通常より大幅に高くなる。2年目以降は副業収入 + 譲渡益ベースに戻る。
+
     Args:
         year_offset: シミュレーション開始からの経過年数
         config: 設定辞書
         fire_achieved: FIRE達成済みか（True: FIRE後、False: FIRE前）
         prev_year_capital_gains: 前年の株式譲渡益（円）
+        years_since_fire: FIRE後の経過年数（0未満 = FIRE前）
 
     Returns:
         年間国民健康保険料（円）
@@ -1152,15 +1157,15 @@ def calculate_national_health_insurance_premium(
     si = config['social_insurance']
 
     # --- 所得の算出 ---
-    # 副業収入（夫 + 妻の年額合計）- FIRE後固定額
-    annual_side_income = _compute_post_fire_income(config, year_offset) * 12
-
-    # 前年の株式譲渡益（キャピタルゲイン）
-    # 国民健康保険の所得割は分離課税の譲渡所得も含む
-    capital_gains = prev_year_capital_gains
-
-    # 合計所得
-    total_income = annual_side_income + capital_gains
+    # FIRE後1年目スパイク: 前年給与収入を基準に国保算定
+    if years_since_fire < 1:
+        pre_fire_income = si.get('pre_fire_annual_income', 0)
+        total_income = pre_fire_income
+    else:
+        # 2年目以降: 副業収入 + 前年株式譲渡益
+        annual_side_income = _compute_post_fire_income(config, year_offset) * 12
+        capital_gains = prev_year_capital_gains
+        total_income = annual_side_income + capital_gains
 
     # --- 所得割 ---
     basic_deduction = si['health_insurance_basic_deduction']
