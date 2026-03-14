@@ -6,7 +6,8 @@ import copy
 import numpy as np
 import pandas as pd
 from src.simulator import run_mc_fixed_fire
-from src.visualizer import create_fire_timeline_chart, create_income_expense_stream_chart
+from src.visualizer import create_fire_timeline_chart, create_income_expense_stream_chart, extract_life_events
+from src.html_generator import generate_dashboard_html
 from src.utils import fmt_oku
 from src.tax_utils import gross_to_net_monthly
 from src.analytics import calc_depletion_age, get_bankrupt_depletion_ages
@@ -787,6 +788,33 @@ if st.button("シミュレーションを開始", type="primary"):
         with col_m3:
             st.metric("FIRE達成時の資産額", fmt_oku(assets_at_fire))
 
+        # ── プランA比較 ──────────────────────────────────────────────────
+        _pa_col1, _pa_col2 = st.columns([4, 1])
+        with _pa_col1:
+            if 'plan_a' in st.session_state:
+                _pa = st.session_state['plan_a']
+                _pa_label = (
+                    f"プランA固定済: FIRE {_pa['fire_date'].strftime('%Y年%m月')} / "
+                    f"必要年数 {_pa['years_to_fire']:.1f}年 / "
+                    f"資産 {_pa['assets_at_fire']/10000:.0f}万円"
+                )
+                st.success(_pa_label)
+        with _pa_col2:
+            if st.button("この結果をプランAとして固定", use_container_width=True):
+                st.session_state['plan_a'] = {
+                    'df': df,
+                    'fire_date': fire_date_val,
+                    'fire_age_h': fire_age_h_val,
+                    'fire_age_w': fire_age_w_val,
+                    'assets_at_fire': assets_at_fire,
+                    'years_to_fire': years_to_fire,
+                }
+                st.rerun()
+            if 'plan_a' in st.session_state:
+                if st.button("プランAをクリア", use_container_width=True):
+                    del st.session_state['plan_a']
+                    st.rerun()
+
         # ── 破産シナリオ分析 ──────────────────────────────────────────────
         all_paths = mc_res.get("all_paths")
         bankrupt_count = sum(1 for r in mc_res["all_results"] if not r["success"])
@@ -835,6 +863,10 @@ if st.button("シミュレーションを開始", type="primary"):
             )
             fire_row = df[df['fire_achieved']].iloc[0] if df['fire_achieved'].any() else None
             if fire_row is not None:
+                _plan_a_comparison = None
+                if 'plan_a' in st.session_state:
+                    _pa = st.session_state['plan_a']
+                    _plan_a_comparison = {'df': _pa['df'], 'label': 'プランA'}
                 fig_timeline = create_fire_timeline_chart(
                     current_status={'net_assets': assets * 10000, 'cash_deposits': cash, 'investment_trusts': stocks},
                     fire_target={'recommended_target': assets_at_fire, 'annual_expense': expense * 12 * 10000},
@@ -844,6 +876,7 @@ if st.button("シミュレーションを開始", type="primary"):
                     monte_carlo_results=mc_res,
                     show_baseline_after_fire=False,
                     current_date=current_date,
+                    comparison_data=_plan_a_comparison,
                 )
                 fig_timeline.update_layout(height=500)
                 st.plotly_chart(fig_timeline, use_container_width=True)
@@ -890,10 +923,78 @@ if st.button("シミュレーションを開始", type="primary"):
                 height=400,
             )
 
-            csv = annual_df.to_csv(index=False, encoding="utf-8-sig")
-            st.download_button(
-                "📥 CSVダウンロード",
-                data=csv,
-                file_name="fire_simulation.csv",
-                mime="text/csv",
-            )
+            _col_dl1, _col_dl2 = st.columns(2)
+            with _col_dl1:
+                csv = annual_df.to_csv(index=False, encoding="utf-8-sig")
+                st.download_button(
+                    "📥 CSVダウンロード",
+                    data=csv,
+                    file_name="fire_simulation.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                )
+            with _col_dl2:
+                if st.button("📊 診断レポート(HTML)を作成", use_container_width=True):
+                    with st.spinner("レポートを生成中..."):
+                        # レポート用データの構築
+                        fire_row_rep = df[df['fire_achieved']].iloc[0] if df['fire_achieved'].any() else None
+                        
+                        summary_data = {
+                            'current_status': {
+                                'net_assets': assets * 10000,
+                                'cash_deposits': cash,
+                                'investment_trusts': stocks
+                            },
+                            'fire_target': {
+                                'recommended_target': assets_at_fire,
+                                'annual_expense': expense * 12 * 10000,
+                                'progress_rate': assets * 10000 / assets_at_fire if assets_at_fire > 0 else 0,
+                                'current_net_assets': assets * 10000
+                            },
+                            'fire_achievement': {
+                                'achieved': False,
+                                'achievement_date': fire_row_rep['date'] if fire_row_rep is not None else None,
+                                'years_to_fire': int(years_to_fire) if fire_row_rep is not None else 0,
+                                'remaining_months': int(fire_row_rep['month']) if fire_row_rep is not None else 0,
+                            },
+                            'trends': df.to_dict('records'),
+                            'expense_breakdown': {
+                                'category_percentages': {'基本生活費': 100} # カテゴリ入力がないため100%
+                            },
+                            'monte_carlo': mc_res,
+                            'life_events': extract_life_events(cfg, {
+                                'achieved': False, 
+                                'achievement_date': fire_row_rep['date'] if fire_row_rep is not None else None,
+                                'months_to_fire': int(fire_row_rep['month']) if fire_row_rep is not None else 0
+                            }),
+                            'simulations': {'standard': df},
+                            'update_time': datetime.now()
+                        }
+                        
+                        charts = {
+                            'fire_timeline': create_fire_timeline_chart(
+                                current_status=summary_data['current_status'],
+                                fire_target=summary_data['fire_target'],
+                                fire_achievement=summary_data['fire_achievement'],
+                                simulations=summary_data['simulations'],
+                                config=cfg,
+                                monte_carlo_results=mc_res,
+                                show_baseline_after_fire=False,
+                                current_date=current_date
+                            ),
+                            'income_expense_stream': create_income_expense_stream_chart(
+                                simulations=summary_data['simulations'],
+                                fire_achievement=summary_data['fire_achievement'],
+                                config=cfg
+                            )
+                        }
+                        
+                        html_rep = generate_dashboard_html(charts, summary_data, [], cfg)
+                        
+                        st.download_button(
+                            "💾 レポートを保存 (HTML)",
+                            data=html_rep,
+                            file_name=f"FIRE_Report_{datetime.now().strftime('%Y%m%d_%H%M')}.html",
+                            mime="text/html",
+                            use_container_width=True,
+                        )
