@@ -10,6 +10,7 @@ from typing import Dict, Any, List, NamedTuple, Optional, Tuple, Callable
 from dataclasses import dataclass, field
 from dateutil.relativedelta import relativedelta
 from functools import lru_cache
+from src.withdrawal import calc_withdrawal_adjustment
 
 # 年金・資産計算用定数
 _NATIONAL_PENSION_FULL_AMOUNT = 816_000       # 国民年金満額（2024年度, 円/年）
@@ -2210,6 +2211,8 @@ def _compute_post_fire_monthly_expenses(
     years_since_fire: float = 0,
     include_health_insurance: bool = True,
     extra_monthly_budget: float = 0,
+    current_assets: float = None,
+    fire_assets: float = None,
 ) -> dict:
     """FIRE後の月次支出を計算する単一関数。
 
@@ -2243,6 +2246,15 @@ def _compute_post_fire_monthly_expenses(
              + maintenance_cost + workation_cost
              + pension_premium + health_insurance_premium
              + extra_monthly_budget)
+
+    # 取り崩し戦略による生活費調整（base_expense のみ対象、住宅・教育等は固定）
+    if current_assets is not None:
+        _fa = fire_assets if fire_assets is not None else current_assets
+        withdrawal_adj = calc_withdrawal_adjustment(
+            current_assets, _fa, base_expense, config
+        )
+        base_expense += withdrawal_adj
+        total += withdrawal_adj
 
     return {
         'base_expense': base_expense,
@@ -2396,6 +2408,7 @@ def _process_post_fire_monthly_cycle(
     austerity_start: int = None,
     austerity_end: int = None,
     austerity_rate: float = 0.0,
+    fire_assets: float = None,
 ) -> Dict[str, Any]:
     """
     FIRE後の1ヶ月分のシミュレーション処理（決定論的ベースライン用）
@@ -2423,6 +2436,8 @@ def _process_post_fire_monthly_cycle(
         prev_year_capital_gains=prev_year_capital_gains_post,
         years_since_fire=month / 12,
         extra_monthly_budget=extra_monthly_budget,
+        current_assets=current_total_assets,
+        fire_assets=fire_assets,
     )
     expense = _exp['total']
 
@@ -2547,6 +2562,8 @@ def simulate_post_fire_assets(
         config, years_offset, override_start_ages
     )
 
+    fire_assets = current_cash + current_stocks
+
     # 月次シミュレーション
     for month in range(remaining_months):
         _post_fire_income = _compute_post_fire_income(config, years_offset + month / 12)
@@ -2561,6 +2578,7 @@ def simulate_post_fire_assets(
             austerity_start=a_start,
             austerity_end=a_end,
             austerity_rate=a_rate,
+            fire_assets=fire_assets,
         )
 
         # 状態を更新
@@ -2659,6 +2677,7 @@ def _simulate_post_fire_with_random_returns(
     pre_pension_reduction_rate: float = 0.0,
     reduction_end_month: int = None,
     austerity_months: int = 120,
+    fire_assets: float = None,
 ):
     """
     FIRE後の資産推移をランダムリターンでシミュレーション（モンテカルロ用）
@@ -2700,6 +2719,10 @@ def _simulate_post_fire_with_random_returns(
     capital_gains_tax_rate = init['capital_gains_tax_rate']
     min_cash_balance = init['min_cash_balance']
     post_fire_income = init['post_fire_income']
+
+    # 取り崩し戦略用: FIRE時点の総資産（基準値）
+    if fire_assets is None:
+        fire_assets = current_cash + current_stocks
 
     current_date_post = _get_reference_date()
     current_year_post = (current_date_post + relativedelta(months=int(years_offset * 12))).year
@@ -2762,6 +2785,13 @@ def _simulate_post_fire_with_random_returns(
             expense = base_expense_total_original + monthly_health_insurance_premium + extra_monthly_budget
             total_income = precomputed_income[month]
 
+            # 取り崩し戦略による生活費調整（プリコンピュートパス）
+            _base_monthly = precomputed_base_expenses[month] / 12.0 if precomputed_base_expenses is not None else 0.0
+            withdrawal_adj = calc_withdrawal_adjustment(
+                current_total_assets, fire_assets, _base_monthly, config
+            )
+            expense += withdrawal_adj
+
             # 比例制御型動的支出調整（プリコンピュートパス）
             if baseline_assets is not None and _last_positive_baseline_scalar > 0:
                 surplus = current_total_assets - _last_positive_baseline_scalar
@@ -2781,6 +2811,8 @@ def _simulate_post_fire_with_random_returns(
                 prev_year_capital_gains=prev_year_capital_gains_post,
                 years_since_fire=month / 12,
                 extra_monthly_budget=extra_monthly_budget,
+                current_assets=current_total_assets,
+                fire_assets=fire_assets,
             )
             expense = _exp['total']
 
@@ -3969,6 +4001,7 @@ def run_monte_carlo_simulation(
                 baseline_assets=mc_baseline_assets,
                 override_start_ages=override_start_ages,
                 extra_monthly_budget=extra_monthly_budget,
+                fire_assets=fire_cash + fire_stocks,
             )
         else:
             # 拡張：蓄積期も含めてMC（簡略化のため _simulate_post_fire_with_random_returns を流用）
@@ -3994,6 +4027,7 @@ def run_monte_carlo_simulation(
                 baseline_assets=mc_baseline_assets,
                 override_start_ages=override_start_ages,
                 extra_monthly_budget=0, # 蓄積期は追加予算なし
+                fire_assets=current_cash + current_stocks,
             )
 
         # 初期資産を先頭に追加（プロット用）

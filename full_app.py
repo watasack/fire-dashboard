@@ -178,6 +178,11 @@ def _build_simulation_config(
     wife_post_fire_income: int = 0,
     husband_side_fire_until: int = 65,
     wife_side_fire_until: int = 65,
+    withdrawal_strategy: str = "fixed",
+    withdrawal_rate: float = 0.04,
+    guardrail_lower: float = 0.80,
+    guardrail_upper: float = 1.20,
+    guardrail_reduction: float = 0.10,
 ) -> dict:
     """ユーザー入力を base_cfg に適用して simulator 用の完全な config を返す。
 
@@ -220,6 +225,11 @@ def _build_simulation_config(
         'wife_post_fire_income': wife_post_fire_income * 10000,
         'husband_side_fire_until': husband_side_fire_until,
         'wife_side_fire_until': wife_side_fire_until,
+        'withdrawal_strategy': withdrawal_strategy,
+        'withdrawal_rate': withdrawal_rate,
+        'guardrail_lower': guardrail_lower,
+        'guardrail_upper': guardrail_upper,
+        'guardrail_reduction': guardrail_reduction,
     })
     cfg['education']['children'] = edu_children
 
@@ -461,6 +471,49 @@ with st.sidebar:
             help="妻の副収入が何歳まで続くか。この年齢に達したら0として計算します。"
         )
 
+    st.subheader("取り崩し戦略")
+    withdrawal_strategy = st.selectbox(
+        "FIRE後の取り崩し方法",
+        options=["固定額", "定率（残高×年率）", "ガードレール戦略"],
+        index=0,
+        help=(
+            "固定額: 毎月一定額を取り崩します。シンプルですが暴落時に資産が速く減ります。\n"
+            "定率: 残高の一定割合（年率）を毎年取り崩します。枯渇しにくいですが生活費が変動します。\n"
+            "ガードレール戦略: 資産がFIRE時の基準を下回ると支出を自動削減します。柔軟で現実的。"
+        ),
+    )
+    if withdrawal_strategy == "定率（残高×年率）":
+        withdrawal_rate = st.slider(
+            "年間取り崩し率（%）",
+            min_value=2.0, max_value=6.0, value=4.0, step=0.1,
+            help="残高の何%を年間で取り崩すか。4%が一般的な目安（4%ルール）。",
+        )
+    else:
+        withdrawal_rate = 4.0
+    if withdrawal_strategy == "ガードレール戦略":
+        _gr1, _gr2 = st.columns(2)
+        with _gr1:
+            guardrail_lower = st.number_input(
+                "下限ガードレール（FIRE時資産の何%）",
+                value=80, min_value=50, max_value=95, step=5,
+                help="資産がFIRE時の○%を下回ったら生活費を削減します。",
+            )
+            guardrail_upper = st.number_input(
+                "上限ガードレール（FIRE時資産の何%）",
+                value=120, min_value=105, max_value=200, step=5,
+                help="資産がFIRE時の○%を上回ったら生活費をわずかに増やせます。",
+            )
+        with _gr2:
+            guardrail_reduction = st.slider(
+                "下限時の生活費削減率（%）",
+                min_value=5, max_value=30, value=10, step=5,
+                help="下限ガードレールを下回ったときに生活費を何%削減するか。",
+            )
+    else:
+        guardrail_lower = 80
+        guardrail_upper = 120
+        guardrail_reduction = 10
+
     st.divider()
     st.caption("詳細な計算設定は note のマニュアルを参照してください。")
 
@@ -574,6 +627,15 @@ if st.button("シミュレーションを開始", type="primary"):
         wife_post_fire_income=wife_post_fire_income,
         husband_side_fire_until=husband_side_fire_until,
         wife_side_fire_until=wife_side_fire_until,
+        withdrawal_strategy={
+            "固定額": "fixed",
+            "定率（残高×年率）": "percentage",
+            "ガードレール戦略": "guardrail",
+        }[withdrawal_strategy],
+        withdrawal_rate=withdrawal_rate / 100.0,
+        guardrail_lower=guardrail_lower / 100.0,
+        guardrail_upper=guardrail_upper / 100.0,
+        guardrail_reduction=guardrail_reduction / 100.0,
     )
 
     progress_bar = st.progress(0)
@@ -607,6 +669,18 @@ if st.button("シミュレーションを開始", type="primary"):
             f"サイドFIRE設定: 夫 {husband_post_fire_income}万円/月（{husband_side_fire_until}歳まで）、"
             f"妻 {wife_post_fire_income}万円/月（{wife_side_fire_until}歳まで）\n"
             f"FIRE後実質支出 = 支出 − 労働収入 として計算しています。"
+        )
+
+    if withdrawal_strategy == "ガードレール戦略":
+        st.info(
+            f"ガードレール戦略: 資産がFIRE時の{guardrail_lower}%を下回ると生活費を{guardrail_reduction}%削減します。"
+            f"資産がFIRE時の{guardrail_upper}%を超えると生活費を5%増加します。"
+            f"相場回復後は通常水準に戻ります。"
+        )
+    elif withdrawal_strategy == "定率（残高×年率）":
+        st.info(
+            f"定率取り崩し（{withdrawal_rate:.1f}%/年）: 残高×{withdrawal_rate:.1f}%÷12を毎月の生活費として取り崩します。"
+            f"資産に連動するため枯渇しにくいですが、生活費が毎月変動します。"
         )
 
     if mc_res.get('impossible'):

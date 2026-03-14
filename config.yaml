@@ -97,6 +97,13 @@ simulation:
       crash_threshold: -0.15   # 年率-15%で「暴落」と判定
       bubble_threshold: 0.15   # 年率+15%で「バブル」と判定
 
+  # 取り崩し戦略設定（FIRE後）
+  withdrawal_strategy: "fixed"   # "fixed" | "percentage" | "guardrail"
+  withdrawal_rate: 0.04          # 定率モード用: 残高の何%を年間で取り崩すか（4%ルール）
+  guardrail_lower: 0.80          # ガードレール下限（FIRE時資産に対する比率）
+  guardrail_upper: 1.20          # ガードレール上限（FIRE時資産に対する比率）
+  guardrail_reduction: 0.10      # 下限割れ時の生活費削減率（10% = 生活費を10%削減）
+
 # FIRE設定
 fire:
   # ==========================================
