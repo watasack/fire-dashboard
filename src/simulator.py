@@ -1143,7 +1143,7 @@ def calculate_national_health_insurance_premium(
 
     # --- 所得の算出 ---
     # 副業収入（夫 + 妻の年額合計）- FIRE後固定額
-    annual_side_income = _compute_post_fire_income(config) * 12
+    annual_side_income = _compute_post_fire_income(config, year_offset) * 12
 
     # 前年の株式譲渡益（キャピタルゲイン）
     # 国民健康保険の所得割は分離課税の譲渡所得も含む
@@ -1983,15 +1983,29 @@ def _husband_income_for_month(date: datetime, husband_income_grown: float, confi
     return husband_income_grown
 
 
-def _compute_post_fire_income(config: Dict[str, Any]) -> float:
-    """FIRE後の労働収入（固定額）を返す。
+def _compute_post_fire_income(config: Dict[str, Any], years: float = 0) -> float:
+    """FIRE後の労働収入（固定額）を返す。終了年齢に達した人の収入は0とする。
 
-    年金受給開始までの間、設定された固定額の収入を得る。
+    年金受給開始まで、かつ side_fire_until 年齢に達するまで収入を計上する。
     """
     sim = config['simulation']
     husband_base = sim['husband_post_fire_income']
     wife_base = sim['wife_post_fire_income']
-    return husband_base + wife_base
+
+    start_age_h = sim.get('start_age', 35)
+    start_age_w = sim.get('start_age_w', start_age_h)
+    age_h = start_age_h + years
+    age_w = start_age_w + years
+
+    husband_until = sim.get('husband_side_fire_until', 65)
+    wife_until = sim.get('wife_side_fire_until', 65)
+
+    total = 0.0
+    if age_h < husband_until:
+        total += husband_base
+    if age_w < wife_until:
+        total += wife_base
+    return total
 
 
 def _calculate_monthly_income(
@@ -2265,7 +2279,7 @@ def _compute_post_fire_monthly_income(
     elif post_fire_income_override is not None:
         labor_income = post_fire_income_override
     else:
-        labor_income = _compute_post_fire_income(config)
+        labor_income = _compute_post_fire_income(config, years)
 
     total = monthly_pension_income + monthly_child_allowance + labor_income
 
@@ -2520,7 +2534,7 @@ def simulate_post_fire_assets(
 
     # 月次シミュレーション
     for month in range(remaining_months):
-        _post_fire_income = _compute_post_fire_income(config)
+        _post_fire_income = _compute_post_fire_income(config, years_offset + month / 12)
         cycle_result = _process_post_fire_monthly_cycle(
             month, cash, stocks, stocks_cost_basis, nisa_balance, nisa_cost_basis,
             current_year_post, capital_gains_this_year_post, prev_year_capital_gains_post,

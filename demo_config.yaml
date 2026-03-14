@@ -30,8 +30,10 @@ simulation:
   initial_labor_income: 900000 # 世帯手取り合計
 
   # FIRE後副収入（月額・円）
-  husband_post_fire_income: 100000   # 夫のFIRE後副収入
-  wife_post_fire_income: 100000   # 妻のFIRE後副収入
+  husband_post_fire_income: 0   # 夫のFIRE後副収入（UIで上書き）
+  wife_post_fire_income: 0   # 妻のFIRE後副収入（UIで上書き）
+  husband_side_fire_until: 65   # 夫の副収入終了年齢（UIで上書き）
+  wife_side_fire_until: 65   # 妻の副収入終了年齢（UIで上書き）
 
   # 産休・育休（デモアプリが [] に上書き）
   maternity_leave:

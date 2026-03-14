@@ -170,6 +170,10 @@ def _build_simulation_config(
     housing_type: str, rent: int, mortgage_payment: int, mortgage_end_date,
     edu_children: list, maternity: list, w_reduced: list,
     h_parental: list, h_reduced: list,
+    husband_post_fire_income: int = 0,
+    wife_post_fire_income: int = 0,
+    husband_side_fire_until: int = 65,
+    wife_side_fire_until: int = 65,
 ) -> dict:
     """ユーザー入力を base_cfg に適用して simulator 用の完全な config を返す。
 
@@ -178,6 +182,10 @@ def _build_simulation_config(
         income_w: 妻の手取り月収（万円）- キャッシュフロー計算に使用
         gross_h:  夫の税引き前年収（万円）- 厚生年金の標準報酬月額計算に使用
         gross_w:  妻の税引き前年収（万円）- 厚生年金の標準報酬月額計算に使用
+        husband_post_fire_income: 夫のFIRE後副収入（万円/月）
+        wife_post_fire_income:    妻のFIRE後副収入（万円/月）
+        husband_side_fire_until:  夫の副収入終了年齢（歳）
+        wife_side_fire_until:     妻の副収入終了年齢（歳）
     """
     cfg = copy.deepcopy(base_cfg)
     current_year = datetime.today().year
@@ -197,12 +205,17 @@ def _build_simulation_config(
 
     cfg['simulation'].update({
         'start_age': age_h,
+        'start_age_w': age_w,
         'husband_income': income_h * 10000,
         'wife_income': income_w * 10000,
         'maternity_leave': maternity,
         'wife_reduced_hours': w_reduced,
         'husband_parental_leave': h_parental,
         'husband_reduced_hours': h_reduced,
+        'husband_post_fire_income': husband_post_fire_income * 10000,
+        'wife_post_fire_income': wife_post_fire_income * 10000,
+        'husband_side_fire_until': husband_side_fire_until,
+        'wife_side_fire_until': wife_side_fire_until,
     })
     cfg['education']['children'] = edu_children
 
@@ -391,6 +404,32 @@ with st.sidebar:
     assets = st.number_input("金融資産(万円)", value=_DEFAULT_ASSETS, min_value=0, step=100,
         help="現金・株式・投資信託などを合計した金額を入力してください。")
 
+    st.header("FIRE後の副収入（サイドFIRE）")
+    st.write("完全リタイアではなく、パートや副業などで部分的に収入を得る場合に入力してください。")
+    _sf_h, _sf_w = st.columns(2)
+    with _sf_h:
+        husband_post_fire_income = st.number_input(
+            "夫の副収入（万円/月）",
+            value=0, min_value=0, step=1,
+            help="FIRE後に夫が得るパート・副業・フリーランスなどの月間労働収入。"
+        )
+        husband_side_fire_until = st.number_input(
+            "夫の副収入 終了年齢（歳）",
+            value=65, min_value=0, max_value=100, step=1,
+            help="夫の副収入が何歳まで続くか。この年齢に達したら0として計算します。"
+        )
+    with _sf_w:
+        wife_post_fire_income = st.number_input(
+            "妻の副収入（万円/月）",
+            value=0, min_value=0, step=1,
+            help="FIRE後に妻が得るパート・副業・フリーランスなどの月間労働収入。"
+        )
+        wife_side_fire_until = st.number_input(
+            "妻の副収入 終了年齢（歳）",
+            value=65, min_value=0, max_value=100, step=1,
+            help="妻の副収入が何歳まで続くか。この年齢に達したら0として計算します。"
+        )
+
     st.divider()
     st.caption("詳細な計算設定は note のマニュアルを参照してください。")
 
@@ -445,7 +484,11 @@ with tab_advanced:
             if housing_type == '賃貸'
             else f"持ち家ローン {mortgage_payment}万円/月（{mortgage_end_date}年末まで）"
         ),
-        "FIRE後副収入": f"夫{base_cfg['simulation']['husband_post_fire_income']//10000:.0f}万 + 妻{base_cfg['simulation']['wife_post_fire_income']//10000:.0f}万 = 計{(base_cfg['simulation']['husband_post_fire_income']+base_cfg['simulation']['wife_post_fire_income'])//10000:.0f}万円/月",
+        "FIRE後副収入": (
+            f"夫{husband_post_fire_income:.0f}万（{husband_side_fire_until}歳まで） + "
+            f"妻{wife_post_fire_income:.0f}万（{wife_side_fire_until}歳まで） = "
+            f"計{husband_post_fire_income + wife_post_fire_income:.0f}万円/月"
+        ),
         "年金受給開始": f"夫{base_cfg['pension']['people'][0].get('override_start_age', 65)}歳 / 妻{base_cfg['pension']['people'][1].get('override_start_age', 65)}歳",
         "教育コース": "公立小中高 + 国立大学",
         "資産の内訳（初期）": "現金30% / 株式70%（NISAの初期残高は0円）",
@@ -475,6 +518,10 @@ if st.button("シミュレーションを開始", type="primary"):
         mortgage_payment=mortgage_payment, mortgage_end_date=mortgage_end_date,
         edu_children=edu_children, maternity=maternity, w_reduced=w_reduced,
         h_parental=h_parental, h_reduced=h_reduced,
+        husband_post_fire_income=husband_post_fire_income,
+        wife_post_fire_income=wife_post_fire_income,
+        husband_side_fire_until=husband_side_fire_until,
+        wife_side_fire_until=wife_side_fire_until,
     )
 
     progress_bar = st.progress(0)
@@ -502,6 +549,13 @@ if st.button("シミュレーションを開始", type="primary"):
     status_text.empty()
 
     st.markdown("## シミュレーション結果")
+
+    if husband_post_fire_income > 0 or wife_post_fire_income > 0:
+        st.info(
+            f"サイドFIRE設定: 夫 {husband_post_fire_income}万円/月（{husband_side_fire_until}歳まで）、"
+            f"妻 {wife_post_fire_income}万円/月（{wife_side_fire_until}歳まで）\n"
+            f"FIRE後実質支出 = 支出 − 労働収入 として計算しています。"
+        )
 
     if mc_res.get('impossible'):
         max_rate = int(mc_res['max_achievable_rate'] * 100)

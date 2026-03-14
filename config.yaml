@@ -31,9 +31,11 @@ simulation:
   wife_income: 450000  # 妻の手取り月額（円）: 個人事業主の想定手取り
   initial_labor_income: 965875 # 世帯手取り合計（husband_income + wife_income）
   # FIRE後収入（固定額モデル）
-  # FIRE後は年金受給開始まで、設定した固定額の収入を得る。
+  # FIRE後は年金受給開始まで（またはside_fire_untilまで）、設定した固定額の収入を得る。
   husband_post_fire_income: 100000               # 夫のFIRE後副収入（月額・円）: 開発業務など
   wife_post_fire_income: 200000              # 妻のFIRE後月収（個人事業を縮小して継続）
+  husband_side_fire_until: 65                    # 夫の副収入終了年齢（この年齢になったら0）
+  wife_side_fire_until: 65                       # 妻の副収入終了年齢（この年齢になったら0）
 
   # 産休・育休による収入変動
   # 妻（個人事業主のため育休給付金なし → 期間中は0円）
