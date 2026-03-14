@@ -3,10 +3,12 @@ from datetime import datetime, date
 from dateutil.relativedelta import relativedelta
 import yaml
 import copy
+import numpy as np
 from src.simulator import run_mc_fixed_fire
 from src.visualizer import create_fire_timeline_chart
 from src.utils import fmt_oku
 from src.tax_utils import gross_to_net_monthly
+from src.analytics import calc_depletion_age, get_bankrupt_depletion_ages
 
 # =============================================================================
 # 定数
@@ -611,6 +613,44 @@ if st.button("シミュレーションを開始", type="primary"):
             st.metric("必要年数", f"{years_to_fire:.1f}年")
         with col_m3:
             st.metric("FIRE達成時の資産額", fmt_oku(assets_at_fire))
+
+        # ── 破産シナリオ分析 ──────────────────────────────────────────────
+        all_paths = mc_res.get("all_paths")
+        bankrupt_count = sum(1 for r in mc_res["all_results"] if not r["success"])
+        if all_paths is not None and bankrupt_count > 0:
+            st.subheader("万が一失敗した場合のリスク分析")
+            st.caption(
+                "シミュレーション終端（90歳）まで持たなかったシナリオのみを対象とした分析です。"
+                "「下位5%」は1,000通りのうち最も悪い50通りの平均的な結果を示します。"
+            )
+            _col_b1, _col_b2, _col_b3 = st.columns(3)
+            with _col_b1:
+                _worst_age = calc_depletion_age(mc_res, 0.05, cfg)
+                st.metric("最悪ケース枯渇年齢（下位5%）", f"{_worst_age:.0f}歳")
+            with _col_b2:
+                _p25_age = calc_depletion_age(mc_res, 0.25, cfg)
+                st.metric("枯渇年齢（下位25%）", f"{_p25_age:.0f}歳")
+            with _col_b3:
+                _bankrupt_rate = bankrupt_count / len(mc_res["all_results"]) * 100
+                st.metric("破産シナリオ数", f"{_bankrupt_rate:.1f}%（{bankrupt_count}通り）")
+
+            # 枯渇年齢のヒストグラム（破産パスのみ）
+            import plotly.express as px
+            _depletion_ages = get_bankrupt_depletion_ages(mc_res, cfg)
+            if _depletion_ages:
+                _fig_hist = px.histogram(
+                    x=_depletion_ages,
+                    nbins=20,
+                    title="資産枯渇年齢の分布（破産シナリオのみ）",
+                    labels={"x": "枯渇年齢（夫・歳）", "count": "シナリオ数"},
+                )
+                _fig_hist.update_layout(
+                    xaxis_title="枯渇年齢（夫・歳）",
+                    yaxis_title="シナリオ数",
+                    showlegend=False,
+                    height=300,
+                )
+                st.plotly_chart(_fig_hist, use_container_width=True)
 
         tab_chart, tab_guide = st.tabs(["資産予測（確率分布）", "シミュレーション解釈ガイド"])
 

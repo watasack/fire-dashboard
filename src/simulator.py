@@ -4060,6 +4060,7 @@ def run_monte_carlo_simulation(
         'monthly_p84': monthly_p84,
         'monthly_p975': monthly_p975,
         'include_pre_fire': include_pre_fire,
+        'all_paths': all_timeseries_array,  # shape: (iterations, months+1)
     }
 
 
