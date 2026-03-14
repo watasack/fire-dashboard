@@ -6,7 +6,7 @@ import copy
 import numpy as np
 import pandas as pd
 from src.simulator import run_mc_fixed_fire
-from src.visualizer import create_fire_timeline_chart
+from src.visualizer import create_fire_timeline_chart, create_income_expense_stream_chart
 from src.utils import fmt_oku
 from src.tax_utils import gross_to_net_monthly
 from src.analytics import calc_depletion_age, get_bankrupt_depletion_ages
@@ -680,7 +680,7 @@ if st.button("シミュレーションを開始", type="primary"):
                 )
                 st.plotly_chart(_fig_hist, use_container_width=True)
 
-        tab_chart, tab_guide = st.tabs(["資産予測（確率分布）", "シミュレーション解釈ガイド"])
+        tab_chart, tab_cashflow, tab_guide = st.tabs(["📈 資産予測（確率分布）", "💰 収支推移", "シミュレーション解釈ガイド"])
 
         with tab_chart:
             st.markdown("#### 1,000通りの未来シミュレーション")
@@ -702,6 +702,17 @@ if st.button("シミュレーションを開始", type="primary"):
                 )
                 fig_timeline.update_layout(height=500)
                 st.plotly_chart(fig_timeline, use_container_width=True)
+
+        with tab_cashflow:
+            st.markdown("#### 年次収入・支出の推移")
+            st.caption("収入（上）と支出（下）を正/負で表示。FIREライン以降は給与収入→0→年金に変化します。")
+            fire_row_cf = df[df['fire_achieved']].iloc[0] if df['fire_achieved'].any() else None
+            fig_cashflow = create_income_expense_stream_chart(
+                simulations={'standard': df},
+                fire_achievement={'achieved': False, 'achievement_date': fire_row_cf['date'] if fire_row_cf is not None else None},
+                config=cfg,
+            )
+            st.plotly_chart(fig_cashflow, use_container_width=True)
 
         with tab_guide:
             _render_guide_tab(target_rate)
