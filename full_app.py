@@ -6,11 +6,13 @@ import copy
 from src.simulator import run_mc_fixed_fire
 from src.visualizer import create_fire_timeline_chart
 from src.utils import fmt_oku
+from src.tax_utils import gross_to_net_monthly
 
 # =============================================================================
 # 定数
 # =============================================================================
-_DEFAULT_INCOME          = 35    # 月収デフォルト（万円）
+_DEFAULT_GROSS_H         = 600   # 夫の年収デフォルト（税引き前・万円）
+_DEFAULT_GROSS_W         = 550   # 妻の年収デフォルト（税引き前・万円）
 _DEFAULT_AGE             = 35    # 年齢デフォルト（歳）
 _MIN_AGE                 = 20    # 年齢入力下限
 _MAX_AGE                 = 70    # 年齢入力上限
@@ -164,12 +166,19 @@ def _build_children_config(children_ui: list, income_h: int, income_w: int) -> t
 def _build_simulation_config(
     base_cfg: dict, *,
     age_h: int, age_w: int, type_h: str, type_w: str,
-    income_h: int, income_w: int, monthly_exp: int,
+    income_h: float, income_w: float, gross_h: int, gross_w: int, monthly_exp: int,
     housing_type: str, rent: int, mortgage_payment: int, mortgage_end_date,
     edu_children: list, maternity: list, w_reduced: list,
     h_parental: list, h_reduced: list,
 ) -> dict:
-    """ユーザー入力を base_cfg に適用して simulator 用の完全な config を返す。"""
+    """ユーザー入力を base_cfg に適用して simulator 用の完全な config を返す。
+
+    Args:
+        income_h: 夫の手取り月収（万円）- キャッシュフロー計算に使用
+        income_w: 妻の手取り月収（万円）- キャッシュフロー計算に使用
+        gross_h:  夫の税引き前年収（万円）- 厚生年金の標準報酬月額計算に使用
+        gross_w:  妻の税引き前年収（万円）- 厚生年金の標準報酬月額計算に使用
+    """
     cfg = copy.deepcopy(base_cfg)
     current_year = datetime.today().year
     base_growth_rate = cfg['simulation']['standard']['income_growth_rate']
@@ -197,12 +206,25 @@ def _build_simulation_config(
     })
     cfg['education']['children'] = edu_children
 
+    # 標準報酬月額（税引き前月収）= 年収 / 12 — 厚生年金の受給額計算に使用
+    gross_monthly_h = gross_h * 10000 / 12
+    gross_monthly_w = gross_w * 10000 / 12
+
     if len(cfg['pension']['people']) >= 1:
         cfg['pension']['people'][0]['birthdate'] = f'{current_year - age_h}/07/01'
         cfg['pension']['people'][0]['pension_type'] = 'employee' if type_h == '会社員' else 'national'
+        # 過去の年金実績はUI非入力のため0にリセット（avg_monthly_salary×全加入期間で計算）
+        cfg['pension']['people'][0]['past_pension_base_annual'] = 0
+        cfg['pension']['people'][0]['past_contribution_months'] = 0
+        if type_h == '会社員':
+            cfg['pension']['people'][0]['avg_monthly_salary'] = gross_monthly_h
     if len(cfg['pension']['people']) >= 2:
         cfg['pension']['people'][1]['birthdate'] = f'{current_year - age_w}/07/01'
         cfg['pension']['people'][1]['pension_type'] = 'employee' if type_w == '会社員' else 'national'
+        cfg['pension']['people'][1]['past_pension_base_annual'] = 0
+        cfg['pension']['people'][1]['past_contribution_months'] = 0
+        if type_w == '会社員':
+            cfg['pension']['people'][1]['avg_monthly_salary'] = gross_monthly_w
 
     cfg['simulation']['husband_income_growth_rate'] = base_growth_rate if type_h == '会社員' else 0.0
     cfg['simulation']['wife_income_growth_rate']    = base_growth_rate if type_w == '会社員' else 0.0
@@ -324,17 +346,23 @@ with st.sidebar:
         st.markdown("**夫**")
         type_h = st.selectbox("雇用形態　", _EMP_OPTIONS_H, index=0, help=_EMP_HELP)
         _income_h_disabled = (type_h == "専業主夫")
-        income_h = st.number_input("月収(万円)", value=0 if _income_h_disabled else _DEFAULT_INCOME,
-            min_value=0, step=1, disabled=_income_h_disabled,
-            help="手取り月収（ボーナス除外）。")
+        gross_h = st.number_input("年収（税引き前・万円）", value=0 if _income_h_disabled else _DEFAULT_GROSS_H,
+            min_value=0, step=10, disabled=_income_h_disabled,
+            help="源泉徴収票の「支払金額」を入力してください。手取りではなく税引き前の金額です。")
+        income_h = gross_to_net_monthly(gross_h, type_h)
+        if not _income_h_disabled:
+            st.caption(f"手取り目安: 約{income_h:.0f}万円/月")
         age_h = st.number_input("年齢", value=_DEFAULT_AGE, min_value=_MIN_AGE, max_value=_MAX_AGE, step=1)
     with _sw:
         st.markdown("**妻**")
         type_w = st.selectbox("雇用形態", _EMP_OPTIONS_W, index=0, help=_EMP_HELP)
         _income_w_disabled = (type_w == "専業主婦")
-        income_w = st.number_input("月収(万円) ", value=0 if _income_w_disabled else _DEFAULT_INCOME,
-            min_value=0, step=1, disabled=_income_w_disabled,
-            help="手取り月収。育休・時短期間以外は一定として計算します。")
+        gross_w = st.number_input("年収（税引き前・万円） ", value=0 if _income_w_disabled else _DEFAULT_GROSS_W,
+            min_value=0, step=10, disabled=_income_w_disabled,
+            help="源泉徴収票の「支払金額」を入力してください。手取りではなく税引き前の金額です。")
+        income_w = gross_to_net_monthly(gross_w, type_w)
+        if not _income_w_disabled:
+            st.caption(f"手取り目安: 約{income_w:.0f}万円/月")
         age_w = st.number_input("年齢 ", value=_DEFAULT_AGE, min_value=_MIN_AGE, max_value=_MAX_AGE, step=1)
 
     st.header("キャッシュフロー")
@@ -391,10 +419,10 @@ with tab_input:
             col_h, col_w = st.columns(2)  # 夫LEFT・妻RIGHT
             with col_h:
                 h = _leave_inputs("夫の育休・時短", "h", _ci, type_h == "専業主夫",
-                    default_leave=_DEFAULT_LEAVE_MONTHS if _ci == 0 else 0, default_income=income_h)
+                    default_leave=_DEFAULT_LEAVE_MONTHS if _ci == 0 else 0, default_income=int(income_h))
             with col_w:
                 w = _leave_inputs("妻の育休・時短", "w", _ci, type_w == "専業主婦",
-                    default_leave=_DEFAULT_LEAVE_MONTHS, default_income=income_w, maternity=True)
+                    default_leave=_DEFAULT_LEAVE_MONTHS, default_income=int(income_w), maternity=True)
             children_ui.append({
                 "birth": _birth, "name": f"子{_ci+1}",
                 "w_lp": w.get("lp", 0), "w_la": w["la"], "w_li": w["li"], "w_re": w["re"], "w_ri": w["ri"],
@@ -441,7 +469,8 @@ if st.button("シミュレーションを開始", type="primary"):
     cfg = _build_simulation_config(
         base_cfg,
         age_h=age_h, age_w=age_w, type_h=type_h, type_w=type_w,
-        income_h=income_h, income_w=income_w, monthly_exp=monthly_exp,
+        income_h=income_h, income_w=income_w, gross_h=gross_h, gross_w=gross_w,
+        monthly_exp=monthly_exp,
         housing_type=housing_type, rent=rent,
         mortgage_payment=mortgage_payment, mortgage_end_date=mortgage_end_date,
         edu_children=edu_children, maternity=maternity, w_reduced=w_reduced,
