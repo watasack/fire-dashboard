@@ -23,6 +23,7 @@ _COLOR_MC_1SIGMA_LINE = 'rgba(100, 116, 139, 0.45)'
 _COLOR_MC_1SIGMA_FILL = 'rgba(100, 116, 139, 0.12)'
 _COLOR_MC_MEDIAN      = 'rgba(51, 65, 85, 0.80)'
 _COLOR_PRE_FIRE_LINE  = 'rgba(79, 70, 229, 0.85)'   # 蓄積期ライン（インディゴ）
+_COLOR_COMPARISON_LINE = 'rgba(245, 158, 11, 0.85)'  # 比較シナリオ（アンバー）
 
 
 def _add_stacked_asset_traces(
@@ -679,7 +680,8 @@ def create_fire_timeline_chart(
     config: Dict[str, Any],
     monte_carlo_results: Dict[str, Any] = None,
     show_baseline_after_fire: bool = True,
-    current_date: Any = None
+    current_date: Any = None,
+    comparison_data: Dict[str, Any] = None,
 ) -> go.Figure:
     """
     FIRE達成までの道のりと達成後の持続性を統合したチャートを作成
@@ -763,6 +765,22 @@ def create_fire_timeline_chart(
                 '<b>株式</b><br>%{x|%Y年%m月}<br>¥%{y:,.0f}万円<extra></extra>',
             )
 
+    # 比較シナリオ（プランA）のプロット
+    if comparison_data is not None:
+        comp_df = comparison_data.get('df')
+        comp_label = comparison_data.get('label', 'プランA')
+        if comp_df is not None and len(comp_df) > 0:
+            comp_df_plot = comp_df.head(480).copy()
+            comp_total = (comp_df_plot['cash'] + comp_df_plot['stocks']) / 10000
+            fig.add_trace(go.Scatter(
+                x=comp_df_plot['date'],
+                y=comp_total,
+                mode='lines',
+                line=dict(color=_COLOR_COMPARISON_LINE, width=2, dash='dash'),
+                name=comp_label,
+                hovertemplate=f'<b>{comp_label}</b><br>%{{x|%Y年%m月}}<br>総資産: %{{y:,.0f}}万円<extra></extra>',
+            ))
+
     # 基準線・マーカー・フェーズラベル
     ref_shapes, ref_annotations = _add_reference_markers(
         fig, current_status, fire_target, fire_achievement, simulations, config
@@ -778,6 +796,9 @@ def create_fire_timeline_chart(
         df = simulations['standard']
         max_assets_man = df['assets'].max() / 10000
         y_max = max_assets_man * 1.2
+    if comparison_data is not None and comparison_data.get('df') is not None:
+        comp_max = (comparison_data['df']['assets'].max() / 10000) * 1.2
+        y_max = max(y_max, comp_max) if y_max is not None else comp_max
 
     layout = get_common_layout(config, '')
     yaxis_config = {
