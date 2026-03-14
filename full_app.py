@@ -616,6 +616,25 @@ with tab_input:
             })
 
 with tab_advanced:
+    st.subheader("ガードレール（動的支出調整）")
+    _ga1, _ga2 = st.columns(2)
+    with _ga1:
+        dynamic_surplus_spending_rate = st.slider(
+            "余剰反映率 α（年率）",
+            min_value=0.0, max_value=1.0,
+            value=float(base_cfg['fire']['dynamic_expense_reduction']['surplus_spending_rate']),
+            step=0.05,
+            help="ベースライン計画より余剰・不足な資産に対し、年率α×乖離額を支出に反映します。0にすると動的調整なし。",
+        )
+    with _ga2:
+        dynamic_max_cut_ratio = st.slider(
+            "裁量支出の最大削減率",
+            min_value=0.0, max_value=1.0,
+            value=float(base_cfg['fire']['dynamic_expense_reduction']['max_cut_ratio']),
+            step=0.05,
+            help="裁量的支出（生活費の変動部分）を最大この割合まで削減できます。",
+        )
+    st.divider()
     st.info("以下の前提条件は固定値です。変更が必要な場合はnoteのマニュアルをご参照ください。")
     _base_growth = base_cfg['simulation']['standard']['income_growth_rate'] * 100
     _h_growth = f"{_base_growth:.0f}%/年" if type_h == '会社員' else "なし（固定）"
@@ -687,6 +706,8 @@ if st.button("シミュレーションを開始", type="primary"):
         nisa_balance=nisa_balance,
         nisa_annual=nisa_annual,
     )
+    cfg['fire']['dynamic_expense_reduction']['surplus_spending_rate'] = dynamic_surplus_spending_rate
+    cfg['fire']['dynamic_expense_reduction']['max_cut_ratio'] = dynamic_max_cut_ratio
 
     progress_bar = st.progress(0)
     status_text  = st.empty()

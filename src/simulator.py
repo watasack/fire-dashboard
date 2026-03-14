@@ -2415,6 +2415,7 @@ def _process_post_fire_monthly_cycle(
     austerity_end: int = None,
     austerity_rate: float = 0.0,
     fire_assets: float = None,
+    baseline_assets=None,
 ) -> Dict[str, Any]:
     """
     FIRE後の1ヶ月分のシミュレーション処理（決定論的ベースライン用）
@@ -2434,7 +2435,15 @@ def _process_post_fire_monthly_cycle(
         prev_year_capital_gains_post = _prev_gains
 
     current_total_assets = cash + stocks
-    drawdown = 0.0
+    _planned_assets = None
+    if baseline_assets is not None and month < len(baseline_assets) and baseline_assets[month] > 0:
+        _planned_assets = float(baseline_assets[month])
+    drawdown, _ = calculate_drawdown_level(
+        current_assets=current_total_assets,
+        peak_assets_history=[],
+        config=config,
+        planned_assets=_planned_assets,
+    )
 
     # 支出計算（共通関数）
     _exp = _compute_post_fire_monthly_expenses(
@@ -2451,6 +2460,14 @@ def _process_post_fire_monthly_cycle(
     expense -= _compute_austerity_reduction(
         month, years, config, austerity_rate, austerity_start, austerity_end,
     )
+
+    # 比例制御型動的支出調整（ベースラインがある場合のみ）
+    if _planned_assets is not None:
+        surplus = current_total_assets - _planned_assets
+        disc_ratio = _get_discretionary_ratio(years, config)
+        disc_monthly = _exp['annual_base_expense'] * disc_ratio / 12.0
+        adjustment = calculate_proportional_expense_adjustment(surplus, disc_monthly, config)
+        expense += adjustment
 
     # 収入計算（共通関数）
     _inc = _compute_post_fire_monthly_income(
