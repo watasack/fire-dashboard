@@ -37,6 +37,10 @@ simulation:
   husband_side_fire_until: 65                    # 夫の副収入終了年齢（この年齢になったら0）
   wife_side_fire_until: 65                       # 妻の副収入終了年齢（この年齢になったら0）
 
+  # NISA設定（UIから上書きされる）
+  nisa_balance: 0          # NISA初期残高（円）。stocks の内数として管理。
+  nisa_annual: 0           # NISA年間積立額（円）。非課税メリット計算に使用。
+
   # 産休・育休による収入変動
   # 妻（個人事業主のため育休給付金なし → 期間中は0円）
   maternity_leave:

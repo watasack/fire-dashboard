@@ -1515,40 +1515,46 @@ def _apply_monthly_investment_returns(
 ) -> Dict[str, float]:
     """
     月次運用リターンを適用（株式とNISA両方）
-    
+
     重要: この関数は3つの月次処理関数から呼び出される共通ロジック。
     NISA残高への運用リターン適用漏れは過去のバグの原因だったため、
     この関数で一元管理する。
-    
+
     Args:
         stocks: 現在の株式残高
         nisa_balance: 現在のNISA残高
         monthly_return_rate: 月次リターン率
-    
+
     Returns:
         {
             'stocks': 更新後の株式残高,
             'nisa_balance': 更新後のNISA残高,
-            'investment_return': 株式の運用リターン額
+            'investment_return': 株式の運用リターン額,
+            'nisa_tax_benefit': NISA非課税メリット（月次節税額相当）,
         }
-    
+
     Raises:
         AssertionError: NISA残高が株式残高を超えた場合
     """
     investment_return = stocks * monthly_return_rate
     stocks += investment_return
     nisa_balance *= (1 + monthly_return_rate)
-    
+
+    # NISA非課税メリット: 課税口座なら運用益に20.315%課税されるが、NISAは非課税
+    # 月次節税額 = nisa残高 × 月次リターン × 0.20315
+    nisa_tax_benefit = nisa_balance / (1 + monthly_return_rate) * monthly_return_rate * 0.20315
+
     # 不変条件チェック: NISA残高は株式残高を超えてはならない
     assert nisa_balance <= stocks + 1e-6, (
         f"NISA balance ({nisa_balance:,.0f}) cannot exceed total stocks ({stocks:,.0f}). "
         "This indicates a bug in NISA calculation logic."
     )
-    
+
     return {
         'stocks': stocks,
         'nisa_balance': nisa_balance,
-        'investment_return': investment_return
+        'investment_return': investment_return,
+        'nisa_tax_benefit': nisa_tax_benefit,
     }
 
 
@@ -2487,6 +2493,8 @@ def _process_post_fire_monthly_cycle(
     stocks = returns_result['stocks']
     nisa_balance = returns_result['nisa_balance']
     investment_return = returns_result['investment_return']
+    # NISA非課税メリット: 課税口座との比較で節税された分を現金に加算（簡易近似）
+    cash += returns_result['nisa_tax_benefit']
 
     safety_margin = config['post_fire_cash_strategy']['safety_margin']
     should_break = (cash + stocks <= safety_margin)
@@ -3292,13 +3300,17 @@ def _initialize_future_simulation(
     else:
         husband_ratio = 1.0
 
+    # NISA初期残高（config から読み込み、不変条件 nisa_balance <= stocks を保証）
+    nisa_balance_init = float(config['simulation'].get('nisa_balance', 0.0))
+    nisa_balance_init = min(nisa_balance_init, stocks)
+
     return {
         # 資産
         'cash': cash,
         'stocks': stocks,
         'stocks_cost_basis': stocks,  # 初期の株は簿価=時価と仮定
-        'nisa_balance': 0.0,
-        'nisa_cost_basis': 0.0,
+        'nisa_balance': nisa_balance_init,
+        'nisa_cost_basis': nisa_balance_init,
 
         # 設定
         'simulation_months': simulation_months,
@@ -3492,6 +3504,8 @@ def _process_future_monthly_cycle(
     stocks = returns_result['stocks']
     nisa_balance = returns_result['nisa_balance']
     investment_return = returns_result['investment_return']
+    # NISA非課税メリット: 課税口座との比較で節税された分を現金に加算（簡易近似）
+    cash += returns_result['nisa_tax_benefit']
 
     # 4. 余剰現金がある場合は自動投資（FIRE前のみ）
     auto_invested = 0

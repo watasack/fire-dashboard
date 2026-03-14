@@ -183,6 +183,8 @@ def _build_simulation_config(
     guardrail_lower: float = 0.80,
     guardrail_upper: float = 1.20,
     guardrail_reduction: float = 0.10,
+    nisa_balance: int = 0,
+    nisa_annual: int = 0,
 ) -> dict:
     """ユーザー入力を base_cfg に適用して simulator 用の完全な config を返す。
 
@@ -195,6 +197,8 @@ def _build_simulation_config(
         wife_post_fire_income:    妻のFIRE後副収入（万円/月）
         husband_side_fire_until:  夫の副収入終了年齢（歳）
         wife_side_fire_until:     妻の副収入終了年齢（歳）
+        nisa_balance: NISA残高（万円）- stocks の内数として管理
+        nisa_annual:  NISA年間積立額（万円）- 非課税メリット計算に使用
     """
     cfg = copy.deepcopy(base_cfg)
     current_year = datetime.today().year
@@ -259,6 +263,11 @@ def _build_simulation_config(
         cfg['simulation']['husband_income'] = 0
     if type_w == '専業主婦':
         cfg['simulation']['wife_income'] = 0
+
+    # NISA設定（不変条件: nisa_balance <= stocks を保証）
+    stocks_yen = cfg['simulation'].get('stocks', 0)  # _initialize_future_simulation で設定される
+    cfg['simulation']['nisa_balance'] = nisa_balance * 10000
+    cfg['simulation']['nisa_annual'] = nisa_annual * 10000
 
     return cfg
 
@@ -445,6 +454,45 @@ with st.sidebar:
     assets = st.number_input("金融資産(万円)", value=_DEFAULT_ASSETS, min_value=0, step=100,
         help="現金・株式・投資信託などを合計した金額を入力してください。")
 
+    with st.expander("📋 NISA / iDeCo の内訳を入力（任意）", expanded=False):
+        _nisa_stocks = int(assets * _STOCKS_RATIO)
+        nisa_balance = st.number_input(
+            "うち NISA 残高（万円）",
+            value=0, min_value=0, max_value=_nisa_stocks,
+            help="NISA口座（つみたて・成長投資枠）の合計残高。株式・投資信託合計の内数。",
+        )
+        nisa_annual = st.number_input(
+            "NISA 年間積立額（万円）",
+            value=0, min_value=0, max_value=360, step=6,
+            help="毎年いくらNISA枠で積み立てるか。上限は360万円/年（2024年新NISA）。",
+        )
+        if nisa_balance > _nisa_stocks:
+            st.error("NISA残高が株式・投資信託合計（資産×70%）を超えています。")
+            nisa_balance = _nisa_stocks
+        ideco_balance = st.number_input(
+            "iDeCo 残高（万円）",
+            value=0, min_value=0,
+            help="iDeCoは60歳まで引き出せません。FIRE時期が60歳未満の場合は、"
+                 "この金額をFIRE後の資産として使えないことに注意してください。",
+        )
+        ideco_monthly = st.number_input(
+            "iDeCo 月額掛金（万円）",
+            value=0, min_value=0, max_value=7,
+            help="会社員（企業年金なし）は月2.3万円が上限。自営業は月6.8万円が上限。",
+        )
+        if ideco_balance > 0:
+            st.info(
+                f"⚠️ iDeCo残高 {ideco_balance}万円 は60歳まで引き出せません。"
+                "FIRE年齢が60歳未満の場合、この金額はFIRE後すぐには使えません。"
+                "保守的に試算したい場合はiDeCo残高を含めず、金融資産合計から除いて入力してください。"
+            )
+        if ideco_monthly > 0:
+            ideco_tax_saving = ideco_monthly * 0.30  # 所得税20% + 住民税10% 簡易
+            st.caption(
+                f"iDeCo掛金 {ideco_monthly}万円/月 → 所得税・住民税30%節税で"
+                f"実質負担 約{ideco_monthly - ideco_tax_saving:.1f}万円/月（節税 約{ideco_tax_saving:.1f}万円）"
+            )
+
     st.header("FIRE後の副収入（サイドFIRE）")
     st.write("完全リタイアではなく、パートや副業などで部分的に収入を得る場合に入力してください。")
     _sf_h, _sf_w = st.columns(2)
@@ -596,7 +644,7 @@ with tab_advanced:
             )
             for i, cd in enumerate(children_ui)
         ) if children_ui else "公立小中高 + 国立大学",
-        "資産の内訳（初期）": "現金30% / 株式70%（NISAの初期残高は0円）",
+        "資産の内訳（初期）": f"現金30% / 株式70%（うちNISA {nisa_balance}万円）",
     })
 
 st.markdown("---")
@@ -636,6 +684,8 @@ if st.button("シミュレーションを開始", type="primary"):
         guardrail_lower=guardrail_lower / 100.0,
         guardrail_upper=guardrail_upper / 100.0,
         guardrail_reduction=guardrail_reduction / 100.0,
+        nisa_balance=nisa_balance,
+        nisa_annual=nisa_annual,
     )
 
     progress_bar = st.progress(0)

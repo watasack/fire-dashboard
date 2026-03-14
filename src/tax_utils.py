@@ -117,6 +117,22 @@ def _calc_kokuho_annual(income: float) -> float:
     return total
 
 
+def nisa_tax_benefit_per_month(nisa_balance: float, monthly_return_rate: float) -> float:
+    """NISA 非課税メリットの月次等価額。
+
+    課税口座なら運用益に 20.315% の税がかかるが、NISA はかからない。
+    その差分を月次の節税額として返す。
+
+    Args:
+        nisa_balance: NISA残高（円）
+        monthly_return_rate: 月次リターン率（例: 0.004 for 年率約5%）
+
+    Returns:
+        月次節税額相当（円）
+    """
+    return nisa_balance * monthly_return_rate * 0.20315
+
+
 def calc_post_fire_monthly_costs(
     pre_fire_annual_income: float,
     living_expenses: float,
