@@ -83,6 +83,7 @@ def inject_custom_css():
             border-radius: 8px;
             height: 3em;
             background-color: #1e40af !important;
+            color: white !important;
             font-weight: 600;
         }
         /* インフォメーションボックス */
