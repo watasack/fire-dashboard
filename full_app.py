@@ -265,6 +265,11 @@ def _build_simulation_config(
     if type_w == '専業主婦':
         cfg['simulation']['wife_income'] = 0
 
+    # FIRE後の国保スパイク計算用: 退職前の世帯年収（税引き前）をsocial_insuranceに渡す
+    if 'social_insurance' not in cfg:
+        cfg['social_insurance'] = {}
+    cfg['social_insurance']['pre_fire_annual_income'] = (gross_h + gross_w) * 10000
+
     # NISA設定（不変条件: nisa_balance <= stocks を保証）
     stocks_yen = cfg['simulation'].get('stocks', 0)  # _initialize_future_simulation で設定される
     cfg['simulation']['nisa_balance'] = nisa_balance * 10000

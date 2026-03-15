@@ -1,5 +1,13 @@
 # impl_10: ガードレール戦略（動的支出調整）の詳細設計
 
+最終更新: 2026-03-15
+
+**※ステータス: 実装済み**
+`src/simulator.py` の `_process_post_fire_monthly_cycle`（L2394付近）で `calculate_drawdown_level` と `calculate_proportional_expense_adjustment` が結合済み。
+`full_app.py` の「詳細シミュレーション設定」タブ（L620-637）で余剰反映率α・最大削減率の入力UIも実装済み。
+
+---
+
 ## Goal
 市場のボラティリティが高い状況下で、資産残高の推移（ドローダウン）に応じて支出を動的に調整する「ガードレール戦略（Proportional Expense Adjustment）」を完全に機能させます。
 現状、ロジックの一部がスタブ（固定値 `0.0`）となっており、これを実際の計算パスと結合することが目的です。

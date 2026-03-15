@@ -1,10 +1,19 @@
 # 詳細実装計画: ④ FIRE後の税金計算
 
-最終更新: 2026-03-14
+最終更新: 2026-03-15
 
 ---
 
 ## 概要
+
+**※ステータス: 実装済み（2026-03-15）**
+`src/simulator.py` の `calculate_national_health_insurance_premium`（国保スパイク）および `calculate_national_pension_premium`（国民年金保険料）が実装済み。
+`full_app.py` の `_build_simulation_config()` で `cfg['social_insurance']['pre_fire_annual_income'] = (gross_h + gross_w) * 10000` を設定し、スパイク計算に世帯年収が正しく渡るようになった。
+`src/tax_utils.py` の `calc_post_fire_monthly_costs()` は参照実装として残存（simulator.py の既存関数と役割が重複するため呼び出し元なし）。
+
+---
+
+（以下、過去の計画メモとして残す）
 
 FIRE後は給与収入がなくなり、代わりに「株の売却益」「配当収入」が主な収入源になる。
 この切り替わり時に以下の税負担増が発生する：
