@@ -760,6 +760,7 @@ with st.expander("詳細な確率計算（1,000通り）", expanded=st.session_s
     st.markdown("<div style='margin-top: 1.5rem;'></div>", unsafe_allow_html=True)
     st.caption("設定を確認したら、1,000通りの未来を試算します。（計算に数秒〜1分ほどかかります）")
     if st.button("シミュレーションを開始", type="primary", use_container_width=True):
+        st.session_state['show_detail'] = True  # 結果が expander 内に表示されるため開いたままにする
 
         cash      = assets * _CASH_RATIO   * 10000
         stocks    = assets * _STOCKS_RATIO * 10000
