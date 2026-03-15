@@ -825,14 +825,16 @@ with st.expander("詳細な確率計算（1,000通り）", expanded=st.session_s
         st.session_state['_sim'] = {
             'mc_res': mc_res, 'df': df, 'cfg': cfg,
             'cash': cash, 'stocks': stocks,
+            'current_date': current_date,
         }
 
     if '_sim' in st.session_state:
-        mc_res = st.session_state['_sim']['mc_res']
-        df     = st.session_state['_sim']['df']
-        cfg    = st.session_state['_sim']['cfg']
-        cash   = st.session_state['_sim']['cash']
-        stocks = st.session_state['_sim']['stocks']
+        mc_res       = st.session_state['_sim']['mc_res']
+        df           = st.session_state['_sim']['df']
+        cfg          = st.session_state['_sim']['cfg']
+        cash         = st.session_state['_sim']['cash']
+        stocks       = st.session_state['_sim']['stocks']
+        current_date = st.session_state['_sim']['current_date']
 
         st.markdown("## シミュレーション結果")
 
