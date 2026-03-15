@@ -4496,7 +4496,7 @@ def run_mc_fixed_fire(
     # ── 二分探索: 目標成功確率を達成するFIRE月を探す ──
     # 単調性: FIRE月が遅いほど蓄積資産が増え成功率が上がる
     SEARCH_ITERS = 200
-    lo, hi = 0, total_months - 1
+    lo, hi = 0, total_months
 
     print(f"run_mc_fixed_fire: binary search for target={target_success_rate*100:.0f}%")
 
@@ -4551,6 +4551,7 @@ def run_mc_fixed_fire(
             'all_results': [],
             'median_final_assets': 0.0,
             'percentile_5': 0.0,
+            'max_achievable_rate': 0.0,
             'base_df': None,
             'target_fire_month_int': None,
         }
