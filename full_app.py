@@ -654,470 +654,471 @@ st.markdown("---")
 # =============================================================================
 target_rate = 90
 
-st.subheader("ライフイベント・詳細設定")
-tab_input, tab_advanced = st.tabs(["育休・子供の設定", "詳細シミュレーション設定"])
+with st.expander("詳細な確率計算（1,000通り）", expanded=st.session_state.get("show_detail", False)):
+    st.subheader("ライフイベント・詳細設定")
+    tab_input, tab_advanced = st.tabs(["育休・子供の設定", "詳細シミュレーション設定"])
 
-with tab_input:
-    _nc_col, _ = st.columns([1, 3])
-    with _nc_col:
-        num_children = st.number_input("子どもの人数", min_value=1, max_value=4, value=1, step=1)
+    with tab_input:
+        _nc_col, _ = st.columns([1, 3])
+        with _nc_col:
+            num_children = st.number_input("子どもの人数", min_value=1, max_value=4, value=1, step=1)
 
-    children_ui = []
-    for _ci in range(num_children):
-        with st.expander(_ORDINALS[_ci], expanded=(_ci == 0)):
-            _bc1, _bc2 = st.columns([2, 2])
-            with _bc1:
-                _birth = st.date_input(
-                    "誕生日（または予定日）",
-                    value=date.today() + relativedelta(months=_DEFAULT_BIRTHS[_ci]),
-                    key=f"birth_{_ci}",
-                    help="この日付を基準に教育費・育休期間を算出します。",
-                )
-            with _bc2:
-                _edu_policy = st.selectbox(
-                    "教育方針",
-                    options=["standard", "moderate", "private_heavy"],
-                    format_func=lambda x: {
-                        "standard": "標準（公立小中高＋国立大）",
-                        "moderate": "やや手厚め（高校のみ私立）",
-                        "private_heavy": "私立重視（私立中高＋私立文系大）",
-                    }[x],
-                    index=0,
-                    key=f"edu_policy_{_ci}",
-                    help="公立小中高+国立大: 〜693万 / 公立小中+私立高+国立大: 〜855万 / 公立小+私立中高+私立文系大: 〜1,272万（子1人あたり合計）",
-                )
-            col_h, col_w = st.columns(2)  # 夫LEFT・妻RIGHT
-            with col_h:
-                h = _leave_inputs("夫の育休・時短", "h", _ci, type_h == "専業主夫",
-                    default_leave=_DEFAULT_LEAVE_MONTHS if _ci == 0 else 0, default_income=int(income_h))
-            with col_w:
-                w = _leave_inputs("妻の育休・時短", "w", _ci, type_w == "専業主婦",
-                    default_leave=_DEFAULT_LEAVE_MONTHS, default_income=int(income_w), maternity=True)
-            children_ui.append({
-                "birth": _birth, "name": f"子{_ci+1}", "policy": _edu_policy,
-                "w_lp": w.get("lp", 0), "w_la": w["la"], "w_li": w["li"], "w_re": w["re"], "w_ri": w["ri"],
-                "h_la": h["la"], "h_li": h["li"], "h_re": h["re"], "h_ri": h["ri"],
-            })
+        children_ui = []
+        for _ci in range(num_children):
+            with st.expander(_ORDINALS[_ci], expanded=(_ci == 0)):
+                _bc1, _bc2 = st.columns([2, 2])
+                with _bc1:
+                    _birth = st.date_input(
+                        "誕生日（または予定日）",
+                        value=date.today() + relativedelta(months=_DEFAULT_BIRTHS[_ci]),
+                        key=f"birth_{_ci}",
+                        help="この日付を基準に教育費・育休期間を算出します。",
+                    )
+                with _bc2:
+                    _edu_policy = st.selectbox(
+                        "教育方針",
+                        options=["standard", "moderate", "private_heavy"],
+                        format_func=lambda x: {
+                            "standard": "標準（公立小中高＋国立大）",
+                            "moderate": "やや手厚め（高校のみ私立）",
+                            "private_heavy": "私立重視（私立中高＋私立文系大）",
+                        }[x],
+                        index=0,
+                        key=f"edu_policy_{_ci}",
+                        help="公立小中高+国立大: 〜693万 / 公立小中+私立高+国立大: 〜855万 / 公立小+私立中高+私立文系大: 〜1,272万（子1人あたり合計）",
+                    )
+                col_h, col_w = st.columns(2)  # 夫LEFT・妻RIGHT
+                with col_h:
+                    h = _leave_inputs("夫の育休・時短", "h", _ci, type_h == "専業主夫",
+                        default_leave=_DEFAULT_LEAVE_MONTHS if _ci == 0 else 0, default_income=int(income_h))
+                with col_w:
+                    w = _leave_inputs("妻の育休・時短", "w", _ci, type_w == "専業主婦",
+                        default_leave=_DEFAULT_LEAVE_MONTHS, default_income=int(income_w), maternity=True)
+                children_ui.append({
+                    "birth": _birth, "name": f"子{_ci+1}", "policy": _edu_policy,
+                    "w_lp": w.get("lp", 0), "w_la": w["la"], "w_li": w["li"], "w_re": w["re"], "w_ri": w["ri"],
+                    "h_la": h["la"], "h_li": h["li"], "h_re": h["re"], "h_ri": h["ri"],
+                })
 
-with tab_advanced:
-    st.subheader("ガードレール（動的支出調整）")
-    _ga1, _ga2 = st.columns(2)
-    with _ga1:
-        dynamic_surplus_spending_rate = st.slider(
-            "余剰反映率 α（年率）",
-            min_value=0.0, max_value=1.0,
-            value=float(base_cfg['fire']['dynamic_expense_reduction']['surplus_spending_rate']),
-            step=0.05,
-            help="ベースライン計画より余剰・不足な資産に対し、年率α×乖離額を支出に反映します。0にすると動的調整なし。",
-        )
-    with _ga2:
-        dynamic_max_cut_ratio = st.slider(
-            "裁量支出の最大削減率",
-            min_value=0.0, max_value=1.0,
-            value=float(base_cfg['fire']['dynamic_expense_reduction']['max_cut_ratio']),
-            step=0.05,
-            help="裁量的支出（生活費の変動部分）を最大この割合まで削減できます。",
-        )
-    st.divider()
-    st.info("以下の前提条件は固定値です。変更が必要な場合はnoteのマニュアルをご参照ください。")
-    _base_growth = base_cfg['simulation']['standard']['income_growth_rate'] * 100
-    _h_growth = f"{_base_growth:.0f}%/年" if type_h == '会社員' else "なし（固定）"
-    _w_growth = f"{_base_growth:.0f}%/年" if type_w == '会社員' else "なし（固定）"
-    st.json({
-        "FIRE維持の目標確率": f"{target_rate}%",
-        "想定利回り（年率）": f"{base_cfg['simulation']['standard']['annual_return_rate']*100:.0f}%",
-        "物価上昇率（年率）": f"{base_cfg['simulation']['standard']['inflation_rate']*100:.0f}%",
-        "夫の昇給率（年率）": _h_growth,
-        "妻の昇給率（年率）": _w_growth,
-        "住宅": (
-            f"賃貸 {rent}万円/月（一定）"
-            if housing_type == '賃貸'
-            else f"持ち家ローン {mortgage_payment}万円/月（{mortgage_end_date}年末まで）"
-        ),
-        "FIRE後副収入": (
-            f"夫{husband_post_fire_income:.0f}万（{husband_side_fire_until}歳まで） + "
-            f"妻{wife_post_fire_income:.0f}万（{wife_side_fire_until}歳まで） = "
-            f"計{husband_post_fire_income + wife_post_fire_income:.0f}万円/月"
-        ),
-        "年金受給開始": f"夫{base_cfg['pension']['people'][0].get('override_start_age', 65)}歳 / 妻{base_cfg['pension']['people'][1].get('override_start_age', 65)}歳",
-        "教育コース": "、".join(
-            "{}: {}".format(
-                f"子{i+1}",
-                {"standard": "標準（公立中心）", "moderate": "やや手厚め（高校のみ私立）", "private_heavy": "私立重視"}.get(cd.get("policy", "standard"), "標準")
+    with tab_advanced:
+        st.subheader("ガードレール（動的支出調整）")
+        _ga1, _ga2 = st.columns(2)
+        with _ga1:
+            dynamic_surplus_spending_rate = st.slider(
+                "余剰反映率 α（年率）",
+                min_value=0.0, max_value=1.0,
+                value=float(base_cfg['fire']['dynamic_expense_reduction']['surplus_spending_rate']),
+                step=0.05,
+                help="ベースライン計画より余剰・不足な資産に対し、年率α×乖離額を支出に反映します。0にすると動的調整なし。",
             )
-            for i, cd in enumerate(children_ui)
-        ) if children_ui else "公立小中高 + 国立大学",
-        "資産の内訳（初期）": f"現金30% / 株式70%（うちNISA {nisa_balance}万円）",
-    })
-
-st.markdown("---")
-
-# =============================================================================
-# シミュレーション実行・結果表示
-# =============================================================================
-st.markdown("<div style='margin-top: 1.5rem;'></div>", unsafe_allow_html=True)
-st.caption("設定を確認したら、1,000通りの未来を試算します。（計算に数秒〜1分ほどかかります）")
-if st.button("シミュレーションを開始", type="primary", use_container_width=True):
-
-    cash      = assets * _CASH_RATIO   * 10000
-    stocks    = assets * _STOCKS_RATIO * 10000
-    monthly_inc = (income_h + income_w) * 10000
-    monthly_exp = expense * 10000
-    current_date = datetime.today()
-
-    edu_children, maternity, w_reduced, h_parental, h_reduced = _build_children_config(
-        children_ui, income_h, income_w
-    )
-    cfg = _build_simulation_config(
-        base_cfg,
-        age_h=age_h, age_w=age_w, type_h=type_h, type_w=type_w,
-        income_h=income_h, income_w=income_w, gross_h=gross_h, gross_w=gross_w,
-        monthly_exp=monthly_exp,
-        housing_type=housing_type, rent=rent,
-        mortgage_payment=mortgage_payment, mortgage_end_date=mortgage_end_date,
-        edu_children=edu_children, maternity=maternity, w_reduced=w_reduced,
-        h_parental=h_parental, h_reduced=h_reduced,
-        husband_post_fire_income=husband_post_fire_income,
-        wife_post_fire_income=wife_post_fire_income,
-        husband_side_fire_until=husband_side_fire_until,
-        wife_side_fire_until=wife_side_fire_until,
-        withdrawal_strategy={
-            "固定額": "fixed",
-            "定率（残高×年率）": "percentage",
-            "ガードレール戦略": "guardrail",
-        }[withdrawal_strategy],
-        withdrawal_rate=withdrawal_rate / 100.0,
-        guardrail_lower=guardrail_lower / 100.0,
-        guardrail_upper=guardrail_upper / 100.0,
-        guardrail_reduction=guardrail_reduction / 100.0,
-        nisa_balance=nisa_balance,
-        nisa_annual=nisa_annual,
-    )
-    cfg['fire']['dynamic_expense_reduction']['surplus_spending_rate'] = dynamic_surplus_spending_rate
-    cfg['fire']['dynamic_expense_reduction']['max_cut_ratio'] = dynamic_max_cut_ratio
-
-    progress_bar = st.progress(0)
-    status_text  = st.empty()
-
-    def update_progress(progress):
-        progress_bar.progress(progress)
-        status_text.text(f"1,000通りの未来をシミュレーション中... {int(progress * 100)}%")
-
-    with st.spinner("シミュレーションを実行中..."):
-        mc_res = run_mc_fixed_fire(
-            cash, stocks, cfg,
-            target_success_rate=target_rate / 100.0,
-            monthly_income=monthly_inc,
-            monthly_expense=monthly_exp,
-            scenario="standard",
-            iterations=_MC_ITERATIONS,
-            progress_callback=update_progress,
-        )
-        df = mc_res['base_df']
-        df['year_offset'] = df['month'] / 12
-        df['wife_age']    = age_w + df['year_offset']
-
-    progress_bar.empty()
-    status_text.empty()
-
-    st.markdown("## シミュレーション結果")
-
-    if husband_post_fire_income > 0 or wife_post_fire_income > 0:
-        st.info(
-            f"サイドFIRE設定: 夫 {husband_post_fire_income}万円/月（{husband_side_fire_until}歳まで）、"
-            f"妻 {wife_post_fire_income}万円/月（{wife_side_fire_until}歳まで）\n"
-            f"FIRE後実質支出 = 支出 − 労働収入 として計算しています。"
-        )
-
-    if withdrawal_strategy == "ガードレール戦略":
-        st.info(
-            f"ガードレール戦略: 資産がFIRE時の{guardrail_lower}%を下回ると生活費を{guardrail_reduction}%削減します。"
-            f"資産がFIRE時の{guardrail_upper}%を超えると生活費を5%増加します。"
-            f"相場回復後は通常水準に戻ります。"
-        )
-    elif withdrawal_strategy == "定率（残高×年率）":
-        st.info(
-            f"定率取り崩し（{withdrawal_rate:.1f}%/年）: 残高×{withdrawal_rate:.1f}%÷12を毎月の生活費として取り崩します。"
-            f"資産に連動するため枯渇しにくいですが、生活費が毎月変動します。"
-        )
-
-    if mc_res.get('impossible'):
-        max_rate = int(mc_res['max_achievable_rate'] * 100)
-        _gap = target_rate - max_rate
-        _hint = (
-            "少しの調整で届く可能性があります。生活費を月1〜3万円見直すか、資産を少し増やしてみてください。"
-            if _gap <= 10 else
-            "生活費の削減・資産の積み増し・FIRE後の副収入（サイドFIRE）を組み合わせると改善できます。"
-        )
-        st.warning(
-            f"現在の条件では目標 {target_rate}% に届きません（最高 **{max_rate}%**）。\n\n"
-            f"{_hint}\n\n"
-            f"**改善のヒント：**\n"
-            f"- 生活費を下げる（サイドバーの「生活費」を変更）\n"
-            f"- 金融資産を増やす（サイドバーの「金融資産」を変更）\n"
-            f"- FIRE後に副収入を加える（「FIRE後の設定」を展開）"
-        )
-    else:
-        fire_month_val = mc_res['fire_month']
-        fire_date_val  = mc_res['fire_date']
-        fire_age_h_val = mc_res['fire_age_h']
-        fire_age_w_val = mc_res['fire_age_w']
-
-        base_df = mc_res['base_df']
-        assets_at_fire = (
-            base_df.iloc[fire_month_val]['assets']
-            if fire_month_val < len(base_df)
-            else base_df.iloc[-1]['assets']
-        )
-        years_to_fire = fire_month_val / 12.0
-
-        fire_age_label = (
-            f"夫{fire_age_h_val:.0f}歳 / 妻{fire_age_w_val:.0f}歳"
-            if fire_age_w_val and age_h != age_w else f"{fire_age_h_val:.0f}歳"
-        )
-        _fire_date_str = fire_date_val.strftime('%Y年%m月') if fire_date_val else '—'
-        _assets_str    = fmt_oku(assets_at_fire)
-        _years_str     = f"{years_to_fire:.1f}"
-        st.markdown(f"""
-<div style="
-    background: linear-gradient(135deg, #0f766e 0%, #0e7490 100%);
-    border-radius: 12px;
-    padding: 28px 32px;
-    margin-bottom: 8px;
-    color: white;
-">
-    <div style="font-size: 11px; font-weight: 600; opacity: 0.7; letter-spacing: 1px;
-                text-transform: uppercase; margin-bottom: 10px;">
-        目標{target_rate}% ─ FIRE 試算結果
-    </div>
-    <div style="font-size: 44px; font-weight: 800; letter-spacing: -0.02em;
-                line-height: 1.1; margin-bottom: 16px;">
-        {fire_age_label}
-    </div>
-    <div style="display: flex; gap: 0; flex-wrap: wrap;">
-        <div style="padding-right: 28px; border-right: 1px solid rgba(255,255,255,0.2);">
-            <div style="font-size: 11px; opacity: 0.7; margin-bottom: 3px;">今から</div>
-            <div style="font-size: 22px; font-weight: 700;">{_years_str}年後</div>
-        </div>
-        <div style="padding: 0 28px; border-right: 1px solid rgba(255,255,255,0.2);">
-            <div style="font-size: 11px; opacity: 0.7; margin-bottom: 3px;">FIRE時の資産</div>
-            <div style="font-size: 22px; font-weight: 700;">{_assets_str}</div>
-        </div>
-        <div style="padding-left: 28px;">
-            <div style="font-size: 11px; opacity: 0.7; margin-bottom: 3px;">達成確率</div>
-            <div style="font-size: 22px; font-weight: 700;">{target_rate}%</div>
-        </div>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-        # ── プランA比較 ──────────────────────────────────────────────────
-        _pa_col1, _pa_col2 = st.columns([4, 1])
-        with _pa_col1:
-            if 'plan_a' in st.session_state:
-                _pa = st.session_state['plan_a']
-                _pa_label = (
-                    f"プランA固定済: FIRE {_pa['fire_date'].strftime('%Y年%m月')} / "
-                    f"必要年数 {_pa['years_to_fire']:.1f}年 / "
-                    f"資産 {_pa['assets_at_fire']/10000:.0f}万円"
-                )
-                st.success(_pa_label)
-        with _pa_col2:
-            if st.button("この結果をプランAとして固定", use_container_width=True):
-                st.session_state['plan_a'] = {
-                    'df': df,
-                    'fire_date': fire_date_val,
-                    'fire_age_h': fire_age_h_val,
-                    'fire_age_w': fire_age_w_val,
-                    'assets_at_fire': assets_at_fire,
-                    'years_to_fire': years_to_fire,
-                }
-                st.rerun()
-            if 'plan_a' in st.session_state:
-                if st.button("プランAをクリア", use_container_width=True):
-                    del st.session_state['plan_a']
-                    st.rerun()
-
-        # ── 破産シナリオ分析 ──────────────────────────────────────────────
-        all_paths = mc_res.get("all_paths")
-        bankrupt_count = sum(1 for r in mc_res["all_results"] if not r["success"])
-        if all_paths is not None and bankrupt_count > 0:
-            st.subheader("万が一失敗した場合のリスク分析")
-            st.caption(
-                "シミュレーション終端（90歳）まで持たなかったシナリオのみを対象とした分析です。"
-                "「下位5%」は1,000通りのうち最も悪い50通りの平均的な結果を示します。"
+        with _ga2:
+            dynamic_max_cut_ratio = st.slider(
+                "裁量支出の最大削減率",
+                min_value=0.0, max_value=1.0,
+                value=float(base_cfg['fire']['dynamic_expense_reduction']['max_cut_ratio']),
+                step=0.05,
+                help="裁量的支出（生活費の変動部分）を最大この割合まで削減できます。",
             )
-            _col_b1, _col_b2, _col_b3 = st.columns(3)
-            with _col_b1:
-                _worst_age = calc_depletion_age(mc_res, 0.05, cfg)
-                st.metric("最悪ケース枯渇年齢（下位5%）", f"{_worst_age:.0f}歳")
-            with _col_b2:
-                _p25_age = calc_depletion_age(mc_res, 0.25, cfg)
-                st.metric("枯渇年齢（下位25%）", f"{_p25_age:.0f}歳")
-            with _col_b3:
-                _bankrupt_rate = bankrupt_count / len(mc_res["all_results"]) * 100
-                st.metric("破産シナリオ数", f"{_bankrupt_rate:.1f}%（{bankrupt_count}通り）")
-
-            # 枯渇年齢のヒストグラム（破産パスのみ）
-            import plotly.express as px
-            _depletion_ages = get_bankrupt_depletion_ages(mc_res, cfg)
-            if _depletion_ages:
-                _fig_hist = px.histogram(
-                    x=_depletion_ages,
-                    nbins=20,
-                    title="資産枯渇年齢の分布（破産シナリオのみ）",
-                    labels={"x": "枯渇年齢（夫・歳）", "count": "シナリオ数"},
+        st.divider()
+        st.info("以下の前提条件は固定値です。変更が必要な場合はnoteのマニュアルをご参照ください。")
+        _base_growth = base_cfg['simulation']['standard']['income_growth_rate'] * 100
+        _h_growth = f"{_base_growth:.0f}%/年" if type_h == '会社員' else "なし（固定）"
+        _w_growth = f"{_base_growth:.0f}%/年" if type_w == '会社員' else "なし（固定）"
+        st.json({
+            "FIRE維持の目標確率": f"{target_rate}%",
+            "想定利回り（年率）": f"{base_cfg['simulation']['standard']['annual_return_rate']*100:.0f}%",
+            "物価上昇率（年率）": f"{base_cfg['simulation']['standard']['inflation_rate']*100:.0f}%",
+            "夫の昇給率（年率）": _h_growth,
+            "妻の昇給率（年率）": _w_growth,
+            "住宅": (
+                f"賃貸 {rent}万円/月（一定）"
+                if housing_type == '賃貸'
+                else f"持ち家ローン {mortgage_payment}万円/月（{mortgage_end_date}年末まで）"
+            ),
+            "FIRE後副収入": (
+                f"夫{husband_post_fire_income:.0f}万（{husband_side_fire_until}歳まで） + "
+                f"妻{wife_post_fire_income:.0f}万（{wife_side_fire_until}歳まで） = "
+                f"計{husband_post_fire_income + wife_post_fire_income:.0f}万円/月"
+            ),
+            "年金受給開始": f"夫{base_cfg['pension']['people'][0].get('override_start_age', 65)}歳 / 妻{base_cfg['pension']['people'][1].get('override_start_age', 65)}歳",
+            "教育コース": "、".join(
+                "{}: {}".format(
+                    f"子{i+1}",
+                    {"standard": "標準（公立中心）", "moderate": "やや手厚め（高校のみ私立）", "private_heavy": "私立重視"}.get(cd.get("policy", "standard"), "標準")
                 )
-                _fig_hist.update_layout(
-                    xaxis_title="枯渇年齢（夫・歳）",
-                    yaxis_title="シナリオ数",
-                    showlegend=False,
-                    height=300,
-                )
-                st.plotly_chart(_fig_hist, use_container_width=True)
+                for i, cd in enumerate(children_ui)
+            ) if children_ui else "公立小中高 + 国立大学",
+            "資産の内訳（初期）": f"現金30% / 株式70%（うちNISA {nisa_balance}万円）",
+        })
 
-        tab_chart, tab_cashflow, tab_guide = st.tabs(["📈 資産予測（確率分布）", "💰 収支推移", "シミュレーション解釈ガイド"])
+    st.markdown("---")
 
-        with tab_chart:
-            st.markdown("#### 1,000通りの未来シミュレーション")
-            st.caption(
-                f"1,000通りの未来シナリオで90歳まで計算した結果です。"
-                f" 目標FIRE時期: {fire_date_val.strftime('%Y年%m月') if fire_date_val else '—'}"
+    # =============================================================================
+    # シミュレーション実行・結果表示
+    # =============================================================================
+    st.markdown("<div style='margin-top: 1.5rem;'></div>", unsafe_allow_html=True)
+    st.caption("設定を確認したら、1,000通りの未来を試算します。（計算に数秒〜1分ほどかかります）")
+    if st.button("シミュレーションを開始", type="primary", use_container_width=True):
+
+        cash      = assets * _CASH_RATIO   * 10000
+        stocks    = assets * _STOCKS_RATIO * 10000
+        monthly_inc = (income_h + income_w) * 10000
+        monthly_exp = expense * 10000
+        current_date = datetime.today()
+
+        edu_children, maternity, w_reduced, h_parental, h_reduced = _build_children_config(
+            children_ui, income_h, income_w
+        )
+        cfg = _build_simulation_config(
+            base_cfg,
+            age_h=age_h, age_w=age_w, type_h=type_h, type_w=type_w,
+            income_h=income_h, income_w=income_w, gross_h=gross_h, gross_w=gross_w,
+            monthly_exp=monthly_exp,
+            housing_type=housing_type, rent=rent,
+            mortgage_payment=mortgage_payment, mortgage_end_date=mortgage_end_date,
+            edu_children=edu_children, maternity=maternity, w_reduced=w_reduced,
+            h_parental=h_parental, h_reduced=h_reduced,
+            husband_post_fire_income=husband_post_fire_income,
+            wife_post_fire_income=wife_post_fire_income,
+            husband_side_fire_until=husband_side_fire_until,
+            wife_side_fire_until=wife_side_fire_until,
+            withdrawal_strategy={
+                "固定額": "fixed",
+                "定率（残高×年率）": "percentage",
+                "ガードレール戦略": "guardrail",
+            }[withdrawal_strategy],
+            withdrawal_rate=withdrawal_rate / 100.0,
+            guardrail_lower=guardrail_lower / 100.0,
+            guardrail_upper=guardrail_upper / 100.0,
+            guardrail_reduction=guardrail_reduction / 100.0,
+            nisa_balance=nisa_balance,
+            nisa_annual=nisa_annual,
+        )
+        cfg['fire']['dynamic_expense_reduction']['surplus_spending_rate'] = dynamic_surplus_spending_rate
+        cfg['fire']['dynamic_expense_reduction']['max_cut_ratio'] = dynamic_max_cut_ratio
+
+        progress_bar = st.progress(0)
+        status_text  = st.empty()
+
+        def update_progress(progress):
+            progress_bar.progress(progress)
+            status_text.text(f"1,000通りの未来をシミュレーション中... {int(progress * 100)}%")
+
+        with st.spinner("シミュレーションを実行中..."):
+            mc_res = run_mc_fixed_fire(
+                cash, stocks, cfg,
+                target_success_rate=target_rate / 100.0,
+                monthly_income=monthly_inc,
+                monthly_expense=monthly_exp,
+                scenario="standard",
+                iterations=_MC_ITERATIONS,
+                progress_callback=update_progress,
             )
-            fire_row = df[df['fire_achieved']].iloc[0] if df['fire_achieved'].any() else None
-            if fire_row is not None:
-                _plan_a_comparison = None
+            df = mc_res['base_df']
+            df['year_offset'] = df['month'] / 12
+            df['wife_age']    = age_w + df['year_offset']
+
+        progress_bar.empty()
+        status_text.empty()
+
+        st.markdown("## シミュレーション結果")
+
+        if husband_post_fire_income > 0 or wife_post_fire_income > 0:
+            st.info(
+                f"サイドFIRE設定: 夫 {husband_post_fire_income}万円/月（{husband_side_fire_until}歳まで）、"
+                f"妻 {wife_post_fire_income}万円/月（{wife_side_fire_until}歳まで）\n"
+                f"FIRE後実質支出 = 支出 − 労働収入 として計算しています。"
+            )
+
+        if withdrawal_strategy == "ガードレール戦略":
+            st.info(
+                f"ガードレール戦略: 資産がFIRE時の{guardrail_lower}%を下回ると生活費を{guardrail_reduction}%削減します。"
+                f"資産がFIRE時の{guardrail_upper}%を超えると生活費を5%増加します。"
+                f"相場回復後は通常水準に戻ります。"
+            )
+        elif withdrawal_strategy == "定率（残高×年率）":
+            st.info(
+                f"定率取り崩し（{withdrawal_rate:.1f}%/年）: 残高×{withdrawal_rate:.1f}%÷12を毎月の生活費として取り崩します。"
+                f"資産に連動するため枯渇しにくいですが、生活費が毎月変動します。"
+            )
+
+        if mc_res.get('impossible'):
+            max_rate = int(mc_res['max_achievable_rate'] * 100)
+            _gap = target_rate - max_rate
+            _hint = (
+                "少しの調整で届く可能性があります。生活費を月1〜3万円見直すか、資産を少し増やしてみてください。"
+                if _gap <= 10 else
+                "生活費の削減・資産の積み増し・FIRE後の副収入（サイドFIRE）を組み合わせると改善できます。"
+            )
+            st.warning(
+                f"現在の条件では目標 {target_rate}% に届きません（最高 **{max_rate}%**）。\n\n"
+                f"{_hint}\n\n"
+                f"**改善のヒント：**\n"
+                f"- 生活費を下げる（サイドバーの「生活費」を変更）\n"
+                f"- 金融資産を増やす（サイドバーの「金融資産」を変更）\n"
+                f"- FIRE後に副収入を加える（「FIRE後の設定」を展開）"
+            )
+        else:
+            fire_month_val = mc_res['fire_month']
+            fire_date_val  = mc_res['fire_date']
+            fire_age_h_val = mc_res['fire_age_h']
+            fire_age_w_val = mc_res['fire_age_w']
+
+            base_df = mc_res['base_df']
+            assets_at_fire = (
+                base_df.iloc[fire_month_val]['assets']
+                if fire_month_val < len(base_df)
+                else base_df.iloc[-1]['assets']
+            )
+            years_to_fire = fire_month_val / 12.0
+
+            fire_age_label = (
+                f"夫{fire_age_h_val:.0f}歳 / 妻{fire_age_w_val:.0f}歳"
+                if fire_age_w_val and age_h != age_w else f"{fire_age_h_val:.0f}歳"
+            )
+            _fire_date_str = fire_date_val.strftime('%Y年%m月') if fire_date_val else '—'
+            _assets_str    = fmt_oku(assets_at_fire)
+            _years_str     = f"{years_to_fire:.1f}"
+            st.markdown(f"""
+    <div style="
+        background: linear-gradient(135deg, #0f766e 0%, #0e7490 100%);
+        border-radius: 12px;
+        padding: 28px 32px;
+        margin-bottom: 8px;
+        color: white;
+    ">
+        <div style="font-size: 11px; font-weight: 600; opacity: 0.7; letter-spacing: 1px;
+                    text-transform: uppercase; margin-bottom: 10px;">
+            目標{target_rate}% ─ FIRE 試算結果
+        </div>
+        <div style="font-size: 44px; font-weight: 800; letter-spacing: -0.02em;
+                    line-height: 1.1; margin-bottom: 16px;">
+            {fire_age_label}
+        </div>
+        <div style="display: flex; gap: 0; flex-wrap: wrap;">
+            <div style="padding-right: 28px; border-right: 1px solid rgba(255,255,255,0.2);">
+                <div style="font-size: 11px; opacity: 0.7; margin-bottom: 3px;">今から</div>
+                <div style="font-size: 22px; font-weight: 700;">{_years_str}年後</div>
+            </div>
+            <div style="padding: 0 28px; border-right: 1px solid rgba(255,255,255,0.2);">
+                <div style="font-size: 11px; opacity: 0.7; margin-bottom: 3px;">FIRE時の資産</div>
+                <div style="font-size: 22px; font-weight: 700;">{_assets_str}</div>
+            </div>
+            <div style="padding-left: 28px;">
+                <div style="font-size: 11px; opacity: 0.7; margin-bottom: 3px;">達成確率</div>
+                <div style="font-size: 22px; font-weight: 700;">{target_rate}%</div>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+            # ── プランA比較 ──────────────────────────────────────────────────
+            _pa_col1, _pa_col2 = st.columns([4, 1])
+            with _pa_col1:
                 if 'plan_a' in st.session_state:
                     _pa = st.session_state['plan_a']
-                    _plan_a_comparison = {'df': _pa['df'], 'label': 'プランA'}
-                fig_timeline = create_fire_timeline_chart(
-                    current_status={'net_assets': assets * 10000, 'cash_deposits': cash, 'investment_trusts': stocks},
-                    fire_target={'recommended_target': assets_at_fire, 'annual_expense': expense * 12 * 10000},
-                    fire_achievement={'achieved': False, 'achievement_date': fire_row['date'], 'months_to_fire': int(fire_row['month'])},
+                    _pa_label = (
+                        f"プランA固定済: FIRE {_pa['fire_date'].strftime('%Y年%m月')} / "
+                        f"必要年数 {_pa['years_to_fire']:.1f}年 / "
+                        f"資産 {_pa['assets_at_fire']/10000:.0f}万円"
+                    )
+                    st.success(_pa_label)
+            with _pa_col2:
+                if st.button("この結果をプランAとして固定", use_container_width=True):
+                    st.session_state['plan_a'] = {
+                        'df': df,
+                        'fire_date': fire_date_val,
+                        'fire_age_h': fire_age_h_val,
+                        'fire_age_w': fire_age_w_val,
+                        'assets_at_fire': assets_at_fire,
+                        'years_to_fire': years_to_fire,
+                    }
+                    st.rerun()
+                if 'plan_a' in st.session_state:
+                    if st.button("プランAをクリア", use_container_width=True):
+                        del st.session_state['plan_a']
+                        st.rerun()
+
+            # ── 破産シナリオ分析 ──────────────────────────────────────────────
+            all_paths = mc_res.get("all_paths")
+            bankrupt_count = sum(1 for r in mc_res["all_results"] if not r["success"])
+            if all_paths is not None and bankrupt_count > 0:
+                st.subheader("万が一失敗した場合のリスク分析")
+                st.caption(
+                    "シミュレーション終端（90歳）まで持たなかったシナリオのみを対象とした分析です。"
+                    "「下位5%」は1,000通りのうち最も悪い50通りの平均的な結果を示します。"
+                )
+                _col_b1, _col_b2, _col_b3 = st.columns(3)
+                with _col_b1:
+                    _worst_age = calc_depletion_age(mc_res, 0.05, cfg)
+                    st.metric("最悪ケース枯渇年齢（下位5%）", f"{_worst_age:.0f}歳")
+                with _col_b2:
+                    _p25_age = calc_depletion_age(mc_res, 0.25, cfg)
+                    st.metric("枯渇年齢（下位25%）", f"{_p25_age:.0f}歳")
+                with _col_b3:
+                    _bankrupt_rate = bankrupt_count / len(mc_res["all_results"]) * 100
+                    st.metric("破産シナリオ数", f"{_bankrupt_rate:.1f}%（{bankrupt_count}通り）")
+
+                # 枯渇年齢のヒストグラム（破産パスのみ）
+                import plotly.express as px
+                _depletion_ages = get_bankrupt_depletion_ages(mc_res, cfg)
+                if _depletion_ages:
+                    _fig_hist = px.histogram(
+                        x=_depletion_ages,
+                        nbins=20,
+                        title="資産枯渇年齢の分布（破産シナリオのみ）",
+                        labels={"x": "枯渇年齢（夫・歳）", "count": "シナリオ数"},
+                    )
+                    _fig_hist.update_layout(
+                        xaxis_title="枯渇年齢（夫・歳）",
+                        yaxis_title="シナリオ数",
+                        showlegend=False,
+                        height=300,
+                    )
+                    st.plotly_chart(_fig_hist, use_container_width=True)
+
+            tab_chart, tab_cashflow, tab_guide = st.tabs(["📈 資産予測（確率分布）", "💰 収支推移", "シミュレーション解釈ガイド"])
+
+            with tab_chart:
+                st.markdown("#### 1,000通りの未来シミュレーション")
+                st.caption(
+                    f"1,000通りの未来シナリオで90歳まで計算した結果です。"
+                    f" 目標FIRE時期: {fire_date_val.strftime('%Y年%m月') if fire_date_val else '—'}"
+                )
+                fire_row = df[df['fire_achieved']].iloc[0] if df['fire_achieved'].any() else None
+                if fire_row is not None:
+                    _plan_a_comparison = None
+                    if 'plan_a' in st.session_state:
+                        _pa = st.session_state['plan_a']
+                        _plan_a_comparison = {'df': _pa['df'], 'label': 'プランA'}
+                    fig_timeline = create_fire_timeline_chart(
+                        current_status={'net_assets': assets * 10000, 'cash_deposits': cash, 'investment_trusts': stocks},
+                        fire_target={'recommended_target': assets_at_fire, 'annual_expense': expense * 12 * 10000},
+                        fire_achievement={'achieved': False, 'achievement_date': fire_row['date'], 'months_to_fire': int(fire_row['month'])},
+                        simulations={'standard': df},
+                        config=cfg,
+                        monte_carlo_results=mc_res,
+                        show_baseline_after_fire=False,
+                        current_date=current_date,
+                        comparison_data=_plan_a_comparison,
+                    )
+                    fig_timeline.update_layout(height=500)
+                    st.plotly_chart(fig_timeline, use_container_width=True)
+
+            with tab_cashflow:
+                st.markdown("#### 年次収入・支出の推移")
+                st.caption("収入（上）と支出（下）を正/負で表示。FIREライン以降は給与収入→0→年金に変化します。")
+                fire_row_cf = df[df['fire_achieved']].iloc[0] if df['fire_achieved'].any() else None
+                fig_cashflow = create_income_expense_stream_chart(
                     simulations={'standard': df},
+                    fire_achievement={'achieved': False, 'achievement_date': fire_row_cf['date'] if fire_row_cf is not None else None},
                     config=cfg,
-                    monte_carlo_results=mc_res,
-                    show_baseline_after_fire=False,
-                    current_date=current_date,
-                    comparison_data=_plan_a_comparison,
                 )
-                fig_timeline.update_layout(height=500)
-                st.plotly_chart(fig_timeline, use_container_width=True)
+                st.plotly_chart(fig_cashflow, use_container_width=True)
 
-        with tab_cashflow:
-            st.markdown("#### 年次収入・支出の推移")
-            st.caption("収入（上）と支出（下）を正/負で表示。FIREライン以降は給与収入→0→年金に変化します。")
-            fire_row_cf = df[df['fire_achieved']].iloc[0] if df['fire_achieved'].any() else None
-            fig_cashflow = create_income_expense_stream_chart(
-                simulations={'standard': df},
-                fire_achievement={'achieved': False, 'achievement_date': fire_row_cf['date'] if fire_row_cf is not None else None},
-                config=cfg,
-            )
-            st.plotly_chart(fig_cashflow, use_container_width=True)
+            with tab_guide:
+                _render_guide_tab(target_rate)
 
-        with tab_guide:
-            _render_guide_tab(target_rate)
+            # ── 年次収支テーブル ──────────────────────────────────────────────
+            with st.expander("📊 年次収支テーブル（詳細）", expanded=False):
+                annual_df = build_annual_table(base_df, fire_month_val, age_h, age_w)
 
-        # ── 年次収支テーブル ──────────────────────────────────────────────
-        with st.expander("📊 年次収支テーブル（詳細）", expanded=False):
-            annual_df = build_annual_table(base_df, fire_month_val, age_h, age_w)
+                display_df = annual_df[[
+                    "age_display", "income_display", "expense_display",
+                    "cashflow_display", "assets_display",
+                ]].rename(columns={
+                    "age_display":     "夫/妻 年齢",
+                    "income_display":  "年収入",
+                    "expense_display": "年支出",
+                    "cashflow_display": "年収支",
+                    "assets_display":  "年末資産",
+                })
 
-            display_df = annual_df[[
-                "age_display", "income_display", "expense_display",
-                "cashflow_display", "assets_display",
-            ]].rename(columns={
-                "age_display":     "夫/妻 年齢",
-                "income_display":  "年収入",
-                "expense_display": "年支出",
-                "cashflow_display": "年収支",
-                "assets_display":  "年末資産",
-            })
+                is_post_fire = annual_df["is_post_fire"].tolist()
 
-            is_post_fire = annual_df["is_post_fire"].tolist()
+                def _highlight_post_fire(row):
+                    idx = row.name
+                    color = "background-color: #e8f4fd" if is_post_fire[idx] else ""
+                    return [color] * len(row)
 
-            def _highlight_post_fire(row):
-                idx = row.name
-                color = "background-color: #e8f4fd" if is_post_fire[idx] else ""
-                return [color] * len(row)
-
-            st.dataframe(
-                display_df.style.apply(_highlight_post_fire, axis=1),
-                use_container_width=True,
-                height=400,
-            )
-
-            _col_dl1, _col_dl2 = st.columns(2)
-            with _col_dl1:
-                csv = annual_df.to_csv(index=False, encoding="utf-8-sig")
-                st.download_button(
-                    "📥 CSVダウンロード",
-                    data=csv,
-                    file_name="fire_simulation.csv",
-                    mime="text/csv",
+                st.dataframe(
+                    display_df.style.apply(_highlight_post_fire, axis=1),
                     use_container_width=True,
+                    height=400,
                 )
-            with _col_dl2:
-                if st.button("📊 診断レポート(HTML)を作成", use_container_width=True):
-                    with st.spinner("レポートを生成中..."):
-                        # レポート用データの構築
-                        fire_row_rep = df[df['fire_achieved']].iloc[0] if df['fire_achieved'].any() else None
-                        
-                        summary_data = {
-                            'current_status': {
-                                'net_assets': assets * 10000,
-                                'cash_deposits': cash,
-                                'investment_trusts': stocks
-                            },
-                            'fire_target': {
-                                'recommended_target': assets_at_fire,
-                                'annual_expense': expense * 12 * 10000,
-                                'progress_rate': assets * 10000 / assets_at_fire if assets_at_fire > 0 else 0,
-                                'current_net_assets': assets * 10000
-                            },
-                            'fire_achievement': {
-                                'achieved': False,
-                                'achievement_date': fire_row_rep['date'] if fire_row_rep is not None else None,
-                                'years_to_fire': int(years_to_fire) if fire_row_rep is not None else 0,
-                                'remaining_months': int(fire_row_rep['month']) if fire_row_rep is not None else 0,
-                            },
-                            'trends': df.to_dict('records'),
-                            'expense_breakdown': {
-                                'category_percentages': {'基本生活費': 100} # カテゴリ入力がないため100%
-                            },
-                            'monte_carlo': mc_res,
-                            'life_events': extract_life_events(cfg, {
-                                'achieved': False, 
-                                'achievement_date': fire_row_rep['date'] if fire_row_rep is not None else None,
-                                'months_to_fire': int(fire_row_rep['month']) if fire_row_rep is not None else 0
-                            }),
-                            'simulations': {'standard': df},
-                            'update_time': datetime.now()
-                        }
-                        
-                        charts = {
-                            'fire_timeline': create_fire_timeline_chart(
-                                current_status=summary_data['current_status'],
-                                fire_target=summary_data['fire_target'],
-                                fire_achievement=summary_data['fire_achievement'],
-                                simulations=summary_data['simulations'],
-                                config=cfg,
-                                monte_carlo_results=mc_res,
-                                show_baseline_after_fire=False,
-                                current_date=current_date
-                            ),
-                            'income_expense_stream': create_income_expense_stream_chart(
-                                simulations=summary_data['simulations'],
-                                fire_achievement=summary_data['fire_achievement'],
-                                config=cfg
+
+                _col_dl1, _col_dl2 = st.columns(2)
+                with _col_dl1:
+                    csv = annual_df.to_csv(index=False, encoding="utf-8-sig")
+                    st.download_button(
+                        "📥 CSVダウンロード",
+                        data=csv,
+                        file_name="fire_simulation.csv",
+                        mime="text/csv",
+                        use_container_width=True,
+                    )
+                with _col_dl2:
+                    if st.button("📊 診断レポート(HTML)を作成", use_container_width=True):
+                        with st.spinner("レポートを生成中..."):
+                            # レポート用データの構築
+                            fire_row_rep = df[df['fire_achieved']].iloc[0] if df['fire_achieved'].any() else None
+
+                            summary_data = {
+                                'current_status': {
+                                    'net_assets': assets * 10000,
+                                    'cash_deposits': cash,
+                                    'investment_trusts': stocks
+                                },
+                                'fire_target': {
+                                    'recommended_target': assets_at_fire,
+                                    'annual_expense': expense * 12 * 10000,
+                                    'progress_rate': assets * 10000 / assets_at_fire if assets_at_fire > 0 else 0,
+                                    'current_net_assets': assets * 10000
+                                },
+                                'fire_achievement': {
+                                    'achieved': False,
+                                    'achievement_date': fire_row_rep['date'] if fire_row_rep is not None else None,
+                                    'years_to_fire': int(years_to_fire) if fire_row_rep is not None else 0,
+                                    'remaining_months': int(fire_row_rep['month']) if fire_row_rep is not None else 0,
+                                },
+                                'trends': df.to_dict('records'),
+                                'expense_breakdown': {
+                                    'category_percentages': {'基本生活費': 100} # カテゴリ入力がないため100%
+                                },
+                                'monte_carlo': mc_res,
+                                'life_events': extract_life_events(cfg, {
+                                    'achieved': False, 
+                                    'achievement_date': fire_row_rep['date'] if fire_row_rep is not None else None,
+                                    'months_to_fire': int(fire_row_rep['month']) if fire_row_rep is not None else 0
+                                }),
+                                'simulations': {'standard': df},
+                                'update_time': datetime.now()
+                            }
+
+                            charts = {
+                                'fire_timeline': create_fire_timeline_chart(
+                                    current_status=summary_data['current_status'],
+                                    fire_target=summary_data['fire_target'],
+                                    fire_achievement=summary_data['fire_achievement'],
+                                    simulations=summary_data['simulations'],
+                                    config=cfg,
+                                    monte_carlo_results=mc_res,
+                                    show_baseline_after_fire=False,
+                                    current_date=current_date
+                                ),
+                                'income_expense_stream': create_income_expense_stream_chart(
+                                    simulations=summary_data['simulations'],
+                                    fire_achievement=summary_data['fire_achievement'],
+                                    config=cfg
+                                )
+                            }
+
+                            html_rep = generate_dashboard_html(charts, summary_data, [], cfg)
+
+                            st.download_button(
+                                "💾 レポートを保存 (HTML)",
+                                data=html_rep,
+                                file_name=f"FIRE_Report_{datetime.now().strftime('%Y%m%d_%H%M')}.html",
+                                mime="text/html",
+                                use_container_width=True,
                             )
-                        }
-                        
-                        html_rep = generate_dashboard_html(charts, summary_data, [], cfg)
-                        
-                        st.download_button(
-                            "💾 レポートを保存 (HTML)",
-                            data=html_rep,
-                            file_name=f"FIRE_Report_{datetime.now().strftime('%Y%m%d_%H%M')}.html",
-                            mime="text/html",
-                            use_container_width=True,
-                        )
