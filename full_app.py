@@ -678,7 +678,10 @@ st.markdown("---")
 # =============================================================================
 # シミュレーション実行・結果表示
 # =============================================================================
-if st.button("シミュレーションを開始", type="primary"):
+st.markdown("<div style='margin-top: 1.5rem;'></div>", unsafe_allow_html=True)
+st.caption("設定を確認したら、1,000通りの未来を試算します。（計算に数秒〜1分ほどかかります）")
+if st.button("シミュレーションを開始", type="primary", use_container_width=True):
+
     cash      = assets * _CASH_RATIO   * 10000
     stocks    = assets * _STOCKS_RATIO * 10000
     monthly_inc = (income_h + income_w) * 10000
