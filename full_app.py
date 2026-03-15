@@ -763,10 +763,19 @@ if st.button("シミュレーションを開始", type="primary"):
 
     if mc_res.get('impossible'):
         max_rate = int(mc_res['max_achievable_rate'] * 100)
-        st.error(
-            f"⚠️ 目標{target_rate}%は達成できません。\n\n"
-            f"現在の条件では最高でも **{max_rate}%** の確率でしかFIREできません。\n"
-            f"生活費を減らすか、金融資産を増やすと改善できます。"
+        _gap = target_rate - max_rate
+        _hint = (
+            "少しの調整で届く可能性があります。生活費を月1〜3万円見直すか、資産を少し増やしてみてください。"
+            if _gap <= 10 else
+            "生活費の削減・資産の積み増し・FIRE後の副収入（サイドFIRE）を組み合わせると改善できます。"
+        )
+        st.warning(
+            f"現在の条件では目標 {target_rate}% に届きません（最高 **{max_rate}%**）。\n\n"
+            f"{_hint}\n\n"
+            f"**改善のヒント：**\n"
+            f"- 生活費を下げる（サイドバーの「生活費」を変更）\n"
+            f"- 金融資産を増やす（サイドバーの「金融資産」を変更）\n"
+            f"- FIRE後に副収入を加える（「FIRE後の設定」を展開）"
         )
     else:
         fire_month_val = mc_res['fire_month']
