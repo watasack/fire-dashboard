@@ -781,17 +781,45 @@ if st.button("シミュレーションを開始", type="primary"):
         )
         years_to_fire = fire_month_val / 12.0
 
-        col_m1, col_m2, col_m3 = st.columns(3)
-        with col_m1:
-            fire_age_label = (
-                f"夫{fire_age_h_val:.0f}歳 / 妻{fire_age_w_val:.0f}歳"
-                if fire_age_w_val and age_h != age_w else f"{fire_age_h_val:.0f}歳"
-            )
-            st.metric(f"目標{target_rate}%のFIRE年齢", fire_age_label)
-        with col_m2:
-            st.metric("必要年数", f"{years_to_fire:.1f}年")
-        with col_m3:
-            st.metric("FIRE達成時の資産額", fmt_oku(assets_at_fire))
+        fire_age_label = (
+            f"夫{fire_age_h_val:.0f}歳 / 妻{fire_age_w_val:.0f}歳"
+            if fire_age_w_val and age_h != age_w else f"{fire_age_h_val:.0f}歳"
+        )
+        _fire_date_str = fire_date_val.strftime('%Y年%m月') if fire_date_val else '—'
+        _assets_str    = fmt_oku(assets_at_fire)
+        _years_str     = f"{years_to_fire:.1f}"
+        st.markdown(f"""
+<div style="
+    background: linear-gradient(135deg, #0f766e 0%, #0e7490 100%);
+    border-radius: 12px;
+    padding: 28px 32px;
+    margin-bottom: 8px;
+    color: white;
+">
+    <div style="font-size: 11px; font-weight: 600; opacity: 0.7; letter-spacing: 1px;
+                text-transform: uppercase; margin-bottom: 10px;">
+        目標{target_rate}% ─ FIRE 試算結果
+    </div>
+    <div style="font-size: 44px; font-weight: 800; letter-spacing: -0.02em;
+                line-height: 1.1; margin-bottom: 16px;">
+        {fire_age_label}
+    </div>
+    <div style="display: flex; gap: 0; flex-wrap: wrap;">
+        <div style="padding-right: 28px; border-right: 1px solid rgba(255,255,255,0.2);">
+            <div style="font-size: 11px; opacity: 0.7; margin-bottom: 3px;">今から</div>
+            <div style="font-size: 22px; font-weight: 700;">{_years_str}年後</div>
+        </div>
+        <div style="padding: 0 28px; border-right: 1px solid rgba(255,255,255,0.2);">
+            <div style="font-size: 11px; opacity: 0.7; margin-bottom: 3px;">FIRE時の資産</div>
+            <div style="font-size: 22px; font-weight: 700;">{_assets_str}</div>
+        </div>
+        <div style="padding-left: 28px;">
+            <div style="font-size: 11px; opacity: 0.7; margin-bottom: 3px;">達成確率</div>
+            <div style="font-size: 22px; font-weight: 700;">{target_rate}%</div>
+        </div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
         # ── プランA比較 ──────────────────────────────────────────────────
         _pa_col1, _pa_col2 = st.columns([4, 1])
