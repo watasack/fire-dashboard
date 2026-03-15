@@ -927,6 +927,81 @@ with st.expander("詳細な確率計算（1,000通り）", expanded=st.session_s
     </div>
     """, unsafe_allow_html=True)
 
+            # ── Phase3 Block A: 「次の一手」インサイト ──────────────────────────────
+            try:
+                _mi_now = (income_h + income_w) * 10000
+                _me_now = expense * 10000
+
+                # ① 支出 -3万円/月（下限1万円/月）
+                _me_adj = max(_me_now - 30000, 10000)
+                _cfg_e = copy.deepcopy(cfg)
+                _ne = _me_adj * 12
+                _cfg_e['fire']['manual_annual_expense'] = _ne
+                _cfg_e['fire']['expense_categories']['enabled'] = False
+                for _s in _cfg_e['fire']['base_expense_by_stage']:
+                    _cfg_e['fire']['base_expense_by_stage'][_s] = _ne
+                _df_e = simulate_future_assets(
+                    current_cash=cash, current_stocks=stocks,
+                    monthly_income=_mi_now, monthly_expense=_me_adj,
+                    config=_cfg_e, scenario="standard",
+                )
+                _fr_e = _df_e[_df_e['fire_achieved'] == True]
+                _fm_e = int(_fr_e.iloc[0]['fire_month']) if len(_fr_e) > 0 else None
+
+                # ② 月収 +10万円（cfg 変更なし）
+                _df_i = simulate_future_assets(
+                    current_cash=cash, current_stocks=stocks,
+                    monthly_income=_mi_now + 100000, monthly_expense=_me_now,
+                    config=cfg, scenario="standard",
+                )
+                _fr_i = _df_i[_df_i['fire_achieved'] == True]
+                _fm_i = int(_fr_i.iloc[0]['fire_month']) if len(_fr_i) > 0 else None
+
+                _sv_e = round((fire_month_val - _fm_e) / 12.0, 1) if _fm_e is not None else None
+                _sv_i = round((fire_month_val - _fm_i) / 12.0, 1) if _fm_i is not None else None
+                _e_best = (
+                    (_sv_e is not None and _sv_i is None) or
+                    (_sv_e is not None and _sv_i is not None and _sv_e >= _sv_i)
+                )
+                _badge = (
+                    '<span style="background:#16a34a;color:white;font-size:10px;'
+                    'font-weight:700;padding:2px 6px;border-radius:4px;margin-left:6px;">▲優先</span>'
+                )
+
+                if _sv_e is None:
+                    _html_e = "支出を月3万円下げると: 試算期間内に未達成"
+                elif _sv_e > 0:
+                    _html_e = f"支出を月3万円下げると: <b>{_sv_e:.1f}年早くFIRE（約{age_h + _fm_e / 12:.0f}歳）</b>"
+                elif _sv_e < 0:
+                    _html_e = f"支出を月3万円下げると: {abs(_sv_e):.1f}年遅くなる（約{age_h + _fm_e / 12:.0f}歳）"
+                else:
+                    _html_e = f"支出を月3万円下げると: 変わらず（約{age_h + _fm_e / 12:.0f}歳）"
+                if _e_best:
+                    _html_e += _badge
+
+                if _sv_i is None:
+                    _html_i = "月収を10万円増やすと: 試算期間内に未達成"
+                elif _sv_i > 0:
+                    _html_i = f"月収を10万円増やすと: <b>{_sv_i:.1f}年早くFIRE（約{age_h + _fm_i / 12:.0f}歳）</b>"
+                elif _sv_i < 0:
+                    _html_i = f"月収を10万円増やすと: {abs(_sv_i):.1f}年遅くなる（約{age_h + _fm_i / 12:.0f}歳）"
+                else:
+                    _html_i = f"月収を10万円増やすと: 変わらず（約{age_h + _fm_i / 12:.0f}歳）"
+                if not _e_best:
+                    _html_i += _badge
+
+                st.markdown(f"""
+<div style="background:linear-gradient(135deg,#1e3a5f 0%,#1e40af 100%);
+            border-radius:12px;padding:20px 24px;margin-bottom:8px;color:white;">
+    <div style="font-size:12px;font-weight:700;opacity:0.7;letter-spacing:1px;
+                text-transform:uppercase;margin-bottom:10px;">💡 次の一手</div>
+    <div style="font-size:15px;margin-bottom:6px;">{_html_e}</div>
+    <div style="font-size:15px;margin-bottom:12px;">{_html_i}</div>
+    <div style="font-size:11px;opacity:0.6;">※確定論的概算（年金・教育費含む）</div>
+</div>""", unsafe_allow_html=True)
+            except Exception as e:
+                st.caption("改善提案の概算表示を一時的にスキップしました")
+
             # ── プランA比較 ──────────────────────────────────────────────────
             _pa_col1, _pa_col2 = st.columns([4, 1])
             with _pa_col1:
