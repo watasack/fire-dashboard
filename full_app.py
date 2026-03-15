@@ -499,74 +499,75 @@ with st.sidebar:
                 f"実質負担 約{ideco_monthly - ideco_tax_saving:.1f}万円/月（節税 約{ideco_tax_saving:.1f}万円）"
             )
 
-    st.header("FIRE後の副収入（サイドFIRE）")
-    st.write("完全リタイアではなく、パートや副業などで部分的に収入を得る場合に入力してください。")
-    _sf_h, _sf_w = st.columns(2)
-    with _sf_h:
-        husband_post_fire_income = st.number_input(
-            "夫の副収入（万円/月）",
-            value=0, min_value=0, step=1,
-            help="FIRE後に夫が得るパート・副業・フリーランスなどの月間労働収入。"
-        )
-        husband_side_fire_until = st.number_input(
-            "夫の副収入 終了年齢（歳）",
-            value=65, min_value=0, max_value=100, step=1,
-            help="夫の副収入が何歳まで続くか。この年齢に達したら0として計算します。"
-        )
-    with _sf_w:
-        wife_post_fire_income = st.number_input(
-            "妻の副収入（万円/月）",
-            value=0, min_value=0, step=1,
-            help="FIRE後に妻が得るパート・副業・フリーランスなどの月間労働収入。"
-        )
-        wife_side_fire_until = st.number_input(
-            "妻の副収入 終了年齢（歳）",
-            value=65, min_value=0, max_value=100, step=1,
-            help="妻の副収入が何歳まで続くか。この年齢に達したら0として計算します。"
-        )
+    with st.expander("FIRE後の設定（副収入・取り崩し）", expanded=False):
+        st.markdown("**FIRE後の副収入（サイドFIRE）**")
+        st.caption("完全リタイアではなく、パートや副業などで部分的に収入を得る場合に入力してください。")
+        _sf_h, _sf_w = st.columns(2)
+        with _sf_h:
+            husband_post_fire_income = st.number_input(
+                "夫の副収入（万円/月）",
+                value=0, min_value=0, step=1,
+                help="FIRE後に夫が得るパート・副業・フリーランスなどの月間労働収入。"
+            )
+            husband_side_fire_until = st.number_input(
+                "夫の副収入 終了年齢（歳）",
+                value=65, min_value=0, max_value=100, step=1,
+                help="夫の副収入が何歳まで続くか。この年齢に達したら0として計算します。"
+            )
+        with _sf_w:
+            wife_post_fire_income = st.number_input(
+                "妻の副収入（万円/月）",
+                value=0, min_value=0, step=1,
+                help="FIRE後に妻が得るパート・副業・フリーランスなどの月間労働収入。"
+            )
+            wife_side_fire_until = st.number_input(
+                "妻の副収入 終了年齢（歳）",
+                value=65, min_value=0, max_value=100, step=1,
+                help="妻の副収入が何歳まで続くか。この年齢に達したら0として計算します。"
+            )
 
-    st.subheader("取り崩し戦略")
-    withdrawal_strategy = st.selectbox(
-        "FIRE後の取り崩し方法",
-        options=["固定額", "定率（残高×年率）", "ガードレール戦略"],
-        index=0,
-        help=(
-            "固定額: 毎月一定額を取り崩します。シンプルですが暴落時に資産が速く減ります。\n"
-            "定率: 残高の一定割合（年率）を毎年取り崩します。枯渇しにくいですが生活費が変動します。\n"
-            "ガードレール戦略: 資産がFIRE時の基準を下回ると支出を自動削減します。柔軟で現実的。"
-        ),
-    )
-    if withdrawal_strategy == "定率（残高×年率）":
-        withdrawal_rate = st.slider(
-            "年間取り崩し率（%）",
-            min_value=2.0, max_value=6.0, value=4.0, step=0.1,
-            help="残高の何%を年間で取り崩すか。4%が一般的な目安（4%ルール）。",
+        st.markdown("**取り崩し戦略**")
+        withdrawal_strategy = st.selectbox(
+            "FIRE後の取り崩し方法",
+            options=["固定額", "定率（残高×年率）", "ガードレール戦略"],
+            index=0,
+            help=(
+                "固定額: 毎月一定額を取り崩します。シンプルですが暴落時に資産が速く減ります。\n"
+                "定率: 残高の一定割合（年率）を毎年取り崩します。枯渇しにくいですが生活費が変動します。\n"
+                "ガードレール戦略: 資産がFIRE時の基準を下回ると支出を自動削減します。柔軟で現実的。"
+            ),
         )
-    else:
-        withdrawal_rate = 4.0
-    if withdrawal_strategy == "ガードレール戦略":
-        _gr1, _gr2 = st.columns(2)
-        with _gr1:
-            guardrail_lower = st.number_input(
-                "下限ガードレール（FIRE時資産の何%）",
-                value=80, min_value=50, max_value=95, step=5,
-                help="資産がFIRE時の○%を下回ったら生活費を削減します。",
+        if withdrawal_strategy == "定率（残高×年率）":
+            withdrawal_rate = st.slider(
+                "年間取り崩し率（%）",
+                min_value=2.0, max_value=6.0, value=4.0, step=0.1,
+                help="残高の何%を年間で取り崩すか。4%が一般的な目安（4%ルール）。",
             )
-            guardrail_upper = st.number_input(
-                "上限ガードレール（FIRE時資産の何%）",
-                value=120, min_value=105, max_value=200, step=5,
-                help="資産がFIRE時の○%を上回ったら生活費をわずかに増やせます。",
-            )
-        with _gr2:
-            guardrail_reduction = st.slider(
-                "下限時の生活費削減率（%）",
-                min_value=5, max_value=30, value=10, step=5,
-                help="下限ガードレールを下回ったときに生活費を何%削減するか。",
-            )
-    else:
-        guardrail_lower = 80
-        guardrail_upper = 120
-        guardrail_reduction = 10
+        else:
+            withdrawal_rate = 4.0
+        if withdrawal_strategy == "ガードレール戦略":
+            _gr1, _gr2 = st.columns(2)
+            with _gr1:
+                guardrail_lower = st.number_input(
+                    "下限ガードレール（FIRE時資産の何%）",
+                    value=80, min_value=50, max_value=95, step=5,
+                    help="資産がFIRE時の○%を下回ったら生活費を削減します。",
+                )
+                guardrail_upper = st.number_input(
+                    "上限ガードレール（FIRE時資産の何%）",
+                    value=120, min_value=105, max_value=200, step=5,
+                    help="資産がFIRE時の○%を上回ったら生活費をわずかに増やせます。",
+                )
+            with _gr2:
+                guardrail_reduction = st.slider(
+                    "下限時の生活費削減率（%）",
+                    min_value=5, max_value=30, value=10, step=5,
+                    help="下限ガードレールを下回ったときに生活費を何%削減するか。",
+                )
+        else:
+            guardrail_lower = 80
+            guardrail_upper = 120
+            guardrail_reduction = 10
 
     st.divider()
     st.caption("詳細な計算設定は note のマニュアルを参照してください。")
