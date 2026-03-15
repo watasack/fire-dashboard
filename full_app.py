@@ -822,6 +822,18 @@ with st.expander("詳細な確率計算（1,000通り）", expanded=st.session_s
         progress_bar.empty()
         status_text.empty()
 
+        st.session_state['_sim'] = {
+            'mc_res': mc_res, 'df': df, 'cfg': cfg,
+            'cash': cash, 'stocks': stocks,
+        }
+
+    if '_sim' in st.session_state:
+        mc_res = st.session_state['_sim']['mc_res']
+        df     = st.session_state['_sim']['df']
+        cfg    = st.session_state['_sim']['cfg']
+        cash   = st.session_state['_sim']['cash']
+        stocks = st.session_state['_sim']['stocks']
+
         st.markdown("## シミュレーション結果")
 
         if husband_post_fire_income > 0 or wife_post_fire_income > 0:
@@ -934,7 +946,6 @@ with st.expander("詳細な確率計算（1,000通り）", expanded=st.session_s
                         'assets_at_fire': assets_at_fire,
                         'years_to_fire': years_to_fire,
                     }
-                    st.rerun()
                 if 'plan_a' in st.session_state:
                     if st.button("プランAをクリア", use_container_width=True):
                         del st.session_state['plan_a']
