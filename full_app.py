@@ -5,7 +5,7 @@ import yaml
 import copy
 import numpy as np
 import pandas as pd
-from src.simulator import run_mc_fixed_fire
+from src.simulator import run_mc_fixed_fire, simulate_future_assets
 from src.visualizer import create_fire_timeline_chart, create_income_expense_stream_chart, extract_life_events
 from src.html_generator import generate_dashboard_html
 from src.utils import fmt_oku
@@ -571,6 +571,83 @@ with st.sidebar:
 
     st.divider()
     st.caption("詳細な計算設定は note のマニュアルを参照してください。")
+
+# =============================================================================
+# クイック試算
+# =============================================================================
+st.subheader("まず3項目で試算する")
+_q1, _q2, _q3 = st.columns(3)
+with _q1:
+    q_income = st.number_input("世帯月手取り（万円）", min_value=10, max_value=200, value=55, step=1, key="q_income")
+with _q2:
+    q_expense = st.number_input("月間支出（万円）", min_value=10, max_value=100, value=30, step=1, key="q_expense")
+with _q3:
+    q_assets = st.number_input("現在の金融資産（万円）", min_value=0, max_value=10000, value=1500, step=100, key="q_assets")
+
+if st.button("まず試算する", type="primary", use_container_width=True, key="q_run"):
+    _q_annual_expense = int(q_expense) * 12 * 10000
+    _q_cfg = copy.deepcopy(base_cfg)
+    _q_cfg["simulation"]["husband_income"] = 0
+    _q_cfg["simulation"]["wife_income"] = 0
+    _q_cfg["fire"]["expense_categories"]["enabled"] = False
+    _q_cfg["fire"]["manual_annual_expense"] = _q_annual_expense
+    _q_cfg["simulation"]["start_age"] = int(age_h)
+    _q_cfg["fire"]["optimal_fire_month"] = None
+    _q_cfg["fire"]["optimal_extra_monthly_budget"] = 0
+    _q_cfg["simulation"]["maternity_leave"] = []
+    _q_cfg["simulation"]["husband_parental_leave"] = []
+    _q_cfg["simulation"]["husband_reduced_hours"] = []
+    for _stage in _q_cfg["fire"]["base_expense_by_stage"]:
+        _q_cfg["fire"]["base_expense_by_stage"][_stage] = _q_annual_expense
+    with st.spinner("試算中..."):
+        try:
+            _q_df = simulate_future_assets(
+                current_cash=int(q_assets) * 10000 * 0.30,
+                current_stocks=int(q_assets) * 10000 * 0.70,
+                monthly_income=int(q_income) * 10000,
+                monthly_expense=int(q_expense) * 10000,
+                config=_q_cfg,
+                scenario="standard",
+            )
+            _q_fire_rows = _q_df[_q_df["fire_achieved"] == True]
+            if len(_q_fire_rows) > 0:
+                _q_fire_month = int(_q_fire_rows.iloc[0]["fire_month"])
+                _q_fire_age = int(age_h) + _q_fire_month / 12
+                st.session_state["quick_result"] = {"fire_age": round(_q_fire_age, 1), "success": True}
+            else:
+                st.session_state["quick_result"] = {"success": False}
+        except Exception as _qe:
+            st.warning(f"試算中にエラーが発生しました: {_qe}")
+
+if "quick_result" in st.session_state:
+    _qr = st.session_state["quick_result"]
+    if _qr.get("success"):
+        st.markdown(f"""
+<div style="
+    background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+    border-radius: 12px;
+    padding: 24px 32px;
+    margin-bottom: 4px;
+    color: white;
+">
+    <div style="font-size: 11px; font-weight: 600; opacity: 0.7; letter-spacing: 1px;
+                text-transform: uppercase; margin-bottom: 8px;">
+        概算 ─ クイック試算結果
+    </div>
+    <div style="font-size: 40px; font-weight: 800; letter-spacing: -0.02em;
+                line-height: 1.1; margin-bottom: 0;">
+        FIRE年齢の目安: 約{_qr['fire_age']:.0f}歳（夫）
+    </div>
+</div>
+""", unsafe_allow_html=True)
+        st.caption("※ 年金・子育て費用・育休を含まない概算です。詳細な試算には下の確率計算をご利用ください。")
+    else:
+        st.warning("現在の条件ではFIREタイミングが見つかりませんでした。支出を減らすか資産を増やしてみてください。")
+    if st.button("詳細な確率計算へ（1,000通りの試算）▼", use_container_width=True, key="q_to_detail"):
+        st.session_state["show_detail"] = True
+        st.rerun()
+
+st.markdown("---")
 
 # =============================================================================
 # メインコンテンツ: ライフイベント・詳細設定
