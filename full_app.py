@@ -1246,19 +1246,18 @@ with st.expander("詳細な確率計算（1,000通り）", expanded=st.session_s
     <div style="font-size:12px;color:#64748B;font-weight:500;">資産 {_assets_i_str}</div>
 </div>"""
 
-                st.markdown("""
-<div style="margin:16px 0 8px;">
+                # st.columns の HTML rendering バグを回避: 3枚を1つのHTMLブロックで描画
+                st.markdown(f"""
+<div style="margin:16px 0 4px;">
     <div style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;
                 color:#94A3B8;margin-bottom:10px;">次の一手 — シナリオ比較</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+        {_card_now}
+        {_card_e}
+        {_card_i}
+    </div>
 </div>
 """, unsafe_allow_html=True)
-                _col_now, _col_e, _col_i = st.columns(3)
-                with _col_now:
-                    st.markdown(_card_now, unsafe_allow_html=True)
-                with _col_e:
-                    st.markdown(_card_e, unsafe_allow_html=True)
-                with _col_i:
-                    st.markdown(_card_i, unsafe_allow_html=True)
                 st.caption("※確定論的概算（年金・教育費含む）")
             except Exception as e:
                 st.caption("改善提案の概算表示を一時的にスキップしました")
