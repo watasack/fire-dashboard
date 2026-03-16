@@ -964,42 +964,77 @@ with st.expander("詳細な確率計算（1,000通り）", expanded=st.session_s
                     (_sv_e is not None and _sv_i is None) or
                     (_sv_e is not None and _sv_i is not None and _sv_e >= _sv_i)
                 )
-                _badge = (
-                    '<span style="background:#16a34a;color:white;font-size:10px;'
-                    'font-weight:700;padding:2px 6px;border-radius:4px;margin-left:6px;">▲優先</span>'
-                )
+                # ── Block B: 3シナリオ比較カード ─────────────────────────────
+                _assets_e_str = fmt_oku(_df_e.iloc[_fm_e]['assets']) if _fm_e is not None else "—"
+                _assets_i_str = fmt_oku(_df_i.iloc[_fm_i]['assets']) if _fm_i is not None else "—"
+                _age_e = age_h + _fm_e / 12 if _fm_e is not None else None
+                _age_i = age_h + _fm_i / 12 if _fm_i is not None else None
+                _i_best = not _e_best and _sv_i is not None
 
+                # 現状カード
+                _card_now = f"""
+<div style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);
+            border-radius:10px;padding:14px 12px;color:white;text-align:center;">
+    <div style="font-size:11px;opacity:0.7;margin-bottom:8px;">現状</div>
+    <div style="font-size:26px;font-weight:800;margin-bottom:4px;">{fire_age_h_val:.0f}歳</div>
+    <div style="margin-bottom:8px;font-size:12px;opacity:0.55;">ベースライン</div>
+    <div style="font-size:11px;opacity:0.55;">資産 {_assets_str}</div>
+</div>"""
+
+                # 支出-3万カード
                 if _sv_e is None:
-                    _html_e = "支出を月3万円下げると: 試算期間内に未達成"
+                    _delta_e = '<span style="font-size:12px;opacity:0.55;">試算期間内に未達成</span>'
                 elif _sv_e > 0:
-                    _html_e = f"支出を月3万円下げると: <b>{_sv_e:.1f}年早くFIRE（約{age_h + _fm_e / 12:.0f}歳）</b>"
+                    _delta_e = f'<span style="color:#4ade80;font-weight:700;font-size:13px;">▲ {_sv_e:.1f}年早く</span>'
                 elif _sv_e < 0:
-                    _html_e = f"支出を月3万円下げると: {abs(_sv_e):.1f}年遅くなる（約{age_h + _fm_e / 12:.0f}歳）"
+                    _delta_e = f'<span style="color:#f87171;font-size:13px;">▼ {abs(_sv_e):.1f}年遅い</span>'
                 else:
-                    _html_e = f"支出を月3万円下げると: 変わらず（約{age_h + _fm_e / 12:.0f}歳）"
-                if _e_best:
-                    _html_e += _badge
+                    _delta_e = '<span style="font-size:12px;opacity:0.55;">変わらず</span>'
+                _age_e_str = f"{_age_e:.0f}歳" if _age_e is not None else "—"
+                _bg_e = "linear-gradient(135deg,#1e3a5f 0%,#1e40af 100%)" if _e_best else "rgba(255,255,255,0.06)"
+                _border_e = "2px solid #3b82f6" if _e_best else "1px solid rgba(255,255,255,0.15)"
+                _badge_e = '<div style="font-size:10px;background:#16a34a;color:white;padding:1px 6px;border-radius:3px;display:inline-block;margin-bottom:4px;">▲優先</div>' if _e_best else ""
+                _card_e = f"""
+<div style="background:{_bg_e};border:{_border_e};
+            border-radius:10px;padding:14px 12px;color:white;text-align:center;">
+    <div style="font-size:11px;opacity:0.7;margin-bottom:6px;">支出 −3万/月</div>
+    {_badge_e}
+    <div style="font-size:26px;font-weight:800;margin-bottom:4px;">{_age_e_str}</div>
+    <div style="margin-bottom:8px;">{_delta_e}</div>
+    <div style="font-size:11px;opacity:0.55;">資産 {_assets_e_str}</div>
+</div>"""
 
+                # 月収+10万カード
                 if _sv_i is None:
-                    _html_i = "月収を10万円増やすと: 試算期間内に未達成"
+                    _delta_i = '<span style="font-size:12px;opacity:0.55;">試算期間内に未達成</span>'
                 elif _sv_i > 0:
-                    _html_i = f"月収を10万円増やすと: <b>{_sv_i:.1f}年早くFIRE（約{age_h + _fm_i / 12:.0f}歳）</b>"
+                    _delta_i = f'<span style="color:#4ade80;font-weight:700;font-size:13px;">▲ {_sv_i:.1f}年早く</span>'
                 elif _sv_i < 0:
-                    _html_i = f"月収を10万円増やすと: {abs(_sv_i):.1f}年遅くなる（約{age_h + _fm_i / 12:.0f}歳）"
+                    _delta_i = f'<span style="color:#f87171;font-size:13px;">▼ {abs(_sv_i):.1f}年遅い</span>'
                 else:
-                    _html_i = f"月収を10万円増やすと: 変わらず（約{age_h + _fm_i / 12:.0f}歳）"
-                if not _e_best:
-                    _html_i += _badge
+                    _delta_i = '<span style="font-size:12px;opacity:0.55;">変わらず</span>'
+                _age_i_str = f"{_age_i:.0f}歳" if _age_i is not None else "—"
+                _bg_i = "linear-gradient(135deg,#1e3a5f 0%,#1e40af 100%)" if _i_best else "rgba(255,255,255,0.06)"
+                _border_i = "2px solid #3b82f6" if _i_best else "1px solid rgba(255,255,255,0.15)"
+                _badge_i = '<div style="font-size:10px;background:#16a34a;color:white;padding:1px 6px;border-radius:3px;display:inline-block;margin-bottom:4px;">▲優先</div>' if _i_best else ""
+                _card_i = f"""
+<div style="background:{_bg_i};border:{_border_i};
+            border-radius:10px;padding:14px 12px;color:white;text-align:center;">
+    <div style="font-size:11px;opacity:0.7;margin-bottom:6px;">月収 +10万</div>
+    {_badge_i}
+    <div style="font-size:26px;font-weight:800;margin-bottom:4px;">{_age_i_str}</div>
+    <div style="margin-bottom:8px;">{_delta_i}</div>
+    <div style="font-size:11px;opacity:0.55;">資産 {_assets_i_str}</div>
+</div>"""
 
-                st.markdown(f"""
-<div style="background:linear-gradient(135deg,#1e3a5f 0%,#1e40af 100%);
-            border-radius:12px;padding:20px 24px;margin-bottom:8px;color:white;">
-    <div style="font-size:12px;font-weight:700;opacity:0.7;letter-spacing:1px;
-                text-transform:uppercase;margin-bottom:10px;">💡 次の一手</div>
-    <div style="font-size:15px;margin-bottom:6px;">{_html_e}</div>
-    <div style="font-size:15px;margin-bottom:12px;">{_html_i}</div>
-    <div style="font-size:11px;opacity:0.6;">※確定論的概算（年金・教育費含む）</div>
-</div>""", unsafe_allow_html=True)
+                _col_now, _col_e, _col_i = st.columns(3)
+                with _col_now:
+                    st.markdown(_card_now, unsafe_allow_html=True)
+                with _col_e:
+                    st.markdown(_card_e, unsafe_allow_html=True)
+                with _col_i:
+                    st.markdown(_card_i, unsafe_allow_html=True)
+                st.caption("※確定論的概算（年金・教育費含む）")
             except Exception as e:
                 st.caption("改善提案の概算表示を一時的にスキップしました")
 
