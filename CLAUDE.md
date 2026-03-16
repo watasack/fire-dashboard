@@ -26,6 +26,12 @@ set PYTHONIOENCODING=utf-8 && python take_screenshot.py
 
 出力先: `docs/screenshots/` （result_top.png / full_page.png / assets_chart.png）
 
+**スクリーンショットの運用ルール:**
+- `docs/screenshots/` は `.gitignore` 済み → コミットしない
+- 実行のたびに同名ファイルで上書き → 蓄積しない
+- 確認が終わったらそのままで構わない（次回実行時に上書きされる）
+- note記事など外部公開用に使う場合は `docs/screenshots/` 以外の場所にコピーする
+
 **注意: `pnpm dev` は `--turbopack` なしで起動すること（package.json で設定済み）**
 Turbopack（Next.js 15.5.12）には React Client Manifest のバグがあり、アプリが起動しない。
 
