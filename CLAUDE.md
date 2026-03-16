@@ -21,7 +21,7 @@ npx next build
 
 ```bash
 # pnpm dev を起動した状態で別ターミナルから実行
-set PYTHONIOENCODING=utf-8 && python take_screenshot.py
+set PYTHONIOENCODING=utf-8 && python tools/take_screenshot.py
 ```
 
 出力先: `docs/screenshots/` （result_top.png / full_page.png / assets_chart.png）

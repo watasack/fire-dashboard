@@ -66,7 +66,15 @@
       "Bash(node -e \"const r = require\\(''./node_modules/recharts/package.json''\\); console.log\\(r.version\\)\")",
       "Bash(pip show:*)",
       "Bash(sort -t: -k2)",
-      "Bash(file c:/Users/shuhe/Documents/01_personal/docs/screenshots/*.png)"
+      "Bash(file c:/Users/shuhe/Documents/01_personal/docs/screenshots/*.png)",
+      "Bash(PYTHONIOENCODING=utf-8 python -c \":*)",
+      "Bash(PYTHONIOENCODING=utf-8 python take_screenshot.py)",
+      "Bash(PYTHONIOENCODING=utf-8 FIRE_URL=http://localhost:3002 python take_screenshot.py)",
+      "Bash(Get-Process -Id 17072)",
+      "Bash(powershell -command 'Get-Process -Id 17072')",
+      "Bash(mkdir -p tools)",
+      "Bash(mv take_screenshot.py tools/take_screenshot.py)",
+      "Bash(mv DEVELOPMENT.md docs/DEVELOPMENT.md)"
     ]
   }
 }
