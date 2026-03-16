@@ -72,10 +72,67 @@ run_mc_fixed_fire(cash, stocks, cfg, target_success_rate=..., monthly_income=...
 
 | 環境 | URL |
 |---|---|
-| 本番 | `.plans/ui_redesign_status.md` 参照 |
+| 本番 | `https://fire-dashboard-n4bdcefvcuu3ytl68fwtrw.streamlit.app/` |
 | ローカル | `streamlit run full_app.py` |
 
-アクセスコード: `.plans/ui_redesign_status.md` 参照
+アクセスコード: `.streamlit/secrets.toml` の `access_codes` 参照
+
+---
+
+## Playwright スクリーンショット手法（確定版）
+
+本番アプリは Streamlit Cloud で iframe 内にレンダリングされる。
+スクリーンショット取得には以下のパターンを使うこと。
+
+```python
+from playwright.sync_api import sync_playwright
+
+URL = 'https://fire-dashboard-n4bdcefvcuu3ytl68fwtrw.streamlit.app/'
+ACCESS_CODE = 'DEV-LOCAL-ONLY'  # .streamlit/secrets.toml 参照
+TIMEOUT = 60000
+
+with sync_playwright() as p:
+    browser = p.chromium.launch(headless=True)
+    # 高さ5000pxで全体を一度に表示（スクロール不要）
+    page = browser.new_page(viewport={'width': 1440, 'height': 5000})
+
+    page.goto(URL, timeout=TIMEOUT)
+    page.wait_for_load_state('domcontentloaded', timeout=TIMEOUT)
+    page.wait_for_timeout(6000)  # Streamlit JS 初期化待ち
+
+    # iframe 内のアプリにアクセス
+    app = page.frame_locator("iframe[src*='/~/+/']")
+
+    # ログイン
+    app.locator("input[type='password']").wait_for(timeout=TIMEOUT)
+    app.locator("input[type='password']").fill(ACCESS_CODE)
+    page.keyboard.press('Enter')
+    app.locator("[data-testid='stSidebar']").wait_for(timeout=TIMEOUT)
+    page.wait_for_timeout(4000)
+
+    # シミュレーション実行
+    app.locator('button:has-text("まず試算する")').click()
+    page.wait_for_timeout(20000)
+    app.locator('text=詳細な確率計算へ').click()
+    page.wait_for_timeout(5000)
+    app.locator('button:has-text("シミュレーションを開始")').click()
+    page.wait_for_timeout(60000)  # MC 1000回の計算待ち
+
+    # スクリーンショット（全体）
+    page.screenshot(path='dashboard_screenshots/result_full.png')
+
+    # 特定領域のクロップ（x=290 がサイドバー右端）
+    page.screenshot(path='dashboard_screenshots/main_area.png',
+                    clip={'x': 290, 'y': 0, 'width': 1150, 'height': 2000})
+
+    browser.close()
+```
+
+**重要ポイント:**
+- Streamlit Cloud はコンテンツが `iframe[src*='/~/+/']` の中にある
+- `window.scrollTo()` はフレーム内では効かない → **viewport height=5000px** で代替
+- フレームは `page.frames[2]` でも参照可能（0=outer, 1=statuspage, 2=app）
+- スクリーンショットは `dashboard_screenshots/` に保存（.gitignore済み）
 
 ---
 

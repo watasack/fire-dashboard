@@ -56,39 +56,198 @@ st.set_page_config(
 def inject_custom_css():
     st.markdown("""
         <style>
-        /* メイン背景とフォント */
-        .main {
-            background-color: #f8f9fa;
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700;900&display=swap');
+
+        /* ── カラー変数 ───────────────────────────────────── */
+        :root {
+            --navy:        #1E293B;
+            --navy-light:  #334155;
+            --navy-xlight: #64748B;
+            --amber:       #F59E0B;
+            --amber-dark:  #D97706;
+            --amber-bg:    #FFFBEB;
+            --emerald:     #059669;
+            --emerald-bg:  #D1FAE5;
+            --danger:      #DC2626;
+            --danger-bg:   #FEE2E2;
+            --bg:          #F8FAFC;
+            --surface:     #FFFFFF;
+            --border:      #E2E8F0;
+            --text-1:      #0F172A;
+            --text-2:      #475569;
+            --text-3:      #94A3B8;
         }
+
+        /* ── ベース ──────────────────────────────────────── */
+        html, body, [data-testid="stApp"] {
+            font-family: 'Noto Sans JP', 'Inter', -apple-system, sans-serif !important;
+        }
+        .main, [data-testid="stMain"] {
+            background-color: var(--bg) !important;
+        }
+        [data-testid="stAppViewContainer"] {
+            background-color: var(--bg) !important;
+        }
+        [data-testid="stMainBlockContainer"] {
+            padding-top: 1rem !important;
+        }
+
+        /* ── サイドバー ──────────────────────────────────── */
+        [data-testid="stSidebar"] {
+            background-color: #F1F5F9 !important;
+            border-right: 1px solid var(--border) !important;
+        }
+        [data-testid="stSidebar"] h1,
+        [data-testid="stSidebar"] h2,
+        [data-testid="stSidebar"] h3 {
+            font-size: 10px !important;
+            font-weight: 700 !important;
+            letter-spacing: 0.1em !important;
+            text-transform: uppercase !important;
+            color: var(--navy-xlight) !important;
+            margin-top: 1.4rem !important;
+            margin-bottom: 0.6rem !important;
+            padding-bottom: 4px !important;
+            border-bottom: 1px solid var(--border) !important;
+        }
+        [data-testid="stSidebar"] label {
+            font-size: 12px !important;
+            font-weight: 500 !important;
+            color: var(--navy-light) !important;
+        }
+        [data-testid="stSidebar"] .stCaption p {
+            color: var(--text-3) !important;
+            font-size: 11px !important;
+        }
+
+        /* ── タイポグラフィ ───────────────────────────────── */
         h1, h2, h3 {
-            color: #1e3a8a;
-            font-weight: 700;
+            color: var(--navy) !important;
+            font-weight: 800 !important;
         }
-        /* メトリクスの装飾 */
+
+        /* ── メトリクス ──────────────────────────────────── */
         [data-testid="stMetricValue"] {
-            font-size: 2.2rem !important;
-            color: #1e40af !important;
+            font-size: 2.4rem !important;
+            font-weight: 800 !important;
+            color: var(--navy) !important;
         }
-        /* カード風のコンテナ */
-        .stExpander, .stTabs {
-            background-color: white;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-            padding: 10px;
-            border: none !important;
+        [data-testid="stMetricLabel"] {
+            font-size: 0.7rem !important;
+            font-weight: 700 !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.08em !important;
+            color: var(--text-2) !important;
         }
-        /* ボタンの強調 */
-        .stButton>button {
-            width: 100%;
-            border-radius: 8px;
-            height: 3em;
-            background-color: #1e40af !important;
-            color: white !important;
-            font-weight: 600;
+
+        /* ── ボタン ───────────────────────────────────────── */
+        .stButton > button[kind="primary"] {
+            width: 100% !important;
+            border-radius: 8px !important;
+            height: 3.2em !important;
+            background-color: var(--amber) !important;
+            border: 2px solid var(--amber-dark) !important;
+            color: var(--navy) !important;
+            font-weight: 700 !important;
+            font-size: 15px !important;
+            letter-spacing: 0.02em !important;
+            box-shadow: 0 2px 8px rgba(245,158,11,0.3) !important;
+            transition: all 0.15s ease !important;
         }
-        /* インフォメーションボックス */
+        .stButton > button[kind="primary"]:hover {
+            background-color: var(--amber-dark) !important;
+            box-shadow: 0 4px 16px rgba(245,158,11,0.4) !important;
+            transform: translateY(-1px) !important;
+        }
+        .stButton > button:not([kind="primary"]) {
+            border-radius: 8px !important;
+            border: 1px solid var(--border) !important;
+            color: var(--navy-light) !important;
+            font-weight: 600 !important;
+            background-color: var(--surface) !important;
+        }
+        .stButton > button:not([kind="primary"]):hover {
+            border-color: var(--navy-xlight) !important;
+            background-color: #F8FAFC !important;
+        }
+
+        /* ── Expander ─────────────────────────────────────── */
+        .stExpander {
+            background-color: var(--surface) !important;
+            border: 1px solid var(--border) !important;
+            border-radius: 12px !important;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.06) !important;
+        }
+        .stExpander > details > summary {
+            font-weight: 600 !important;
+            color: var(--navy) !important;
+            font-size: 14px !important;
+        }
+        .stExpander > details > summary:hover {
+            color: var(--amber-dark) !important;
+        }
+
+        /* ── Tabs ─────────────────────────────────────────── */
+        .stTabs [data-baseweb="tab-list"] {
+            background-color: transparent !important;
+            border-bottom: 2px solid var(--border) !important;
+            gap: 0 !important;
+        }
+        .stTabs [data-baseweb="tab"] {
+            font-weight: 600 !important;
+            font-size: 13px !important;
+            color: var(--text-2) !important;
+            padding: 8px 20px !important;
+            border-bottom: 2px solid transparent !important;
+        }
+        .stTabs [aria-selected="true"] {
+            color: var(--amber-dark) !important;
+            border-bottom: 2px solid var(--amber-dark) !important;
+        }
+
+        /* ── Input / NumberInput ──────────────────────────── */
+        .stNumberInput input, .stTextInput input {
+            border-radius: 6px !important;
+            border: 1px solid var(--border) !important;
+            font-weight: 500 !important;
+            color: var(--text-1) !important;
+        }
+        .stNumberInput input:focus, .stTextInput input:focus {
+            border-color: var(--amber) !important;
+            box-shadow: 0 0 0 2px rgba(245,158,11,0.15) !important;
+        }
+
+        /* ── Progress bar ─────────────────────────────────── */
+        .stProgress > div > div > div > div {
+            background-color: var(--amber) !important;
+        }
+
+        /* ── Alert / Info ─────────────────────────────────── */
         .stAlert {
-            border-radius: 10px;
+            border-radius: 10px !important;
+        }
+
+        /* ── HR / Divider ─────────────────────────────────── */
+        hr {
+            border-color: var(--border) !important;
+            margin: 1.5rem 0 !important;
+        }
+
+        /* ── Caption ──────────────────────────────────────── */
+        .stCaption p, small {
+            color: var(--text-3) !important;
+        }
+
+        /* ── Selectbox ────────────────────────────────────── */
+        .stSelectbox > div > div {
+            border-radius: 6px !important;
+            border: 1px solid var(--border) !important;
+        }
+
+        /* ── Radio ────────────────────────────────────────── */
+        .stRadio > label {
+            font-size: 13px !important;
+            font-weight: 500 !important;
         }
         </style>
     """, unsafe_allow_html=True)
@@ -400,8 +559,20 @@ def _render_guide_tab(target_rate: int) -> None:
 # =============================================================================
 # ヘッダー・設定ファイル読み込み
 # =============================================================================
-st.markdown("<h1 style='text-align: center;'>共働きFIREシミュレーター <span style='color:#6366f1'>【フル版】</span></h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #64748b; margin-bottom: 2rem;'>〜 理想的な家族の未来を、データで具現化する 〜</p>", unsafe_allow_html=True)
+st.markdown("""
+<div style="text-align:center;padding:2rem 0 1.5rem;">
+    <div style="font-size:11px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;
+                color:#94A3B8;margin-bottom:14px;">FIRE SIMULATOR</div>
+    <h1 style="font-size:2.5rem;font-weight:900;color:#0F172A;margin:0;line-height:1.1;
+               letter-spacing:-0.02em;">
+        共働きFIREシミュレーター
+        <span style="color:#F59E0B;">【フル版】</span>
+    </h1>
+    <p style="color:#94A3B8;margin-top:12px;font-size:14px;letter-spacing:0.04em;font-weight:400;">
+        〜 理想的な家族の未来を、データで具現化する 〜
+    </p>
+</div>
+""", unsafe_allow_html=True)
 
 with open("demo_config.yaml", "r", encoding="utf-8") as f:
     base_cfg = yaml.safe_load(f)
@@ -576,7 +747,16 @@ with st.sidebar:
 # =============================================================================
 # クイック試算
 # =============================================================================
-st.subheader("まず3項目で試算する")
+st.markdown("""
+<div style="margin:0.5rem 0 1rem;">
+    <h2 style="font-size:1.35rem;font-weight:800;color:#0F172A;margin:0;letter-spacing:-0.01em;">
+        まず3項目で試算する
+    </h2>
+    <p style="font-size:12px;color:#94A3B8;margin-top:4px;margin-bottom:0;">
+        収入・支出・資産を入力してFIRE時期を素早く確認
+    </p>
+</div>
+""", unsafe_allow_html=True)
 _q1, _q2, _q3 = st.columns(3)
 with _q1:
     q_income = st.number_input("世帯月手取り（万円）", min_value=10, max_value=200, value=55, step=1, key="q_income")
@@ -625,19 +805,26 @@ if "quick_result" in st.session_state:
     if _qr.get("success"):
         st.markdown(f"""
 <div style="
-    background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
-    border-radius: 12px;
-    padding: 24px 32px;
-    margin-bottom: 4px;
+    background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%);
+    border-radius: 16px;
+    padding: 28px 36px;
+    margin: 8px 0 4px;
     color: white;
+    box-shadow: 0 4px 24px rgba(15,23,42,0.25);
+    border: 1px solid rgba(255,255,255,0.05);
 ">
-    <div style="font-size: 11px; font-weight: 600; opacity: 0.7; letter-spacing: 1px;
-                text-transform: uppercase; margin-bottom: 8px;">
-        概算 ─ クイック試算結果
+    <div style="font-size:11px;font-weight:700;opacity:0.45;letter-spacing:0.14em;
+                text-transform:uppercase;margin-bottom:14px;">
+        概算 — クイック試算結果
     </div>
-    <div style="font-size: 40px; font-weight: 800; letter-spacing: -0.02em;
-                line-height: 1.1; margin-bottom: 0;">
-        FIRE年齢の目安: 約{_qr['fire_age']:.0f}歳（夫）
+    <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;">
+        <div style="font-size:58px;font-weight:900;letter-spacing:-0.03em;
+                    color:#F59E0B;line-height:1;">
+            {_qr['fire_age']:.0f}歳
+        </div>
+        <div style="font-size:18px;font-weight:500;opacity:0.55;">
+            （夫）でFIREの目安
+        </div>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -837,7 +1024,14 @@ with st.expander("詳細な確率計算（1,000通り）", expanded=st.session_s
         stocks       = st.session_state['_sim']['stocks']
         current_date = st.session_state['_sim']['current_date']
 
-        st.markdown("## シミュレーション結果")
+        st.markdown("""
+<div style="margin:2rem 0 1rem;">
+    <h2 style="font-size:1.5rem;font-weight:800;color:#0F172A;margin:0;letter-spacing:-0.01em;">
+        シミュレーション結果
+    </h2>
+    <div style="height:3px;width:40px;background:#F59E0B;border-radius:2px;margin-top:8px;"></div>
+</div>
+""", unsafe_allow_html=True)
 
         if husband_post_fire_income > 0 or wife_post_fire_income > 0:
             st.info(
@@ -896,37 +1090,43 @@ with st.expander("詳細な確率計算（1,000通り）", expanded=st.session_s
             _assets_str    = fmt_oku(assets_at_fire)
             _years_str     = f"{years_to_fire:.1f}"
             st.markdown(f"""
-    <div style="
-        background: linear-gradient(135deg, #0f766e 0%, #0e7490 100%);
-        border-radius: 12px;
-        padding: 28px 32px;
-        margin-bottom: 8px;
-        color: white;
-    ">
-        <div style="font-size: 11px; font-weight: 600; opacity: 0.7; letter-spacing: 1px;
-                    text-transform: uppercase; margin-bottom: 10px;">
-            目標{target_rate}% ─ FIRE 試算結果
+<div style="
+    background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%);
+    border-radius: 16px;
+    padding: 32px 40px;
+    margin-bottom: 12px;
+    color: white;
+    box-shadow: 0 8px 32px rgba(15,23,42,0.3);
+    border: 1px solid rgba(255,255,255,0.05);
+">
+    <div style="font-size:11px;font-weight:700;opacity:0.4;letter-spacing:0.14em;
+                text-transform:uppercase;margin-bottom:16px;">
+        目標{target_rate}% — FIRE 試算結果
+    </div>
+    <div style="font-size:64px;font-weight:900;letter-spacing:-0.03em;
+                color:#F59E0B;line-height:1;margin-bottom:20px;">
+        {fire_age_label}
+    </div>
+    <div style="display:flex;gap:0;flex-wrap:wrap;
+                border-top:1px solid rgba(255,255,255,0.1);padding-top:20px;">
+        <div style="padding-right:32px;border-right:1px solid rgba(255,255,255,0.12);">
+            <div style="font-size:11px;opacity:0.45;margin-bottom:5px;
+                        letter-spacing:0.08em;font-weight:600;">今から</div>
+            <div style="font-size:26px;font-weight:800;">{_years_str}年後</div>
         </div>
-        <div style="font-size: 44px; font-weight: 800; letter-spacing: -0.02em;
-                    line-height: 1.1; margin-bottom: 16px;">
-            {fire_age_label}
+        <div style="padding:0 32px;border-right:1px solid rgba(255,255,255,0.12);">
+            <div style="font-size:11px;opacity:0.45;margin-bottom:5px;
+                        letter-spacing:0.08em;font-weight:600;">FIRE時の資産</div>
+            <div style="font-size:26px;font-weight:800;">{_assets_str}</div>
         </div>
-        <div style="display: flex; gap: 0; flex-wrap: wrap;">
-            <div style="padding-right: 28px; border-right: 1px solid rgba(255,255,255,0.2);">
-                <div style="font-size: 11px; opacity: 0.7; margin-bottom: 3px;">今から</div>
-                <div style="font-size: 22px; font-weight: 700;">{_years_str}年後</div>
-            </div>
-            <div style="padding: 0 28px; border-right: 1px solid rgba(255,255,255,0.2);">
-                <div style="font-size: 11px; opacity: 0.7; margin-bottom: 3px;">FIRE時の資産</div>
-                <div style="font-size: 22px; font-weight: 700;">{_assets_str}</div>
-            </div>
-            <div style="padding-left: 28px;">
-                <div style="font-size: 11px; opacity: 0.7; margin-bottom: 3px;">達成確率</div>
-                <div style="font-size: 22px; font-weight: 700;">{target_rate}%</div>
-            </div>
+        <div style="padding-left:32px;">
+            <div style="font-size:11px;opacity:0.45;margin-bottom:5px;
+                        letter-spacing:0.08em;font-weight:600;">達成確率</div>
+            <div style="font-size:26px;font-weight:800;color:#34D399;">{target_rate}%</div>
         </div>
     </div>
-    """, unsafe_allow_html=True)
+</div>
+""", unsafe_allow_html=True)
 
             # ── Phase3 Block A: 「次の一手」インサイト ──────────────────────────────
             try:
@@ -971,62 +1171,87 @@ with st.expander("詳細な確率計算（1,000通り）", expanded=st.session_s
                 _age_i = age_h + _fm_i / 12 if _fm_i is not None else None
                 _i_best = not _e_best and _sv_i is not None
 
+                # ── 次の一手: 比較カード（ライト背景対応） ────────────────
+                _CARD_BASE = (
+                    "background:#FFFFFF;border:1px solid #E2E8F0;border-radius:12px;"
+                    "padding:20px 16px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.06);"
+                )
+                _CARD_BEST = (
+                    "background:#FFFBEB;border:2px solid #F59E0B;border-radius:12px;"
+                    "padding:20px 16px;text-align:center;box-shadow:0 2px 12px rgba(245,158,11,0.15);"
+                )
+
                 # 現状カード
                 _card_now = f"""
-<div style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);
-            border-radius:10px;padding:14px 12px;color:white;text-align:center;">
-    <div style="font-size:11px;opacity:0.7;margin-bottom:8px;">現状</div>
-    <div style="font-size:26px;font-weight:800;margin-bottom:4px;">{fire_age_h_val:.0f}歳</div>
-    <div style="margin-bottom:8px;font-size:12px;opacity:0.55;">ベースライン</div>
-    <div style="font-size:11px;opacity:0.55;">資産 {_assets_str}</div>
+<div style="{_CARD_BASE}">
+    <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;
+                color:#94A3B8;margin-bottom:12px;">現状</div>
+    <div style="font-size:34px;font-weight:900;color:#1E293B;letter-spacing:-0.02em;
+                margin-bottom:4px;">{fire_age_h_val:.0f}歳</div>
+    <div style="font-size:12px;color:#94A3B8;margin-bottom:10px;">ベースライン</div>
+    <div style="font-size:12px;color:#64748B;font-weight:500;">資産 {_assets_str}</div>
 </div>"""
 
                 # 支出-3万カード
                 if _sv_e is None:
-                    _delta_e = '<span style="font-size:12px;opacity:0.55;">試算期間内に未達成</span>'
+                    _delta_e = '<span style="font-size:12px;color:#94A3B8;">試算期間内に未達成</span>'
                 elif _sv_e > 0:
-                    _delta_e = f'<span style="color:#4ade80;font-weight:700;font-size:13px;">▲ {_sv_e:.1f}年早く</span>'
+                    _delta_e = f'<span style="color:#059669;font-weight:700;font-size:13px;">▲ {_sv_e:.1f}年早く</span>'
                 elif _sv_e < 0:
-                    _delta_e = f'<span style="color:#f87171;font-size:13px;">▼ {abs(_sv_e):.1f}年遅い</span>'
+                    _delta_e = f'<span style="color:#DC2626;font-size:13px;">▼ {abs(_sv_e):.1f}年遅い</span>'
                 else:
-                    _delta_e = '<span style="font-size:12px;opacity:0.55;">変わらず</span>'
+                    _delta_e = '<span style="font-size:12px;color:#94A3B8;">変わらず</span>'
                 _age_e_str = f"{_age_e:.0f}歳" if _age_e is not None else "—"
-                _bg_e = "linear-gradient(135deg,#1e3a5f 0%,#1e40af 100%)" if _e_best else "rgba(255,255,255,0.06)"
-                _border_e = "2px solid #3b82f6" if _e_best else "1px solid rgba(255,255,255,0.15)"
-                _badge_e = '<div style="font-size:10px;background:#16a34a;color:white;padding:1px 6px;border-radius:3px;display:inline-block;margin-bottom:4px;">▲優先</div>' if _e_best else ""
+                _style_e = _CARD_BEST if _e_best else _CARD_BASE
+                _badge_e = (
+                    '<div style="font-size:10px;background:#059669;color:white;padding:2px 10px;'
+                    'border-radius:20px;display:inline-block;margin-bottom:8px;font-weight:700;">'
+                    '▲ 推奨</div><br>'
+                ) if _e_best else ""
                 _card_e = f"""
-<div style="background:{_bg_e};border:{_border_e};
-            border-radius:10px;padding:14px 12px;color:white;text-align:center;">
-    <div style="font-size:11px;opacity:0.7;margin-bottom:6px;">支出 −3万/月</div>
+<div style="{_style_e}">
+    <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;
+                color:#94A3B8;margin-bottom:10px;">支出 −3万/月</div>
     {_badge_e}
-    <div style="font-size:26px;font-weight:800;margin-bottom:4px;">{_age_e_str}</div>
-    <div style="margin-bottom:8px;">{_delta_e}</div>
-    <div style="font-size:11px;opacity:0.55;">資産 {_assets_e_str}</div>
+    <div style="font-size:34px;font-weight:900;color:#1E293B;letter-spacing:-0.02em;
+                margin-bottom:6px;">{_age_e_str}</div>
+    <div style="margin-bottom:10px;">{_delta_e}</div>
+    <div style="font-size:12px;color:#64748B;font-weight:500;">資産 {_assets_e_str}</div>
 </div>"""
 
                 # 月収+10万カード
                 if _sv_i is None:
-                    _delta_i = '<span style="font-size:12px;opacity:0.55;">試算期間内に未達成</span>'
+                    _delta_i = '<span style="font-size:12px;color:#94A3B8;">試算期間内に未達成</span>'
                 elif _sv_i > 0:
-                    _delta_i = f'<span style="color:#4ade80;font-weight:700;font-size:13px;">▲ {_sv_i:.1f}年早く</span>'
+                    _delta_i = f'<span style="color:#059669;font-weight:700;font-size:13px;">▲ {_sv_i:.1f}年早く</span>'
                 elif _sv_i < 0:
-                    _delta_i = f'<span style="color:#f87171;font-size:13px;">▼ {abs(_sv_i):.1f}年遅い</span>'
+                    _delta_i = f'<span style="color:#DC2626;font-size:13px;">▼ {abs(_sv_i):.1f}年遅い</span>'
                 else:
-                    _delta_i = '<span style="font-size:12px;opacity:0.55;">変わらず</span>'
+                    _delta_i = '<span style="font-size:12px;color:#94A3B8;">変わらず</span>'
                 _age_i_str = f"{_age_i:.0f}歳" if _age_i is not None else "—"
-                _bg_i = "linear-gradient(135deg,#1e3a5f 0%,#1e40af 100%)" if _i_best else "rgba(255,255,255,0.06)"
-                _border_i = "2px solid #3b82f6" if _i_best else "1px solid rgba(255,255,255,0.15)"
-                _badge_i = '<div style="font-size:10px;background:#16a34a;color:white;padding:1px 6px;border-radius:3px;display:inline-block;margin-bottom:4px;">▲優先</div>' if _i_best else ""
+                _style_i = _CARD_BEST if _i_best else _CARD_BASE
+                _badge_i = (
+                    '<div style="font-size:10px;background:#059669;color:white;padding:2px 10px;'
+                    'border-radius:20px;display:inline-block;margin-bottom:8px;font-weight:700;">'
+                    '▲ 推奨</div><br>'
+                ) if _i_best else ""
                 _card_i = f"""
-<div style="background:{_bg_i};border:{_border_i};
-            border-radius:10px;padding:14px 12px;color:white;text-align:center;">
-    <div style="font-size:11px;opacity:0.7;margin-bottom:6px;">月収 +10万</div>
+<div style="{_style_i}">
+    <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;
+                color:#94A3B8;margin-bottom:10px;">月収 +10万</div>
     {_badge_i}
-    <div style="font-size:26px;font-weight:800;margin-bottom:4px;">{_age_i_str}</div>
-    <div style="margin-bottom:8px;">{_delta_i}</div>
-    <div style="font-size:11px;opacity:0.55;">資産 {_assets_i_str}</div>
+    <div style="font-size:34px;font-weight:900;color:#1E293B;letter-spacing:-0.02em;
+                margin-bottom:6px;">{_age_i_str}</div>
+    <div style="margin-bottom:10px;">{_delta_i}</div>
+    <div style="font-size:12px;color:#64748B;font-weight:500;">資産 {_assets_i_str}</div>
 </div>"""
 
+                st.markdown("""
+<div style="margin:16px 0 8px;">
+    <div style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;
+                color:#94A3B8;margin-bottom:10px;">次の一手 — シナリオ比較</div>
+</div>
+""", unsafe_allow_html=True)
                 _col_now, _col_e, _col_i = st.columns(3)
                 with _col_now:
                     st.markdown(_card_now, unsafe_allow_html=True)
