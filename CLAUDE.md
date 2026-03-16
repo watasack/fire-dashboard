@@ -19,19 +19,15 @@ npx next build
 
 ### 2. Playwright でのビジュアル確認（UI 変更後）
 
-```python
-from playwright.sync_api import sync_playwright
-
-with sync_playwright() as p:
-    browser = p.chromium.launch(headless=True)
-    page = browser.new_page(viewport={'width': 1200, 'height': 900})
-    page.goto('http://localhost:3001', timeout=30000)
-    page.wait_for_timeout(7000)  # React + MC 1000回の計算待ち
-    page.screenshot(path='dashboard_screenshots/check.png')
-    browser.close()
+```bash
+# pnpm dev を起動した状態で別ターミナルから実行
+set PYTHONIOENCODING=utf-8 && python take_screenshot.py
 ```
 
-スクリーンショットは `dashboard_screenshots/` に保存（.gitignore 済み）
+出力先: `docs/screenshots/` （result_top.png / full_page.png / assets_chart.png）
+
+**注意: `pnpm dev` は `--turbopack` なしで起動すること（package.json で設定済み）**
+Turbopack（Next.js 15.5.12）には React Client Manifest のバグがあり、アプリが起動しない。
 
 ## 重要な不変条件
 
