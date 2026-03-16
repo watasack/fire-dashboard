@@ -64,7 +64,8 @@
       "Bash(python -c \":*)",
       "Bash(npx next:*)",
       "Bash(node -e \"const r = require\\(''./node_modules/recharts/package.json''\\); console.log\\(r.version\\)\")",
-      "Bash(pip show:*)"
+      "Bash(pip show:*)",
+      "Bash(sort -t: -k2)"
     ]
   }
 }
