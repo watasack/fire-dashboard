@@ -61,7 +61,10 @@
       "WebFetch(domain:claude.ai)",
       "WebFetch(domain:cfiresim.com)",
       "WebFetch(domain:fukuwarablog.com)",
-      "Bash(python -c \":*)"
+      "Bash(python -c \":*)",
+      "Bash(npx next:*)",
+      "Bash(node -e \"const r = require\\(''./node_modules/recharts/package.json''\\); console.log\\(r.version\\)\")",
+      "Bash(pip show:*)"
     ]
   }
 }

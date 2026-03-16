@@ -25,7 +25,7 @@ export function ScenarioComparison({ baseConfig, baseResult }: ScenarioCompariso
     const scenarioConfigs = generateScenarios(baseConfig)
     
     return scenarioConfigs.map((scenario) => {
-      const mergedConfig = { ...baseConfig, ...scenario.changes }
+      const mergedConfig = { ...baseConfig, ...scenario.changes } as import('@/lib/simulator').SimulationConfig
       
       // Handle nested objects
       if (scenario.changes.person1) {

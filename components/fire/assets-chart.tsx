@@ -41,17 +41,19 @@ export function AssetsChart({ result, monteCarloResult, showPercentiles = true }
 
   // Prepare chart data
   const chartData = result.yearlyData.map((d, i) => {
-    const percentiles = monteCarloResult?.yearlyPercentiles[i]
+    const pct = monteCarloResult?.yearlyPercentiles[i]
     return {
       age: d.age,
       year: d.year,
       assets: d.assets + d.nisaAssets + d.idecoAssets,
       fireNumber: d.fireNumber,
-      p10: percentiles?.p10,
-      p25: percentiles?.p25,
-      p50: percentiles?.p50,
-      p75: percentiles?.p75,
-      p90: percentiles?.p90,
+      // Stacked band segments (each is the *difference* between adjacent percentiles)
+      // stackId="band": base(p10) → seg1(p25-p10) → seg2(p75-p25) → seg3(p90-p75)
+      bandBase:  pct ? pct.p10 : undefined,
+      bandLow:   pct ? pct.p25 - pct.p10 : undefined,
+      bandMid:   pct ? pct.p75 - pct.p25 : undefined,
+      bandHigh:  pct ? pct.p90 - pct.p75 : undefined,
+      p50: pct?.p50,
     }
   })
 
@@ -110,39 +112,65 @@ export function AssetsChart({ result, monteCarloResult, showPercentiles = true }
                 }}
               />
               
-              {/* Percentile bands */}
-              {showPercentiles && monteCarloResult && (
-                <>
-                  <Area
-                    type="monotone"
-                    dataKey="p90"
-                    stroke="none"
-                    fill="url(#percentileGradient)"
-                    name="90%ile"
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="p10"
-                    stroke="none"
-                    fill="var(--color-background)"
-                    name="10%ile"
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="p75"
-                    stroke="none"
-                    fill="url(#innerPercentileGradient)"
-                    name="75%ile"
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="p25"
-                    stroke="none"
-                    fill="var(--color-background)"
-                    name="25%ile"
-                  />
-                </>
-              )}
+              {/* Percentile bands — stacked difference approach (no masking needed).
+                  Each Area must be a direct child of ComposedChart (no fragment wrapper)
+                  due to React 19 / Recharts 2.x incompatibility with react-is@16. */}
+              {/* Base: transparent floor at p10 */}
+              {showPercentiles && monteCarloResult ? (
+                <Area
+                  type="monotone"
+                  dataKey="bandBase"
+                  stackId="band"
+                  stroke="none"
+                  fill="#1a365d"
+                  fillOpacity={0}
+                  legendType="none"
+                  tooltipType="none"
+                  isAnimationActive={false}
+                />
+              ) : null}
+              {/* p10→p25: outer low segment */}
+              {showPercentiles && monteCarloResult ? (
+                <Area
+                  type="monotone"
+                  dataKey="bandLow"
+                  stackId="band"
+                  stroke="none"
+                  fill="#1a365d"
+                  fillOpacity={0.15}
+                  name="10〜90%ile"
+                  legendType="square"
+                  isAnimationActive={false}
+                />
+              ) : null}
+              {/* p25→p75: inner mid segment */}
+              {showPercentiles && monteCarloResult ? (
+                <Area
+                  type="monotone"
+                  dataKey="bandMid"
+                  stackId="band"
+                  stroke="none"
+                  fill="#1a365d"
+                  fillOpacity={0.3}
+                  name="25〜75%ile"
+                  legendType="square"
+                  isAnimationActive={false}
+                />
+              ) : null}
+              {/* p75→p90: outer high segment */}
+              {showPercentiles && monteCarloResult ? (
+                <Area
+                  type="monotone"
+                  dataKey="bandHigh"
+                  stackId="band"
+                  stroke="none"
+                  fill="#1a365d"
+                  fillOpacity={0.15}
+                  legendType="none"
+                  tooltipType="none"
+                  isAnimationActive={false}
+                />
+              ) : null}
 
               {/* Median/Main line */}
               <Line
