@@ -65,7 +65,8 @@
       "Bash(npx next:*)",
       "Bash(node -e \"const r = require\\(''./node_modules/recharts/package.json''\\); console.log\\(r.version\\)\")",
       "Bash(pip show:*)",
-      "Bash(sort -t: -k2)"
+      "Bash(sort -t: -k2)",
+      "Bash(file c:/Users/shuhe/Documents/01_personal/docs/screenshots/*.png)"
     ]
   }
 }
