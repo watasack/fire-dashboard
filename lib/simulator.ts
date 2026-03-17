@@ -167,7 +167,7 @@ export const DEFAULT_CONFIG: SimulationConfig = {
 // ----------------------------------------------------------------------------
 
 const EDUCATION_COSTS: Record<"public" | "private" | "mixed", number[]> = {
-    // Annual costs by age (3-22歳), based on 文部科学省 data
+    // Annual costs by age (3-21歳), based on 文部科学省 data
     public: [
         // 幼稚園 (3-5)
         230000, 230000, 230000,
@@ -215,8 +215,8 @@ function calculateChildCosts(children: Child[], year: number, inflationRate: num
     for (const child of children) {
         const childAge = year - child.birthYear
 
-        // Only calculate costs for ages 3-22
-        if (childAge >= 3 && childAge <= 22) {
+        // Only calculate costs for ages 3-21 (大学4年間: 18-21歳)
+        if (childAge >= 3 && childAge <= 21) {
             const costIndex = childAge - 3
             const baseCost = EDUCATION_COSTS[child.educationPath][costIndex] || 0
             totalCost += baseCost * inflationMultiplier
