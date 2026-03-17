@@ -62,12 +62,26 @@ export interface SimulationConfig {
     inflationRate: number
 }
 
+export interface TaxBreakdown {
+    grossIncome: number
+    employmentIncome: number          // 給与所得（給与所得控除後）
+    socialInsurance: number           // 社会保険料合計
+    taxableIncome: number             // 課税所得
+    incomeTax: number                 // 所得税（復興特別所得税含む）
+    residentTax: number               // 住民税
+    totalTax: number                  // 社会保険料 + 所得税 + 住民税
+    netIncome: number                 // 手取り = grossIncome - totalTax
+    standardMonthlyRemuneration: number  // 標準報酬月額（年金・P3・P6 で再利用）
+}
+
 export interface YearlyData {
     year: number
     age: number
     assets: number
     nisaAssets: number
     idecoAssets: number
+    grossIncome: number       // 税引き前収入合計
+    totalTax: number          // 税・社保合計
     income: number
     expenses: number
     savings: number
@@ -262,36 +276,109 @@ function calculateIncome(
 }
 
 // ----------------------------------------------------------------------------
-// Tax Calculator (Simplified)
+// Tax Calculator
 // ----------------------------------------------------------------------------
 
-function calculateTax(income: number): number {
-    // Simplified progressive tax calculation for Japan
-    // Including social insurance (~15%)
-    const socialInsurance = income * 0.15
-    const taxableIncome = Math.max(0, income - 480000) // Basic deduction
-
-    let incomeTax = 0
-    if (taxableIncome > 0) {
-        if (taxableIncome <= 1950000) {
-            incomeTax = taxableIncome * 0.05
-        } else if (taxableIncome <= 3300000) {
-            incomeTax = 97500 + (taxableIncome - 1950000) * 0.10
-        } else if (taxableIncome <= 6950000) {
-            incomeTax = 232500 + (taxableIncome - 3300000) * 0.20
-        } else if (taxableIncome <= 9000000) {
-            incomeTax = 962500 + (taxableIncome - 6950000) * 0.23
-        } else if (taxableIncome <= 18000000) {
-            incomeTax = 1434000 + (taxableIncome - 9000000) * 0.33
+export function calculateTaxBreakdown(
+    grossIncome: number,
+    employmentType: EmploymentType,
+    age: number
+): TaxBreakdown {
+    // --- 給与所得（給与所得控除後）---
+    let employmentIncome: number
+    if (employmentType === 'employee') {
+        let deduction: number
+        if (grossIncome <= 1_625_000) {
+            deduction = 550_000
+        } else if (grossIncome <= 1_800_000) {
+            deduction = Math.max(550_000, grossIncome * 0.4 - 100_000)
+        } else if (grossIncome <= 3_600_000) {
+            deduction = grossIncome * 0.3 + 80_000
+        } else if (grossIncome <= 6_600_000) {
+            deduction = grossIncome * 0.2 + 440_000
+        } else if (grossIncome <= 8_500_000) {
+            deduction = grossIncome * 0.1 + 1_100_000
         } else {
-            incomeTax = 4404000 + (taxableIncome - 18000000) * 0.40
+            deduction = 1_950_000
         }
+        employmentIncome = Math.max(0, grossIncome - deduction)
+    } else {
+        // 個人事業主・専業主婦: 給与所得控除なし
+        employmentIncome = grossIncome
     }
 
-    // Resident tax (~10%)
-    const residentTax = taxableIncome * 0.10
+    // --- 社会保険料 ---
+    let socialInsurance: number
+    let standardMonthlyRemuneration: number
 
-    return socialInsurance + incomeTax + residentTax
+    if (employmentType === 'employee') {
+        // 健康保険（標準報酬月額上限 139万）
+        const healthStandardMonthly = Math.min(grossIncome / 12, 1_390_000)
+        const healthRate = age >= 40 ? 0.1182 : 0.0998  // 40歳以上は介護保険込み
+        const healthInsurance = healthStandardMonthly * healthRate / 2 * 12
+
+        // 厚生年金（標準報酬月額上限 63.5万）
+        const pensionStandardMonthly = Math.min(grossIncome / 12, 635_000)
+        const pensionInsurance = pensionStandardMonthly * 0.183 / 2 * 12
+
+        // 雇用保険（本人分 0.6%）
+        const employmentInsurance = grossIncome * 0.006
+
+        socialInsurance = healthInsurance + pensionInsurance + employmentInsurance
+        standardMonthlyRemuneration = pensionStandardMonthly
+    } else if (employmentType === 'selfEmployed') {
+        // 国民健康保険（概算）
+        const nationalHealthInsurance = grossIncome * 0.10
+        // 国民年金（2024年度）
+        const nationalPension = 20_520 * 12
+        socialInsurance = nationalHealthInsurance + nationalPension
+        standardMonthlyRemuneration = Math.min(grossIncome / 12, 635_000)
+    } else {
+        // homemaker: 第3号被保険者
+        socialInsurance = 0
+        standardMonthlyRemuneration = 0
+    }
+
+    // --- 課税所得 ---
+    const basicDeduction = 480_000
+    const taxableIncome = Math.max(0, employmentIncome - socialInsurance - basicDeduction)
+
+    // --- 所得税（累進課税）+ 復興特別所得税 2.1% ---
+    let baseIncomeTax: number
+    if (taxableIncome <= 1_950_000) {
+        baseIncomeTax = taxableIncome * 0.05
+    } else if (taxableIncome <= 3_300_000) {
+        baseIncomeTax = 97_500 + (taxableIncome - 1_950_000) * 0.10
+    } else if (taxableIncome <= 6_950_000) {
+        baseIncomeTax = 232_500 + (taxableIncome - 3_300_000) * 0.20
+    } else if (taxableIncome <= 9_000_000) {
+        baseIncomeTax = 962_500 + (taxableIncome - 6_950_000) * 0.23
+    } else if (taxableIncome <= 18_000_000) {
+        baseIncomeTax = 1_434_000 + (taxableIncome - 9_000_000) * 0.33
+    } else if (taxableIncome <= 40_000_000) {
+        baseIncomeTax = 4_404_000 + (taxableIncome - 18_000_000) * 0.40
+    } else {
+        baseIncomeTax = 13_204_000 + (taxableIncome - 40_000_000) * 0.45
+    }
+    const incomeTax = baseIncomeTax * 1.021  // 復興特別所得税込み
+
+    // --- 住民税（所得割 10% + 均等割 5,000円）---
+    const residentTax = taxableIncome * 0.10 + 5_000
+
+    const totalTax = socialInsurance + incomeTax + residentTax
+    const netIncome = Math.max(0, grossIncome - totalTax)
+
+    return {
+        grossIncome,
+        employmentIncome,
+        socialInsurance,
+        taxableIncome,
+        incomeTax,
+        residentTax,
+        totalTax,
+        netIncome,
+        standardMonthlyRemuneration,
+    }
 }
 
 // ----------------------------------------------------------------------------
@@ -343,8 +430,14 @@ export function runSingleSimulation(
         }
 
         // Calculate taxes
-        const totalTax = calculateTax(totalIncome)
-        const netIncome = totalIncome - totalTax
+        const taxAge = person1Age
+        const taxBreakdown = calculateTaxBreakdown(
+            totalIncome,
+            config.person1.employmentType ?? 'employee',
+            taxAge
+        )
+        const totalTax = taxBreakdown.totalTax
+        const netIncome = taxBreakdown.netIncome
 
         // Calculate expenses with growth
         const expenseGrowthMultiplier = Math.pow(1 + config.expenseGrowthRate, year)
@@ -403,6 +496,8 @@ export function runSingleSimulation(
             assets: Math.max(0, assets),
             nisaAssets: Math.max(0, nisaAssets),
             idecoAssets: Math.max(0, idecoAssets),
+            grossIncome: totalIncome,
+            totalTax,
             income: netIncome,
             expenses: totalExpenses,
             savings,
