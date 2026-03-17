@@ -65,8 +65,10 @@ describe('収入計算', () => {
     // 5,000,000 円/年、2% 成長、支出ゼロ、リターンゼロ
     // year0: gross = 5M * 1.02^0 = 5M
     // year4: gross = 5M * 1.02^4 ≈ 5,412,160
+    // monthlyExpenses を設定して fireNumber を高くし、FIRE を発動させない
     const result = runSingleSimulation(cfg({
       person1: { currentAge: 35, retirementAge: 65, currentIncome: 5_000_000, incomeGrowthRate: 0.02, pensionStartAge: 65, pensionAmount: 0 },
+      monthlyExpenses: 500_000, // fireNumber = 150M → テスト期間中に FIRE しない
       simulationYears: 4,
     }))
     expect(result.yearlyData[4].income).toBeGreaterThan(result.yearlyData[0].income)
@@ -378,9 +380,11 @@ describe('NISA 積立', () => {
   test('有効・就労中(リターン 0): 年次積立が正確に累積する', () => {
     // person1: age35, retirementAge65, 就労中30年
     // year0: 1.2M, year1: 2.4M, ..., year9: 12M (= 10回分)
+    // monthlyExpenses で fireNumber = 150M に設定 → テスト期間中に FIRE しない
     const result = runSingleSimulation(cfg({
       person1: { currentAge: 35, retirementAge: 65, currentIncome: 0, incomeGrowthRate: 0, pensionStartAge: 65, pensionAmount: 0 },
       nisa: { enabled: true, annualContribution: 1_200_000 },
+      monthlyExpenses: 500_000,
       simulationYears: 9,
     }))
     expect(result.yearlyData[9].nisaAssets).toBeCloseTo(10 * 1_200_000, -1)
@@ -391,6 +395,7 @@ describe('NISA 積立', () => {
     const result = runSingleSimulation(cfg({
       person1: { currentAge: 35, retirementAge: 37, currentIncome: 0, incomeGrowthRate: 0, pensionStartAge: 37, pensionAmount: 0 },
       nisa: { enabled: true, annualContribution: 1_200_000 },
+      monthlyExpenses: 500_000, // FIRE しないようにする
       simulationYears: 4,
     }))
     // year0: 1.2M, year1: 2.4M (拠出停止前)
@@ -408,6 +413,7 @@ describe('NISA 積立', () => {
       person1: { currentAge: 35, retirementAge: 37, currentIncome: 0, incomeGrowthRate: 0, pensionStartAge: 37, pensionAmount: 0 },
       nisa: { enabled: true, annualContribution: 1_200_000 },
       investmentReturn: 0.05,
+      monthlyExpenses: 500_000, // FIRE しないようにする
       simulationYears: 2,
     }))
     // year0 (age35<37): nisaAssets = 0*1.05 + 1.2M = 1.2M
@@ -447,6 +453,7 @@ describe('iDeCo 積立', () => {
     const result = runSingleSimulation(cfg({
       person1: { currentAge: 35, retirementAge: 65, currentIncome: 0, incomeGrowthRate: 0, pensionStartAge: 65, pensionAmount: 0 },
       ideco: { enabled: true, monthlyContribution: monthly },
+      monthlyExpenses: 500_000, // FIRE しないようにする
       simulationYears: 2, // year0,1,2 → 3 回
     }))
     expect(result.yearlyData[2].idecoAssets).toBeCloseTo(3 * annual, -1)
@@ -457,6 +464,7 @@ describe('iDeCo 積立', () => {
     const result = runSingleSimulation(cfg({
       person1: { currentAge: 35, retirementAge: 37, currentIncome: 0, incomeGrowthRate: 0, pensionStartAge: 37, pensionAmount: 0 },
       ideco: { enabled: true, monthlyContribution: monthly },
+      monthlyExpenses: 500_000, // FIRE しないようにする
       simulationYears: 4,
     }))
     // year1まで拠出: 2 * 276,000 = 552,000
@@ -700,7 +708,7 @@ describe('90歳時点での最終資産残高の整合性', () => {
 
     const result = runSingleSimulation(cfg({
       currentAssets: 0,
-      monthlyExpenses: 0,
+      monthlyExpenses: 500_000, // fireNumber = 150M → 55年でも FIRE しない
       investmentReturn: 0.05,
       person1: {
         currentAge: 35,
@@ -919,5 +927,156 @@ describe('エッジケースと不変条件', () => {
     expect(result.finalAssets).toBeCloseTo(
       last.assets + last.nisaAssets + last.idecoAssets, -1
     )
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 10. FIRE 後の取り崩しモード（新機能）
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('FIRE 後の取り崩しモード', () => {
+  /**
+   * FIRE 達成の翌年から就労収入がゼロになることを確認する。
+   *
+   * 設定:
+   *   currentAssets = 500M (year0 で即 FIRE)
+   *   person1: 35歳, 退職65歳, 年収7M, 年金65歳〜120万
+   *   expenses = 1.2M/year (fireNumber = 30M)
+   *
+   * 期待:
+   *   year0: isPostFire=false → 就労収入あり (netIncome ≈ 4,421,500)
+   *   year1: isPostFire=true  → 就労収入ゼロ (age36 < pensionStartAge 65)
+   *   year30 (age65): pension 開始 → 収入 = 年金手取り (912,000)
+   */
+  test('FIRE 翌年から就労収入ゼロ・年金年齢で年金開始', () => {
+    const result = runSingleSimulation(cfg({
+      currentAssets: 500_000_000, // year0 で即 FIRE (500M >> 30M)
+      monthlyExpenses: 100_000,   // fireNumber = 30M
+      person1: {
+        currentAge: 35,
+        retirementAge: 65,
+        currentIncome: 7_000_000,
+        incomeGrowthRate: 0,
+        pensionStartAge: 65,
+        pensionAmount: 1_200_000,
+      },
+      investmentReturn: 0,
+      inflationRate: 0,
+      simulationYears: 55,
+    }))
+
+    // year0: FIRE未設定 → 就労収入あり
+    expect(result.yearlyData[0].income).toBeCloseTo(4_421_500, -1)
+    // year1: FIRE済 → 就労収入ゼロ（年金未満の年齢）
+    expect(result.yearlyData[1].income).toBe(0)
+    // year20 (age55): まだ年金年齢未満 → ゼロのまま
+    expect(result.yearlyData[20].income).toBe(0)
+    // year30 (age65): 年金開始 → 手取り = 912,000
+    expect(result.yearlyData[30].income).toBeCloseTo(912_000, -1)
+  })
+
+  /**
+   * FIRE 達成後に資産が取り崩しで減少することを確認する。
+   *
+   * 設定:
+   *   currentAssets = 500M, investmentReturn = 0, income = 7M
+   *   FIRE at year0 → 翌年から収入ゼロ
+   *
+   * year0: savings = 4,421,500 - 1,200,000 = +3,221,500 → 503.2M (就労収入あり)
+   * year1〜: savings = 0 - 1,200,000 = -1,200,000 → 毎年 1.2M 減少
+   */
+  test('FIRE 後は資産が毎年 (expenses - pension) ずつ減少する', () => {
+    const result = runSingleSimulation(cfg({
+      currentAssets: 500_000_000,
+      monthlyExpenses: 100_000, // 1.2M/year
+      person1: {
+        currentAge: 35,
+        retirementAge: 65,
+        currentIncome: 7_000_000,
+        incomeGrowthRate: 0,
+        pensionStartAge: 90, // 年金なし（テスト期間中）
+        pensionAmount: 0,
+      },
+      investmentReturn: 0,
+      inflationRate: 0,
+      simulationYears: 10,
+    }))
+
+    // year0 後の資産 (就労収入あり): 500M + (4,421,500 - 1,200,000) = 503,221,500
+    expect(result.yearlyData[0].assets).toBeCloseTo(503_221_500, -1)
+    // year1〜: 毎年 1.2M 減少
+    expect(result.yearlyData[1].assets).toBeCloseTo(503_221_500 - 1_200_000, -1)
+    expect(result.yearlyData[2].assets).toBeCloseTo(503_221_500 - 2 * 1_200_000, -1)
+    expect(result.yearlyData[10].assets).toBeCloseTo(503_221_500 - 10 * 1_200_000, -1)
+    // year0→10 にかけて資産が減少している
+    expect(result.yearlyData[10].assets).toBeLessThan(result.yearlyData[0].assets)
+  })
+
+  /**
+   * FIRE 後は NISA/iDeCo 拠出も停止することを確認する。
+   *
+   * year0: FIRE未設定 → NISA 拠出あり (1.2M)
+   * year1〜: FIRE済 → 拠出なし・成長のみ
+   */
+  test('FIRE 後は NISA/iDeCo 拠出停止・複利成長のみ', () => {
+    const result = runSingleSimulation(cfg({
+      currentAssets: 500_000_000,
+      monthlyExpenses: 100_000,
+      person1: {
+        currentAge: 35,
+        retirementAge: 65,
+        currentIncome: 0,
+        incomeGrowthRate: 0,
+        pensionStartAge: 65,
+        pensionAmount: 0,
+      },
+      nisa: { enabled: true, annualContribution: 1_200_000 },
+      ideco: { enabled: true, monthlyContribution: 23_000 },
+      investmentReturn: 0.05,
+      simulationYears: 5,
+    }))
+
+    // year0: isPostFire=false → NISA 拠出あり: 0*1.05 + 1.2M = 1.2M
+    expect(result.yearlyData[0].nisaAssets).toBeCloseTo(1_200_000, -1)
+    // year1: isPostFire=true → 拠出なし: 1.2M * 1.05 = 1.26M
+    expect(result.yearlyData[1].nisaAssets).toBeCloseTo(1_200_000 * 1.05, -1)
+    // year2: 1.26M * 1.05 = 1.323M (成長のみ)
+    expect(result.yearlyData[2].nisaAssets).toBeCloseTo(1_200_000 * Math.pow(1.05, 2), -2)
+
+    // iDeCo も同様
+    const annualIdeco = 23_000 * 12 // 276,000
+    expect(result.yearlyData[0].idecoAssets).toBeCloseTo(annualIdeco, -1)
+    expect(result.yearlyData[1].idecoAssets).toBeCloseTo(annualIdeco * 1.05, -1)
+  })
+
+  /**
+   * FIRE 前後で資産軌跡が変わることを確認する（回帰テスト）。
+   *
+   * 同じ設定でも FIRE 後は就労収入がなくなるため、
+   * 旧動作（常に就労継続）より最終資産が少なくなる。
+   * ここでは FIRE 後に確実に資産が減少することを確認する。
+   */
+  test('FIRE 達成後: 翌年以降の assets は単調減少する（収入なし・リターン 0）', () => {
+    const result = runSingleSimulation(cfg({
+      currentAssets: 500_000_000,
+      monthlyExpenses: 100_000,
+      person1: {
+        currentAge: 35,
+        retirementAge: 65,
+        currentIncome: 7_000_000,
+        incomeGrowthRate: 0,
+        pensionStartAge: 90,
+        pensionAmount: 0,
+      },
+      investmentReturn: 0,
+      simulationYears: 10,
+    }))
+
+    // year0 は就労収入あり → 増加
+    expect(result.yearlyData[0].assets).toBeGreaterThan(500_000_000)
+    // year1 以降は就労収入ゼロ → 単調減少
+    for (let i = 2; i <= 10; i++) {
+      expect(result.yearlyData[i].assets).toBeLessThan(result.yearlyData[i - 1].assets)
+    }
   })
 })

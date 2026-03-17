@@ -312,10 +312,26 @@ export function runSingleSimulation(
         const person1Age = config.person1.currentAge + year
         const person2Age = config.person2 ? config.person2.currentAge + year : 0
 
+        // FIRE達成後は即退職扱い: 就労収入ゼロ、年金年齢に達したら年金収入のみ
+        const isPostFire = fireAge !== null
+
         // Calculate income
-        let totalIncome = calculateIncome(config.person1, person1Age, config.inflationRate, year)
-        if (config.person2) {
-            totalIncome += calculateIncome(config.person2, person2Age, config.inflationRate, year)
+        let totalIncome: number
+        if (isPostFire) {
+            totalIncome = 0
+            if (person1Age >= config.person1.pensionStartAge) {
+                const inflationMultiplier = Math.pow(1 + config.inflationRate, year)
+                totalIncome += config.person1.pensionAmount * inflationMultiplier
+            }
+            if (config.person2 && person2Age >= config.person2.pensionStartAge) {
+                const inflationMultiplier = Math.pow(1 + config.inflationRate, year)
+                totalIncome += config.person2.pensionAmount * inflationMultiplier
+            }
+        } else {
+            totalIncome = calculateIncome(config.person1, person1Age, config.inflationRate, year)
+            if (config.person2) {
+                totalIncome += calculateIncome(config.person2, person2Age, config.inflationRate, year)
+            }
         }
 
         // Calculate taxes
@@ -344,14 +360,14 @@ export function runSingleSimulation(
         assets = assets * (1 + returnRate) + savings
 
         // NISA contributions and growth (tax-free)
-        if (config.nisa.enabled && person1Age < config.person1.retirementAge) {
+        if (config.nisa.enabled && !isPostFire && person1Age < config.person1.retirementAge) {
             nisaAssets = nisaAssets * (1 + returnRate) + config.nisa.annualContribution
         } else {
             nisaAssets = nisaAssets * (1 + returnRate)
         }
 
         // iDeCo contributions and growth (tax-deferred)
-        if (config.ideco.enabled && person1Age < config.person1.retirementAge) {
+        if (config.ideco.enabled && !isPostFire && person1Age < config.person1.retirementAge) {
             const annualIdeco = config.ideco.monthlyContribution * 12
             idecoAssets = idecoAssets * (1 + returnRate) + annualIdeco
         } else {
