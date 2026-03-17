@@ -42,6 +42,8 @@ function cfg(overrides: Partial<SimulationConfig> = {}): SimulationConfig {
     nisa: { enabled: false, annualContribution: 0 },
     ideco: { enabled: false, monthlyContribution: 0 },
     children: [],
+    mortgage: null,
+    childAllowanceEnabled: true,
     simulationYears: 1,
     inflationRate: 0,
   }
@@ -1091,5 +1093,145 @@ describe('FIRE 後の取り崩しモード', () => {
     for (let i = 2; i <= 10; i++) {
       expect(result.yearlyData[i].assets).toBeLessThan(result.yearlyData[i - 1].assets)
     }
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 11. 住宅ローン (Phase 2B)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('住宅ローン', () => {
+  test('ローン期間中は mortgageCost = monthlyPayment * 12 が加算される', () => {
+    const result = runSingleSimulation(cfg({
+      mortgage: { monthlyPayment: 100_000, endYear: CURRENT_YEAR + 10 },
+      simulationYears: 1,
+    }))
+    // year0: currentSimYear = CURRENT_YEAR <= endYear → 100,000 * 12 = 1,200,000
+    expect(result.yearlyData[0].mortgageCost).toBe(1_200_000)
+  })
+
+  test('完済年（endYear）の翌年は mortgageCost = 0 になる', () => {
+    const result = runSingleSimulation(cfg({
+      mortgage: { monthlyPayment: 100_000, endYear: CURRENT_YEAR + 9 },
+      simulationYears: 10,
+    }))
+    // year9: currentSimYear = CURRENT_YEAR + 9 = endYear → まだ返済あり
+    expect(result.yearlyData[9].mortgageCost).toBe(1_200_000)
+    // year10: currentSimYear = CURRENT_YEAR + 10 > endYear → 返済終了
+    expect(result.yearlyData[10].mortgageCost).toBe(0)
+  })
+
+  test('mortgage: null の場合は mortgageCost = 0', () => {
+    const result = runSingleSimulation(cfg({
+      mortgage: null,
+      simulationYears: 0,
+    }))
+    expect(result.yearlyData[0].mortgageCost).toBe(0)
+  })
+
+  test('ローン返済額が expenses に加算される', () => {
+    const monthly = 150_000
+    const noMortgage = runSingleSimulation(cfg({
+      mortgage: null,
+      monthlyExpenses: 200_000,
+      simulationYears: 0,
+    }))
+    const withMortgage = runSingleSimulation(cfg({
+      mortgage: { monthlyPayment: monthly, endYear: CURRENT_YEAR + 5 },
+      monthlyExpenses: 200_000,
+      simulationYears: 0,
+    }))
+    // expenses の差 = monthly * 12
+    expect(withMortgage.yearlyData[0].expenses - noMortgage.yearlyData[0].expenses)
+      .toBeCloseTo(monthly * 12, -1)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 12. 児童手当 (Phase 2D)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('児童手当', () => {
+  test('子なし → childAllowance = 0', () => {
+    const result = runSingleSimulation(cfg({
+      children: [],
+      simulationYears: 0,
+    }))
+    expect(result.yearlyData[0].childAllowance).toBe(0)
+  })
+
+  test('第1子 0歳 → 15,000 × 12 = 180,000', () => {
+    const result = runSingleSimulation(cfg({
+      children: [{ birthYear: CURRENT_YEAR, educationPath: 'public' }],
+      simulationYears: 0,
+    }))
+    expect(result.yearlyData[0].childAllowance).toBe(15_000 * 12)
+  })
+
+  test('第2子 0歳（第1子と同時） → 第2子分は 20,000 × 12 = 240,000', () => {
+    // 第1子1歳, 第2子0歳
+    const result = runSingleSimulation(cfg({
+      children: [
+        { birthYear: CURRENT_YEAR - 1, educationPath: 'public' }, // 第1子 1歳 → 180,000
+        { birthYear: CURRENT_YEAR, educationPath: 'public' },     // 第2子 0歳 → 240,000
+      ],
+      simulationYears: 0,
+    }))
+    // 第2子(index=1, isSecondOrLater=true, age=0) → 20,000 * 12
+    expect(result.yearlyData[0].childAllowance).toBe(15_000 * 12 + 20_000 * 12)
+  })
+
+  test('3歳以上 → 10,000 × 12 = 120,000（出生順問わず）', () => {
+    const result = runSingleSimulation(cfg({
+      children: [{ birthYear: CURRENT_YEAR - 5, educationPath: 'public' }],
+      simulationYears: 0,
+    }))
+    expect(result.yearlyData[0].childAllowance).toBe(10_000 * 12)
+  })
+
+  test('18歳以上 → 0円', () => {
+    const result = runSingleSimulation(cfg({
+      children: [{ birthYear: CURRENT_YEAR - 18, educationPath: 'public' }],
+      simulationYears: 0,
+    }))
+    expect(result.yearlyData[0].childAllowance).toBe(0)
+  })
+
+  test('childAllowanceEnabled: false → childAllowance = 0', () => {
+    const result = runSingleSimulation(cfg({
+      children: [{ birthYear: CURRENT_YEAR, educationPath: 'public' }],
+      childAllowanceEnabled: false,
+      simulationYears: 0,
+    }))
+    expect(result.yearlyData[0].childAllowance).toBe(0)
+  })
+
+  test('第1子(1歳)と第2子(5歳)が両方いる場合の合計が正しい', () => {
+    // 第1子 1歳(0〜2歳) → 15,000 * 12 = 180,000
+    // 第2子 5歳(3〜17歳) → 10,000 * 12 = 120,000
+    // 合計 300,000
+    const result = runSingleSimulation(cfg({
+      children: [
+        { birthYear: CURRENT_YEAR - 1, educationPath: 'public' }, // 第1子 1歳
+        { birthYear: CURRENT_YEAR - 5, educationPath: 'public' }, // 第2子 5歳
+      ],
+      simulationYears: 0,
+    }))
+    expect(result.yearlyData[0].childAllowance).toBe(15_000 * 12 + 10_000 * 12)
+  })
+
+  test('児童手当が income に加算される', () => {
+    // 収入ゼロの状態で子ありにすると income = 0 + childAllowance
+    const noChild = runSingleSimulation(cfg({
+      children: [],
+      simulationYears: 0,
+    }))
+    const withChild = runSingleSimulation(cfg({
+      children: [{ birthYear: CURRENT_YEAR, educationPath: 'public' }],
+      simulationYears: 0,
+    }))
+    // income の差 = 180,000
+    expect(withChild.yearlyData[0].income - noChild.yearlyData[0].income)
+      .toBe(15_000 * 12)
   })
 })

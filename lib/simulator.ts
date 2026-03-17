@@ -25,6 +25,11 @@ export interface Child {
     educationPath: "public" | "private" | "mixed"
 }
 
+export interface MortgageConfig {
+    monthlyPayment: number   // 月次返済額（元利合計・円）
+    endYear: number          // 完済年（西暦）
+}
+
 export interface NISAConfig {
     enabled: boolean
     annualContribution: number
@@ -56,6 +61,8 @@ export interface SimulationConfig {
 
     // Life events
     children: Child[]
+    mortgage: MortgageConfig | null
+    childAllowanceEnabled: boolean
 
     // Simulation settings
     simulationYears: number
@@ -86,6 +93,8 @@ export interface YearlyData {
     expenses: number
     savings: number
     childCosts: number
+    mortgageCost: number
+    childAllowance: number
     fireNumber: number
     isFireAchieved: boolean
 }
@@ -177,6 +186,8 @@ export const DEFAULT_CONFIG: SimulationConfig = {
 
     // Children
     children: [],
+    mortgage: null,
+    childAllowanceEnabled: true,
 
     // Simulation settings
     simulationYears: 40,
@@ -225,6 +236,33 @@ const EDUCATION_COSTS: Record<"public" | "private" | "mixed", number[]> = {
         // 大学: 私立 (18-21)
         2500000, 2500000, 2500000, 2500000,
     ],
+}
+
+function calculateMortgageCost(
+    mortgage: MortgageConfig | null,
+    currentSimYear: number
+): number {
+    if (mortgage === null) return 0
+    if (currentSimYear > mortgage.endYear) return 0
+    return mortgage.monthlyPayment * 12
+}
+
+function calculateChildAllowance(children: Child[], currentSimYear: number): number {
+    if (children.length === 0) return 0
+    let total = 0
+    for (let i = 0; i < children.length; i++) {
+        const child = children[i]
+        const childAge = currentSimYear - child.birthYear
+        const isSecondOrLater = i >= 1
+        if (childAge < 0) continue
+        if (childAge >= 18) continue
+        if (childAge < 3) {
+            total += isSecondOrLater ? 20_000 * 12 : 15_000 * 12
+        } else {
+            total += 10_000 * 12
+        }
+    }
+    return total
 }
 
 function calculateChildCosts(children: Child[], year: number, inflationRate: number): number {
@@ -446,11 +484,20 @@ export function runSingleSimulation(
         // Calculate child costs
         const childCosts = calculateChildCosts(config.children, currentSimYear, config.inflationRate)
 
+        // Calculate mortgage cost
+        const mortgageCost = calculateMortgageCost(config.mortgage, currentSimYear)
+
         // Total expenses
-        const totalExpenses = baseExpenses + childCosts
+        const totalExpenses = baseExpenses + childCosts + mortgageCost
+
+        // Calculate child allowance (non-taxable, added directly to net income)
+        const childAllowance = (config.childAllowanceEnabled !== false)
+            ? calculateChildAllowance(config.children, currentSimYear)
+            : 0
+        const netIncomeWithAllowance = netIncome + childAllowance
 
         // Calculate savings
-        const savings = netIncome - totalExpenses
+        const savings = netIncomeWithAllowance - totalExpenses
 
         // Investment returns (with optional randomness for Monte Carlo)
         const returnRate = randomReturns
@@ -498,10 +545,12 @@ export function runSingleSimulation(
             idecoAssets: Math.max(0, idecoAssets),
             grossIncome: totalIncome,
             totalTax,
-            income: netIncome,
+            income: netIncomeWithAllowance,
             expenses: totalExpenses,
             savings,
             childCosts,
+            mortgageCost,
+            childAllowance,
             fireNumber: currentFireNumber,
             isFireAchieved,
         })
