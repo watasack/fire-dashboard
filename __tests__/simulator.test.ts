@@ -786,10 +786,11 @@ describe('90歳時点での最終資産残高の整合性', () => {
       simulationYears: 55,
     }))
 
-    // year31: p1=age66(年金1.2M), p2=age64(ギャップ) → gross=1.2M → net=1,007,080
+    // year31: p1=age66(年金1.2M→net=1,007,080), p2=age64(ギャップ=0) → 合計=1,007,080
     expect(result.yearlyData[31].income).toBeCloseTo(1_007_080, -1)
-    // year32: p1=age67(年金1.2M), p2=age65(年金0.8M) → gross=2.0M → net=1,602,227
-    expect(result.yearlyData[32].income).toBeCloseTo(1_602_227, -1)
+    // year32: p1=age67(年金1.2M→net=1,007,080), p2=age65(年金0.8M→net=669,720) → 合計=1,676,800
+    // ※ 個人別に税計算するため、合算課税(1,602,227)より手取りが増える
+    expect(result.yearlyData[32].income).toBeCloseTo(1_676_800, -1)
     // year32 の収入 > year31 の収入
     expect(result.yearlyData[32].income).toBeGreaterThan(result.yearlyData[31].income)
 
@@ -1233,5 +1234,251 @@ describe('児童手当', () => {
     // income の差 = 180,000
     expect(withChild.yearlyData[0].income - noChild.yearlyData[0].income)
       .toBe(15_000 * 12)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 13. 産休・育休 (Phase 2C)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('産休・育休', () => {
+  // person2 用の基本設定（grossIncome=6M, employee）
+  // monthlyStandard = min(6M/12, 635,000) = 500,000
+  // year1 給付金 = 500,000 * (2/3) * 8 + 500,000 * 0.5 * 4 = 3,666,667
+  // year2 給付金 = 500,000 * 0.5 * 8 = 2,000,000
+
+  test('産休育休1年目 (year1): person2 の income が給付金になる', () => {
+    // person2.maternityLeaveChildBirthYears = [CURRENT_YEAR]
+    // year0 (currentSimYear = CURRENT_YEAR = birthYear) → year1 給付金
+    const result = runSingleSimulation(cfg({
+      person2: {
+        currentAge: 33,
+        retirementAge: 90,
+        grossIncome: 6_000_000,
+        incomeGrowthRate: 0,
+        pensionStartAge: 90,
+        pensionAmount: 0,
+        employmentType: 'employee',
+        maternityLeaveChildBirthYears: [CURRENT_YEAR],
+      },
+      simulationYears: 0,
+    }))
+    // monthlyStandard = min(500,000, 635,000) = 500,000
+    // year1 = 500,000 * (2/3) * 8 + 500,000 * 0.5 * 4
+    const expectedBenefit = 500_000 * (2 / 3) * 8 + 500_000 * 0.5 * 4
+    expect(result.yearlyData[0].income).toBeCloseTo(expectedBenefit, -1)
+  })
+
+  test('産休育休1年目の給付金は通常収入より低い', () => {
+    const normal = runSingleSimulation(cfg({
+      person2: {
+        currentAge: 33,
+        retirementAge: 90,
+        grossIncome: 6_000_000,
+        incomeGrowthRate: 0,
+        pensionStartAge: 90,
+        pensionAmount: 0,
+        employmentType: 'employee',
+      },
+      simulationYears: 0,
+    }))
+    const maternity = runSingleSimulation(cfg({
+      person2: {
+        currentAge: 33,
+        retirementAge: 90,
+        grossIncome: 6_000_000,
+        incomeGrowthRate: 0,
+        pensionStartAge: 90,
+        pensionAmount: 0,
+        employmentType: 'employee',
+        maternityLeaveChildBirthYears: [CURRENT_YEAR],
+      },
+      simulationYears: 0,
+    }))
+    expect(maternity.yearlyData[0].income).toBeLessThan(normal.yearlyData[0].income)
+  })
+
+  test('育休継続年 (year2): birthYear+1 の year に給付金が続く', () => {
+    // year1 (currentSimYear = CURRENT_YEAR+1 = birthYear+1) → year2 給付金
+    // monthlyExpenses=500_000 で FIRE しないようにする
+    const result = runSingleSimulation(cfg({
+      person2: {
+        currentAge: 33,
+        retirementAge: 90,
+        grossIncome: 6_000_000,
+        incomeGrowthRate: 0,
+        pensionStartAge: 90,
+        pensionAmount: 0,
+        employmentType: 'employee',
+        maternityLeaveChildBirthYears: [CURRENT_YEAR],
+      },
+      monthlyExpenses: 500_000,  // fireNumber = 150M → FIRE しない
+      simulationYears: 2,
+    }))
+    // year1 (simYear=CURRENT_YEAR+1=birthYear+1): year2 給付金
+    const expectedYear2Benefit = 500_000 * 0.5 * 8
+    expect(result.yearlyData[1].income).toBeCloseTo(expectedYear2Benefit, -1)
+    // year1 の給付金 < year0 の給付金（year2 < year1）
+    expect(result.yearlyData[1].income).toBeLessThan(result.yearlyData[0].income)
+  })
+
+  test('産休育休は非課税: person2 産休中の income は給付金の額面そのまま（税計算バイパス）', () => {
+    // person2 産休 → 給付金 3,666,667 が非課税で income に反映される
+    // 通常収入なら税が引かれて低くなるが、産休給付金は額面そのまま
+    const benefit = 500_000 * (2 / 3) * 8 + 500_000 * 0.5 * 4  // 3,666,667
+    const result = runSingleSimulation(cfg({
+      person2: {
+        currentAge: 33,
+        retirementAge: 90,
+        grossIncome: 6_000_000,
+        incomeGrowthRate: 0,
+        pensionStartAge: 90,
+        pensionAmount: 0,
+        employmentType: 'employee',
+        maternityLeaveChildBirthYears: [CURRENT_YEAR],
+      },
+      simulationYears: 0,
+    }))
+    // person2 産休給付金は税計算を経ずに income に加算されるため、
+    // income = (p1 net=0) + benefit
+    expect(result.yearlyData[0].income).toBeCloseTo(benefit, -1)
+    // person2 の税は 0（給付金は非課税）
+    // person1 gross=0 → totalTax は住民税均等割(5,000)のみ
+    expect(result.yearlyData[0].totalTax).toBe(5_000)
+  })
+
+  test('産休育休対象年以外 (birthYear+2以降) は通常収入に戻る', () => {
+    // year2 (simYear=CURRENT_YEAR+2=birthYear+2) は通常収入
+    const result = runSingleSimulation(cfg({
+      person2: {
+        currentAge: 33,
+        retirementAge: 90,
+        grossIncome: 6_000_000,
+        incomeGrowthRate: 0,
+        pensionStartAge: 90,
+        pensionAmount: 0,
+        employmentType: 'employee',
+        maternityLeaveChildBirthYears: [CURRENT_YEAR],
+      },
+      simulationYears: 2,
+    }))
+    // year2: 通常収入（grossIncome=6M, age35 → calculateTaxBreakdown）
+    const normalResult = runSingleSimulation(cfg({
+      person2: {
+        currentAge: 33,
+        retirementAge: 90,
+        grossIncome: 6_000_000,
+        incomeGrowthRate: 0,
+        pensionStartAge: 90,
+        pensionAmount: 0,
+        employmentType: 'employee',
+      },
+      simulationYears: 2,
+    }))
+    expect(result.yearlyData[2].income).toBeCloseTo(normalResult.yearlyData[2].income, -1)
+  })
+
+  test('個人事業主: 産休育休給付金ゼロ', () => {
+    // selfEmployed → 給付金なし（0を返す）
+    const result = runSingleSimulation(cfg({
+      person2: {
+        currentAge: 33,
+        retirementAge: 90,
+        grossIncome: 6_000_000,
+        incomeGrowthRate: 0,
+        pensionStartAge: 90,
+        pensionAmount: 0,
+        employmentType: 'selfEmployed',
+        maternityLeaveChildBirthYears: [CURRENT_YEAR],
+      },
+      simulationYears: 0,
+    }))
+    // selfEmployed 産休 → income = 0
+    expect(result.yearlyData[0].income).toBe(0)
+  })
+
+  test('時短勤務中: 収入が partTimeIncomeRatio 倍になる', () => {
+    // partTimeUntilAge=40, partTimeIncomeRatio=0.7, currentAge=35 → 35〜40歳は70%
+    const fullTime = runSingleSimulation(cfg({
+      person1: {
+        currentAge: 35,
+        retirementAge: 90,
+        grossIncome: 5_000_000,
+        incomeGrowthRate: 0,
+        pensionStartAge: 90,
+        pensionAmount: 0,
+        employmentType: 'employee',
+      },
+      simulationYears: 0,
+    }))
+    const partTime = runSingleSimulation(cfg({
+      person1: {
+        currentAge: 35,
+        retirementAge: 90,
+        grossIncome: 5_000_000,
+        incomeGrowthRate: 0,
+        pensionStartAge: 90,
+        pensionAmount: 0,
+        employmentType: 'employee',
+        partTimeUntilAge: 40,
+        partTimeIncomeRatio: 0.7,
+      },
+      simulationYears: 0,
+    }))
+    // 時短中は通常収入より低い
+    expect(partTime.yearlyData[0].income).toBeLessThan(fullTime.yearlyData[0].income)
+    // partTimeGross = 5M * 0.7 = 3.5M のときの税引き後（実測値で近似確認）
+    expect(partTime.yearlyData[0].income).toBeCloseTo(2_771_542, -1)
+  })
+
+  test('時短終了年齢を超えたら通常収入に戻る', () => {
+    // partTimeUntilAge=37 → age38(year3)は通常収入
+    const result = runSingleSimulation(cfg({
+      person1: {
+        currentAge: 35,
+        retirementAge: 90,
+        grossIncome: 5_000_000,
+        incomeGrowthRate: 0,
+        pensionStartAge: 90,
+        pensionAmount: 0,
+        employmentType: 'employee',
+        partTimeUntilAge: 37,
+        partTimeIncomeRatio: 0.7,
+      },
+      simulationYears: 3,
+    }))
+    const fullTime = runSingleSimulation(cfg({
+      person1: {
+        currentAge: 35,
+        retirementAge: 90,
+        grossIncome: 5_000_000,
+        incomeGrowthRate: 0,
+        pensionStartAge: 90,
+        pensionAmount: 0,
+        employmentType: 'employee',
+      },
+      simulationYears: 3,
+    }))
+    // year0(age35) ≤ 37 → 時短
+    expect(result.yearlyData[0].income).toBeLessThan(fullTime.yearlyData[0].income)
+    // year3(age38) > 37 → 通常収入に戻る
+    expect(result.yearlyData[3].income).toBeCloseTo(fullTime.yearlyData[3].income, -1)
+  })
+
+  test('maternityLeaveChildBirthYears が未定義 → 通常収入', () => {
+    // 産休設定なし → maternityLeaveChildBirthYears=undefined でも正常動作
+    const result = runSingleSimulation(cfg({
+      person1: {
+        currentAge: 35,
+        retirementAge: 90,
+        grossIncome: 5_000_000,
+        incomeGrowthRate: 0,
+        pensionStartAge: 90,
+        pensionAmount: 0,
+        employmentType: 'employee',
+      },
+      simulationYears: 0,
+    }))
+    expect(result.yearlyData[0].income).toBeCloseTo(3_884_027, -1)
   })
 })

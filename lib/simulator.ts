@@ -18,10 +18,14 @@ export interface Person {
     employmentType?: EmploymentType  // 雇用形態（省略時は 'employee'）
     /** @deprecated grossIncome を使うこと */
     currentIncome?: number
+    maternityLeaveChildBirthYears?: number[]  // 産休・育休を取る子の出生年（年単位近似）
+    partTimeUntilAge?: number | null          // 時短勤務終了年齢（この年齢になるまで時短）
+    partTimeIncomeRatio?: number              // 時短中の収入比率（例: 0.7 = フル収入の70%）
 }
 
 export interface Child {
     birthYear: number
+    birthDate?: string          // 追加: 'YYYY-MM-DD' 形式（optional）
     educationPath: "public" | "private" | "mixed"
 }
 
@@ -314,6 +318,67 @@ function calculateIncome(
 }
 
 // ----------------------------------------------------------------------------
+// Maternity / Parental Leave Income Calculator
+// ----------------------------------------------------------------------------
+
+/**
+ * 産休・育休取得年の給付金を計算する（年単位近似）
+ * @param person 対象の人
+ * @param isYear1 true=産休育休1年目(birthYear)、false=育休継続(birthYear+1)
+ * @returns 非課税の年間給付金額（円）
+ */
+function calculateMaternityLeaveIncome(
+    person: Person,
+    isYear1: boolean
+): number {
+    if (person.employmentType === 'selfEmployed' || person.employmentType === 'homemaker') {
+        return 0  // 個人事業主・専業主婦は給付金なし
+    }
+    const monthlyStandard = Math.min((person.grossIncome ?? 0) / 12, 635_000)
+    if (isYear1) {
+        // 産休(2ヶ月) + 育休前半180日(約6ヶ月): 月額×2/3 × 8ヶ月 + 育休後半(約4ヶ月): 月額×0.5 × 4ヶ月
+        return monthlyStandard * (2 / 3) * 8 + monthlyStandard * 0.5 * 4
+    } else {
+        // 育休継続（残り期間: 約8ヶ月を月額×0.5として近似）
+        return monthlyStandard * 0.5 * 8
+    }
+}
+
+/**
+ * 産休育休対象年かどうかを判定する
+ * @param person 対象の人
+ * @param currentSimYear シミュレーション対象年（西暦）
+ * @returns 'year1' | 'year2' | null
+ */
+function isMaternityLeaveYear(
+    person: Person,
+    currentSimYear: number
+): 'year1' | 'year2' | null {
+    if (!person.maternityLeaveChildBirthYears || person.maternityLeaveChildBirthYears.length === 0) {
+        return null
+    }
+    for (const birthYear of person.maternityLeaveChildBirthYears) {
+        if (currentSimYear === birthYear) return 'year1'
+        if (currentSimYear === birthYear + 1) return 'year2'
+    }
+    return null
+}
+
+/**
+ * 時短勤務中の収入比率を返す
+ * @param person 対象の人
+ * @param age 年齢
+ * @returns 収入比率（0.0〜1.0）
+ */
+function getPartTimeRatio(person: Person, age: number): number {
+    if (!person.partTimeUntilAge) return 1.0
+    if (age <= person.partTimeUntilAge) {
+        return person.partTimeIncomeRatio ?? 0.8  // 未指定は80%
+    }
+    return 1.0
+}
+
+// ----------------------------------------------------------------------------
 // Tax Calculator
 // ----------------------------------------------------------------------------
 
@@ -448,34 +513,82 @@ export function runSingleSimulation(
         // FIRE達成後は即退職扱い: 就労収入ゼロ、年金年齢に達したら年金収入のみ
         const isPostFire = fireAge !== null
 
-        // Calculate income
+        // Calculate income (person1 and person2 individually for correct tax calculation)
         let totalIncome: number
+        let totalNetIncome: number
+        let totalTaxAmount: number
+
         if (isPostFire) {
-            totalIncome = 0
+            // FIRE後: 年金収入のみ（各人個別に計算）
+            let p1Income = 0
+            let p1Tax = 0
             if (person1Age >= config.person1.pensionStartAge) {
                 const inflationMultiplier = Math.pow(1 + config.inflationRate, year)
-                totalIncome += config.person1.pensionAmount * inflationMultiplier
+                const p1Gross = config.person1.pensionAmount * inflationMultiplier
+                const p1Breakdown = calculateTaxBreakdown(p1Gross, config.person1.employmentType ?? 'employee', person1Age)
+                p1Income = p1Breakdown.netIncome
+                p1Tax = p1Breakdown.totalTax
+                totalIncome = p1Gross
+            } else {
+                totalIncome = 0
             }
+
+            let p2Income = 0
+            let p2Tax = 0
             if (config.person2 && person2Age >= config.person2.pensionStartAge) {
                 const inflationMultiplier = Math.pow(1 + config.inflationRate, year)
-                totalIncome += config.person2.pensionAmount * inflationMultiplier
+                const p2Gross = config.person2.pensionAmount * inflationMultiplier
+                const p2Breakdown = calculateTaxBreakdown(p2Gross, config.person2.employmentType ?? 'employee', person2Age)
+                p2Income = p2Breakdown.netIncome
+                p2Tax = p2Breakdown.totalTax
+                totalIncome += p2Gross
             }
+
+            totalNetIncome = p1Income + p2Income
+            totalTaxAmount = p1Tax + p2Tax
         } else {
-            totalIncome = calculateIncome(config.person1, person1Age, config.inflationRate, year)
-            if (config.person2) {
-                totalIncome += calculateIncome(config.person2, person2Age, config.inflationRate, year)
+            // FIRE前: 就労収入（産休育休・時短勤務を考慮）
+            // person1 の収入計算
+            const p1LeaveStatus = isMaternityLeaveYear(config.person1, currentSimYear)
+            let p1Income: number
+            let p1Tax: number
+            if (p1LeaveStatus) {
+                p1Income = calculateMaternityLeaveIncome(config.person1, p1LeaveStatus === 'year1')
+                p1Tax = 0  // 給付金は非課税
+                totalIncome = 0  // 産休中は給与収入ゼロ
+            } else {
+                const p1Ratio = getPartTimeRatio(config.person1, person1Age)
+                const p1Gross = calculateIncome(config.person1, person1Age, config.inflationRate, year) * p1Ratio
+                const p1Breakdown = calculateTaxBreakdown(p1Gross, config.person1.employmentType ?? 'employee', person1Age)
+                p1Income = p1Breakdown.netIncome
+                p1Tax = p1Breakdown.totalTax
+                totalIncome = p1Gross
             }
+
+            // person2 の収入計算
+            let p2Income = 0
+            let p2Tax = 0
+            if (config.person2) {
+                const p2LeaveStatus = isMaternityLeaveYear(config.person2, currentSimYear)
+                if (p2LeaveStatus) {
+                    p2Income = calculateMaternityLeaveIncome(config.person2, p2LeaveStatus === 'year1')
+                    p2Tax = 0  // 給付金は非課税
+                } else {
+                    const p2Ratio = getPartTimeRatio(config.person2, person2Age)
+                    const p2Gross = calculateIncome(config.person2, person2Age, config.inflationRate, year) * p2Ratio
+                    const p2Breakdown = calculateTaxBreakdown(p2Gross, config.person2.employmentType ?? 'employee', person2Age)
+                    p2Income = p2Breakdown.netIncome
+                    p2Tax = p2Breakdown.totalTax
+                    totalIncome += p2Gross
+                }
+            }
+
+            totalNetIncome = p1Income + p2Income
+            totalTaxAmount = p1Tax + p2Tax
         }
 
-        // Calculate taxes
-        const taxAge = person1Age
-        const taxBreakdown = calculateTaxBreakdown(
-            totalIncome,
-            config.person1.employmentType ?? 'employee',
-            taxAge
-        )
-        const totalTax = taxBreakdown.totalTax
-        const netIncome = taxBreakdown.netIncome
+        const totalTax = totalTaxAmount
+        const netIncome = totalNetIncome
 
         // Calculate expenses with growth
         const expenseGrowthMultiplier = Math.pow(1 + config.expenseGrowthRate, year)
