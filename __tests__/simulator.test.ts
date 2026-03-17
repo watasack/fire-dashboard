@@ -46,6 +46,7 @@ function cfg(overrides: Partial<SimulationConfig> = {}): SimulationConfig {
     childAllowanceEnabled: true,
     simulationYears: 1,
     inflationRate: 0,
+    expenseMode: 'fixed',
   }
   // person1/person2/nisa/ideco はネストしているので個別マージ
   const { person1, person2, nisa, ideco, ...rest } = overrides
@@ -1480,5 +1481,91 @@ describe('産休・育休', () => {
       simulationYears: 0,
     }))
     expect(result.yearlyData[0].income).toBeCloseTo(3_884_027, -1)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 2A: ライフステージ別生活費
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ライフステージ別生活費', () => {
+  test('expenseMode=fixed: 既存の monthlyExpenses が使われる', () => {
+    const result = runSingleSimulation(cfg({
+      expenseMode: 'fixed',
+      monthlyExpenses: 200_000,
+      simulationYears: 0,
+    }))
+    // 200_000 * 12 = 2_400_000（インフレなし・expenseGrowthRate=0）
+    expect(result.yearlyData[0].expenses).toBeCloseTo(2_400_000, -1)
+    expect(result.yearlyData[0].lifecycleStage).toBe('fixed')
+  })
+
+  test('expenseMode=lifecycle: 第1子0歳 → 2,760,000', () => {
+    const result = runSingleSimulation(cfg({
+      expenseMode: 'lifecycle',
+      children: [{ birthYear: CURRENT_YEAR, educationPath: 'public' }],
+      simulationYears: 0,
+    }))
+    // year0: inflationFactor=1.0 なので expenses = 2_760_000
+    expect(result.yearlyData[0].expenses).toBeCloseTo(2_760_000, -1)
+    expect(result.yearlyData[0].lifecycleStage).toBe('withPreschooler')
+  })
+
+  test('expenseMode=lifecycle: 子が成長するにつれて生活費ステージが切り替わる', () => {
+    // birthYear = CURRENT_YEAR - 5 → year0 で5歳（withPreschooler）、year1 で6歳（withElementaryChild）
+    const result = runSingleSimulation(cfg({
+      expenseMode: 'lifecycle',
+      children: [{ birthYear: CURRENT_YEAR - 5, educationPath: 'public' }],
+      simulationYears: 1,
+    }))
+    expect(result.yearlyData[0].lifecycleStage).toBe('withPreschooler')
+    expect(result.yearlyData[1].lifecycleStage).toBe('withElementaryChild')
+  })
+
+  test('expenseMode=lifecycle: 子が22歳を超えると空巣期に切り替わる', () => {
+    // birthYear = CURRENT_YEAR - 21 → year0 で21歳（withCollegeChild）、year1 で22歳（emptyNestActive）
+    const result = runSingleSimulation(cfg({
+      expenseMode: 'lifecycle',
+      children: [{ birthYear: CURRENT_YEAR - 21, educationPath: 'public' }],
+      simulationYears: 1,
+    }))
+    expect(result.yearlyData[0].lifecycleStage).toBe('withCollegeChild')
+    expect(result.yearlyData[1].lifecycleStage).toBe('emptyNestActive')
+  })
+
+  test('expenseMode=lifecycle: 第2子の追加費用が加算される', () => {
+    // 同年2子: baseExpenses(withPreschooler)=2_760_000 + getAdditionalChildCost(0)=500_000 = 3_260_000
+    const result = runSingleSimulation(cfg({
+      expenseMode: 'lifecycle',
+      children: [
+        { birthYear: CURRENT_YEAR, educationPath: 'public' },
+        { birthYear: CURRENT_YEAR, educationPath: 'public' },
+      ],
+      simulationYears: 0,
+    }))
+    expect(result.yearlyData[0].expenses).toBeCloseTo(3_260_000, -1)
+  })
+
+  test('expenseMode=lifecycle: person1が80歳以上 → emptyNestElderly', () => {
+    // startAge=79, year1 で80歳 → emptyNestElderly
+    const result = runSingleSimulation(cfg({
+      expenseMode: 'lifecycle',
+      person1: { currentAge: 79, retirementAge: 90, grossIncome: 0, incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0 },
+      children: [],
+      simulationYears: 1,
+    }))
+    expect(result.yearlyData[1].lifecycleStage).toBe('emptyNestElderly')
+  })
+
+  test('lifecycleExpenses でデフォルト値をオーバーライドできる', () => {
+    // emptyNestActive を 3_000_000 に上書き
+    const result = runSingleSimulation(cfg({
+      expenseMode: 'lifecycle',
+      lifecycleExpenses: { emptyNestActive: 3_000_000 },
+      person1: { currentAge: 40, retirementAge: 90, grossIncome: 0, incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0 },
+      children: [],
+      simulationYears: 0,
+    }))
+    expect(result.yearlyData[0].expenses).toBeCloseTo(3_000_000, -1)
   })
 })

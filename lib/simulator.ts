@@ -44,6 +44,17 @@ export interface IDeCoConfig {
     monthlyContribution: number
 }
 
+export interface LifecycleExpenseConfig {
+    withPreschooler?: number        // 0〜5歳: デフォルト 2,760,000
+    withElementaryChild?: number    // 6〜11歳: デフォルト 3,232,000
+    withJuniorHighChild?: number    // 12〜14歳: デフォルト 3,468,000
+    withHighSchoolChild?: number    // 15〜17歳: デフォルト 3,830,000
+    withCollegeChild?: number       // 18〜21歳: デフォルト 3,957,000
+    emptyNestActive?: number        // 子なし〜69歳: デフォルト 2,581,000
+    emptyNestSenior?: number        // 70〜79歳: デフォルト 2,243,000
+    emptyNestElderly?: number       // 80歳〜: デフォルト 1,931,000
+}
+
 export interface SimulationConfig {
     // Basic settings
     currentAssets: number
@@ -71,6 +82,10 @@ export interface SimulationConfig {
     // Simulation settings
     simulationYears: number
     inflationRate: number
+
+    // Lifecycle expense mode
+    expenseMode: 'fixed' | 'lifecycle'
+    lifecycleExpenses?: LifecycleExpenseConfig
 }
 
 export interface TaxBreakdown {
@@ -101,6 +116,7 @@ export interface YearlyData {
     childAllowance: number
     fireNumber: number
     isFireAchieved: boolean
+    lifecycleStage: string
 }
 
 export interface SimulationResult {
@@ -196,6 +212,9 @@ export const DEFAULT_CONFIG: SimulationConfig = {
     // Simulation settings
     simulationYears: 40,
     inflationRate: 0.01, // 1%
+
+    // Lifecycle expense mode
+    expenseMode: 'fixed',
 }
 
 // ----------------------------------------------------------------------------
@@ -485,6 +504,76 @@ export function calculateTaxBreakdown(
 }
 
 // ----------------------------------------------------------------------------
+// Lifecycle Expense Calculator
+// ----------------------------------------------------------------------------
+
+export function getAdditionalChildCost(childAge: number): number {
+    if (childAge < 0) return 0
+    if (childAge <= 5) return 500_000
+    if (childAge <= 11) return 400_000
+    if (childAge <= 17) return 450_000
+    if (childAge <= 21) return 600_000
+    return 0
+}
+
+export function getLifecycleStageExpenses(
+    person1Age: number,
+    children: Child[],
+    currentSimYear: number,
+    config?: LifecycleExpenseConfig
+): { expenses: number; stage: string } {
+    // Calculate ages for all children
+    const childrenWithAges = children.map(c => ({ ...c, age: currentSimYear - c.birthYear }))
+
+    // Find the oldest child with age >= 0
+    const eligibleChildren = childrenWithAges.filter(c => c.age >= 0)
+    eligibleChildren.sort((a, b) => b.age - a.age)
+    const oldest = eligibleChildren[0]
+
+    let baseExpenses: number
+    let stage: string
+
+    if (oldest && oldest.age <= 21) {
+        if (oldest.age <= 5) {
+            stage = 'withPreschooler'
+            baseExpenses = config?.withPreschooler ?? 2_760_000
+        } else if (oldest.age <= 11) {
+            stage = 'withElementaryChild'
+            baseExpenses = config?.withElementaryChild ?? 3_232_000
+        } else if (oldest.age <= 14) {
+            stage = 'withJuniorHighChild'
+            baseExpenses = config?.withJuniorHighChild ?? 3_468_000
+        } else if (oldest.age <= 17) {
+            stage = 'withHighSchoolChild'
+            baseExpenses = config?.withHighSchoolChild ?? 3_830_000
+        } else {
+            stage = 'withCollegeChild'
+            baseExpenses = config?.withCollegeChild ?? 3_957_000
+        }
+    } else {
+        // Empty nest
+        if (person1Age >= 80) {
+            stage = 'emptyNestElderly'
+            baseExpenses = config?.emptyNestElderly ?? 1_931_000
+        } else if (person1Age >= 70) {
+            stage = 'emptyNestSenior'
+            baseExpenses = config?.emptyNestSenior ?? 2_243_000
+        } else {
+            stage = 'emptyNestActive'
+            baseExpenses = config?.emptyNestActive ?? 2_581_000
+        }
+    }
+
+    // Add additional costs for 2nd child and beyond
+    let additionalCost = 0
+    for (let i = 1; i < childrenWithAges.length; i++) {
+        additionalCost += getAdditionalChildCost(childrenWithAges[i].age)
+    }
+
+    return { expenses: baseExpenses + additionalCost, stage }
+}
+
+// ----------------------------------------------------------------------------
 // Single Simulation
 // ----------------------------------------------------------------------------
 
@@ -592,10 +681,22 @@ export function runSingleSimulation(
 
         // Calculate expenses with growth
         const expenseGrowthMultiplier = Math.pow(1 + config.expenseGrowthRate, year)
-        const baseExpenses = annualExpenses * expenseGrowthMultiplier
+        let baseExpenses: number
+        let lifecycleStage: string
+        if (config.expenseMode === 'lifecycle') {
+            const inflationFactor = Math.pow(1 + config.inflationRate, year)
+            const result = getLifecycleStageExpenses(person1Age, config.children, currentSimYear, config.lifecycleExpenses)
+            baseExpenses = result.expenses * inflationFactor
+            lifecycleStage = result.stage
+        } else {
+            baseExpenses = annualExpenses * expenseGrowthMultiplier
+            lifecycleStage = 'fixed'
+        }
 
-        // Calculate child costs
-        const childCosts = calculateChildCosts(config.children, currentSimYear, config.inflationRate)
+        // Calculate child costs (skip in lifecycle mode to avoid double-counting)
+        const childCosts = (config.expenseMode === 'lifecycle')
+            ? 0
+            : calculateChildCosts(config.children, currentSimYear, config.inflationRate)
 
         // Calculate mortgage cost
         const mortgageCost = calculateMortgageCost(config.mortgage, currentSimYear)
@@ -666,6 +767,7 @@ export function runSingleSimulation(
             childAllowance,
             fireNumber: currentFireNumber,
             isFireAchieved,
+            lifecycleStage,
         })
     }
 
