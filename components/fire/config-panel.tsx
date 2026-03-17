@@ -42,11 +42,11 @@ function PersonConfig({
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <Label className="text-sm font-medium">年収</Label>
-          <span className="text-sm font-mono text-muted-foreground">{formatCurrency(person.currentIncome, true)}</span>
+          <span className="text-sm font-mono text-muted-foreground">{formatCurrency(person.grossIncome, true)}</span>
         </div>
         <Slider
-          value={[person.currentIncome]}
-          onValueChange={([value]) => onChange({ ...person, currentIncome: value })}
+          value={[person.grossIncome]}
+          onValueChange={([value]) => onChange({ ...person, grossIncome: value })}
           min={2000000}
           max={20000000}
           step={100000}
@@ -114,10 +114,11 @@ export function ConfigPanel({ config, onConfigChange }: ConfigPanelProps) {
         person2: {
           currentAge: 33,
           retirementAge: 65,
-          currentIncome: 5000000,
+          grossIncome: 5000000,
           incomeGrowthRate: 0.02,
           pensionStartAge: 65,
           pensionAmount: 1200000,
+          employmentType: 'employee',
         },
       })
     } else {

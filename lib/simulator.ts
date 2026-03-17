@@ -6,13 +6,18 @@
 // Types
 // ----------------------------------------------------------------------------
 
+export type EmploymentType = 'employee' | 'selfEmployed' | 'homemaker'
+
 export interface Person {
     currentAge: number
     retirementAge: number
-    currentIncome: number
+    grossIncome: number          // 税引き前年収（円）
     incomeGrowthRate: number
     pensionStartAge: number
     pensionAmount: number
+    employmentType?: EmploymentType  // 雇用形態（省略時は 'employee'）
+    /** @deprecated grossIncome を使うこと */
+    currentIncome?: number
 }
 
 export interface Child {
@@ -126,20 +131,22 @@ export const DEFAULT_CONFIG: SimulationConfig = {
     person1: {
         currentAge: 35,
         retirementAge: 65,
-        currentIncome: 7000000, // 700万円/年
+        grossIncome: 7000000, // 税引き前年収700万円/年
         incomeGrowthRate: 0.02, // 2%/年
         pensionStartAge: 65,
         pensionAmount: 1500000, // 150万円/年
+        employmentType: 'employee',
     },
 
     // Spouse (null = no spouse)
     person2: {
         currentAge: 33,
         retirementAge: 65,
-        currentIncome: 5000000, // 500万円/年
+        grossIncome: 5000000, // 税引き前年収500万円/年
         incomeGrowthRate: 0.02, // 2%/年
         pensionStartAge: 65,
         pensionAmount: 1200000, // 120万円/年
+        employmentType: 'employee',
     },
 
     // NISA
@@ -250,7 +257,8 @@ function calculateIncome(
     // Working income with growth
     const yearsWorked = age - person.currentAge
     const growthMultiplier = Math.pow(1 + person.incomeGrowthRate, yearsWorked)
-    return person.currentIncome * growthMultiplier
+    const gross = person.grossIncome ?? person.currentIncome ?? 0
+    return gross * growthMultiplier
 }
 
 // ----------------------------------------------------------------------------
@@ -564,7 +572,7 @@ export function generateScenarios(baseConfig: SimulationConfig): Scenario[] {
         description: "副業で年間100万円の追加収入",
         changes: {
             person1: {
-                currentIncome: baseConfig.person1.currentIncome + 1000000,
+                grossIncome: (baseConfig.person1.grossIncome ?? baseConfig.person1.currentIncome ?? 0) + 1000000,
             },
         },
     })

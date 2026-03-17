@@ -32,10 +32,11 @@ function cfg(overrides: Partial<SimulationConfig> = {}): SimulationConfig {
     person1: {
       currentAge: 35,
       retirementAge: 90,
-      currentIncome: 0,
+      grossIncome: 0,
       incomeGrowthRate: 0,
       pensionStartAge: 90,
       pensionAmount: 0,
+      employmentType: 'employee',
     },
     person2: null,
     nisa: { enabled: false, annualContribution: 0 },
@@ -67,7 +68,7 @@ describe('収入計算', () => {
     // year4: gross = 5M * 1.02^4 ≈ 5,412,160
     // monthlyExpenses を設定して fireNumber を高くし、FIRE を発動させない
     const result = runSingleSimulation(cfg({
-      person1: { currentAge: 35, retirementAge: 65, currentIncome: 5_000_000, incomeGrowthRate: 0.02, pensionStartAge: 65, pensionAmount: 0 },
+      person1: { currentAge: 35, retirementAge: 65, grossIncome: 5_000_000, incomeGrowthRate: 0.02, pensionStartAge: 65, pensionAmount: 0 },
       monthlyExpenses: 500_000, // fireNumber = 150M → テスト期間中に FIRE しない
       simulationYears: 4,
     }))
@@ -83,7 +84,7 @@ describe('収入計算', () => {
     // 合計税 = 1,678,500
     // 手取り = 3,321,500
     const result = runSingleSimulation(cfg({
-      person1: { currentAge: 35, retirementAge: 65, currentIncome: 5_000_000, incomeGrowthRate: 0, pensionStartAge: 65, pensionAmount: 0 },
+      person1: { currentAge: 35, retirementAge: 65, grossIncome: 5_000_000, incomeGrowthRate: 0, pensionStartAge: 65, pensionAmount: 0 },
       simulationYears: 0,
     }))
     expect(result.yearlyData[0].income).toBeCloseTo(3_321_500, -1)
@@ -93,7 +94,7 @@ describe('収入計算', () => {
     // currentAge=60, retirementAge=60, pensionStartAge=65
     // year0(age60)〜year4(age64): 退職ギャップ → 収入ゼロ
     const result = runSingleSimulation(cfg({
-      person1: { currentAge: 60, retirementAge: 60, currentIncome: 5_000_000, incomeGrowthRate: 0, pensionStartAge: 65, pensionAmount: 1_200_000 },
+      person1: { currentAge: 60, retirementAge: 60, grossIncome: 5_000_000, incomeGrowthRate: 0, pensionStartAge: 65, pensionAmount: 1_200_000 },
       simulationYears: 5,
     }))
     expect(result.yearlyData[0].income).toBe(0)
@@ -104,7 +105,7 @@ describe('収入計算', () => {
     // currentAge=60, retirementAge=60, pensionStartAge=65
     // year5(age65): 年金開始 → 収入 > 0
     const result = runSingleSimulation(cfg({
-      person1: { currentAge: 60, retirementAge: 60, currentIncome: 5_000_000, incomeGrowthRate: 0, pensionStartAge: 65, pensionAmount: 1_200_000 },
+      person1: { currentAge: 60, retirementAge: 60, grossIncome: 5_000_000, incomeGrowthRate: 0, pensionStartAge: 65, pensionAmount: 1_200_000 },
       simulationYears: 5,
     }))
     expect(result.yearlyData[5].income).toBeGreaterThan(0)
@@ -116,7 +117,7 @@ describe('収入計算', () => {
     // 所得税 = 720,000*0.05=36,000, 住民税=72,000 → 税288,000
     // 手取り = 912,000
     const result = runSingleSimulation(cfg({
-      person1: { currentAge: 65, retirementAge: 65, currentIncome: 0, incomeGrowthRate: 0, pensionStartAge: 65, pensionAmount: 1_200_000 },
+      person1: { currentAge: 65, retirementAge: 65, grossIncome: 0, incomeGrowthRate: 0, pensionStartAge: 65, pensionAmount: 1_200_000 },
       inflationRate: 0,
       simulationYears: 0,
     }))
@@ -125,7 +126,7 @@ describe('収入計算', () => {
 
   test('年金: inflationRate > 0 のとき経年で収入が増える', () => {
     const result = runSingleSimulation(cfg({
-      person1: { currentAge: 65, retirementAge: 65, currentIncome: 0, incomeGrowthRate: 0, pensionStartAge: 65, pensionAmount: 1_200_000 },
+      person1: { currentAge: 65, retirementAge: 65, grossIncome: 0, incomeGrowthRate: 0, pensionStartAge: 65, pensionAmount: 1_200_000 },
       inflationRate: 0.02,
       simulationYears: 10,
     }))
@@ -135,12 +136,12 @@ describe('収入計算', () => {
 
   test('配偶者あり: 収入が2人分合算される', () => {
     const noSpouse = runSingleSimulation(cfg({
-      person1: { currentAge: 35, retirementAge: 90, currentIncome: 5_000_000, incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0 },
+      person1: { currentAge: 35, retirementAge: 90, grossIncome: 5_000_000, incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0 },
       simulationYears: 0,
     }))
     const withSpouse = runSingleSimulation(cfg({
-      person1: { currentAge: 35, retirementAge: 90, currentIncome: 5_000_000, incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0 },
-      person2: { currentAge: 33, retirementAge: 90, currentIncome: 3_000_000, incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0 },
+      person1: { currentAge: 35, retirementAge: 90, grossIncome: 5_000_000, incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0 },
+      person2: { currentAge: 33, retirementAge: 90, grossIncome: 3_000_000, incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0 },
       simulationYears: 0,
     }))
     expect(withSpouse.yearlyData[0].income).toBeGreaterThan(noSpouse.yearlyData[0].income)
@@ -148,7 +149,7 @@ describe('収入計算', () => {
 
   test('person2=null: 配偶者なしで収入は person1 のみ', () => {
     const result = runSingleSimulation(cfg({
-      person1: { currentAge: 35, retirementAge: 90, currentIncome: 5_000_000, incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0 },
+      person1: { currentAge: 35, retirementAge: 90, grossIncome: 5_000_000, incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0 },
       person2: null,
       simulationYears: 0,
     }))
@@ -165,7 +166,7 @@ describe('税計算ブラケット', () => {
   /** 年収 annualIncome に対する手取りを返す */
   function netAt(annualIncome: number): number {
     return runSingleSimulation(cfg({
-      person1: { currentAge: 35, retirementAge: 90, currentIncome: annualIncome, incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0 },
+      person1: { currentAge: 35, retirementAge: 90, grossIncome: annualIncome, incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0 },
       simulationYears: 0,
     })).yearlyData[0].income
   }
@@ -382,7 +383,7 @@ describe('NISA 積立', () => {
     // year0: 1.2M, year1: 2.4M, ..., year9: 12M (= 10回分)
     // monthlyExpenses で fireNumber = 150M に設定 → テスト期間中に FIRE しない
     const result = runSingleSimulation(cfg({
-      person1: { currentAge: 35, retirementAge: 65, currentIncome: 0, incomeGrowthRate: 0, pensionStartAge: 65, pensionAmount: 0 },
+      person1: { currentAge: 35, retirementAge: 65, grossIncome: 0, incomeGrowthRate: 0, pensionStartAge: 65, pensionAmount: 0 },
       nisa: { enabled: true, annualContribution: 1_200_000 },
       monthlyExpenses: 500_000,
       simulationYears: 9,
@@ -393,7 +394,7 @@ describe('NISA 積立', () => {
   test('退職年 (age=retirementAge) から拠出停止: 残高は伸びない(リターン0)', () => {
     // retirementAge=37 → year0(age35),year1(age36)まで拠出、year2(age37)から停止
     const result = runSingleSimulation(cfg({
-      person1: { currentAge: 35, retirementAge: 37, currentIncome: 0, incomeGrowthRate: 0, pensionStartAge: 37, pensionAmount: 0 },
+      person1: { currentAge: 35, retirementAge: 37, grossIncome: 0, incomeGrowthRate: 0, pensionStartAge: 37, pensionAmount: 0 },
       nisa: { enabled: true, annualContribution: 1_200_000 },
       monthlyExpenses: 500_000, // FIRE しないようにする
       simulationYears: 4,
@@ -410,7 +411,7 @@ describe('NISA 積立', () => {
     // year1後: 2.4M (確認済)
     // year2: 2.4M * 1.05 = 2.52M (拠出なし)
     const result = runSingleSimulation(cfg({
-      person1: { currentAge: 35, retirementAge: 37, currentIncome: 0, incomeGrowthRate: 0, pensionStartAge: 37, pensionAmount: 0 },
+      person1: { currentAge: 35, retirementAge: 37, grossIncome: 0, incomeGrowthRate: 0, pensionStartAge: 37, pensionAmount: 0 },
       nisa: { enabled: true, annualContribution: 1_200_000 },
       investmentReturn: 0.05,
       monthlyExpenses: 500_000, // FIRE しないようにする
@@ -440,7 +441,7 @@ describe('iDeCo 積立', () => {
   test('有効・year0(リターン 0): 月額 * 12 が年間拠出になる', () => {
     const monthly = 23_000
     const result = runSingleSimulation(cfg({
-      person1: { currentAge: 35, retirementAge: 65, currentIncome: 0, incomeGrowthRate: 0, pensionStartAge: 65, pensionAmount: 0 },
+      person1: { currentAge: 35, retirementAge: 65, grossIncome: 0, incomeGrowthRate: 0, pensionStartAge: 65, pensionAmount: 0 },
       ideco: { enabled: true, monthlyContribution: monthly },
       simulationYears: 0,
     }))
@@ -451,7 +452,7 @@ describe('iDeCo 積立', () => {
     const monthly = 23_000
     const annual = monthly * 12 // 276,000
     const result = runSingleSimulation(cfg({
-      person1: { currentAge: 35, retirementAge: 65, currentIncome: 0, incomeGrowthRate: 0, pensionStartAge: 65, pensionAmount: 0 },
+      person1: { currentAge: 35, retirementAge: 65, grossIncome: 0, incomeGrowthRate: 0, pensionStartAge: 65, pensionAmount: 0 },
       ideco: { enabled: true, monthlyContribution: monthly },
       monthlyExpenses: 500_000, // FIRE しないようにする
       simulationYears: 2, // year0,1,2 → 3 回
@@ -462,7 +463,7 @@ describe('iDeCo 積立', () => {
   test('退職後は拠出停止: 残高が増えなくなる(リターン 0)', () => {
     const monthly = 23_000
     const result = runSingleSimulation(cfg({
-      person1: { currentAge: 35, retirementAge: 37, currentIncome: 0, incomeGrowthRate: 0, pensionStartAge: 37, pensionAmount: 0 },
+      person1: { currentAge: 35, retirementAge: 37, grossIncome: 0, incomeGrowthRate: 0, pensionStartAge: 37, pensionAmount: 0 },
       ideco: { enabled: true, monthlyContribution: monthly },
       monthlyExpenses: 500_000, // FIRE しないようにする
       simulationYears: 4,
@@ -672,7 +673,7 @@ describe('90歳時点での最終資産残高の整合性', () => {
       person1: {
         currentAge: 35,
         retirementAge: 65,
-        currentIncome: 5_000_000,
+        grossIncome: 5_000_000,
         incomeGrowthRate: 0,
         pensionStartAge: 65,
         pensionAmount: 1_200_000,
@@ -713,7 +714,7 @@ describe('90歳時点での最終資産残高の整合性', () => {
       person1: {
         currentAge: 35,
         retirementAge: 65,
-        currentIncome: 0,
+        grossIncome: 0,
         incomeGrowthRate: 0,
         pensionStartAge: 65,
         pensionAmount: 0,
@@ -756,7 +757,7 @@ describe('90歳時点での最終資産残高の整合性', () => {
       person1: {
         currentAge: 35,
         retirementAge: 65,
-        currentIncome: 5_000_000,
+        grossIncome: 5_000_000,
         incomeGrowthRate: 0,
         pensionStartAge: 65,
         pensionAmount: 1_200_000,
@@ -764,7 +765,7 @@ describe('90歳時点での最終資産残高の整合性', () => {
       person2: {
         currentAge: 33,
         retirementAge: 60,   // 60歳退職 → ギャップ 60〜64
-        currentIncome: 3_000_000,
+        grossIncome: 3_000_000,
         incomeGrowthRate: 0,
         pensionStartAge: 65,
         pensionAmount: 800_000,
@@ -798,7 +799,7 @@ describe('90歳時点での最終資産残高の整合性', () => {
       person1: {
         currentAge: 35,
         retirementAge: 60,
-        currentIncome: 8_000_000,
+        grossIncome: 8_000_000,
         incomeGrowthRate: 0.02,
         pensionStartAge: 65,
         pensionAmount: 1_500_000,
@@ -806,7 +807,7 @@ describe('90歳時点での最終資産残高の整合性', () => {
       person2: {
         currentAge: 33,
         retirementAge: 60,
-        currentIncome: 5_000_000,
+        grossIncome: 5_000_000,
         incomeGrowthRate: 0.02,
         pensionStartAge: 65,
         pensionAmount: 1_200_000,
@@ -866,7 +867,7 @@ describe('エッジケースと不変条件', () => {
 
   test('age は person1.currentAge から連番', () => {
     const result = runSingleSimulation(cfg({
-      person1: { currentAge: 40, retirementAge: 90, currentIncome: 0, incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0 },
+      person1: { currentAge: 40, retirementAge: 90, grossIncome: 0, incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0 },
       simulationYears: 10,
     }))
     result.yearlyData.forEach((d, i) => expect(d.age).toBe(40 + i))
@@ -955,7 +956,7 @@ describe('FIRE 後の取り崩しモード', () => {
       person1: {
         currentAge: 35,
         retirementAge: 65,
-        currentIncome: 7_000_000,
+        grossIncome: 7_000_000,
         incomeGrowthRate: 0,
         pensionStartAge: 65,
         pensionAmount: 1_200_000,
@@ -992,7 +993,7 @@ describe('FIRE 後の取り崩しモード', () => {
       person1: {
         currentAge: 35,
         retirementAge: 65,
-        currentIncome: 7_000_000,
+        grossIncome: 7_000_000,
         incomeGrowthRate: 0,
         pensionStartAge: 90, // 年金なし（テスト期間中）
         pensionAmount: 0,
@@ -1025,7 +1026,7 @@ describe('FIRE 後の取り崩しモード', () => {
       person1: {
         currentAge: 35,
         retirementAge: 65,
-        currentIncome: 0,
+        grossIncome: 0,
         incomeGrowthRate: 0,
         pensionStartAge: 65,
         pensionAmount: 0,
@@ -1063,7 +1064,7 @@ describe('FIRE 後の取り崩しモード', () => {
       person1: {
         currentAge: 35,
         retirementAge: 65,
-        currentIncome: 7_000_000,
+        grossIncome: 7_000_000,
         incomeGrowthRate: 0,
         pensionStartAge: 90,
         pensionAmount: 0,

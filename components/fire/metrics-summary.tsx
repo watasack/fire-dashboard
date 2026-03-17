@@ -41,7 +41,7 @@ function MetricCard({ icon, label, value, subValue, trend }: MetricCardProps) {
 }
 
 export function MetricsSummary({ config, result }: MetricsSummaryProps) {
-  const totalIncome = config.person1.currentIncome + (config.person2?.currentIncome ?? 0)
+  const totalIncome = config.person1.grossIncome + (config.person2?.grossIncome ?? 0)
   const annualExpenses = config.monthlyExpenses * 12
   const savingsRate = (totalIncome - annualExpenses) / totalIncome
   const childCount = config.children.length
