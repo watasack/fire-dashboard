@@ -312,10 +312,29 @@ export interface Scenario {
     description: string
     changes: Omit<Partial<SimulationConfig>, 'person1' | 'person2' | 'nisa' | 'ideco'> & {
         person1?: Partial<Person>
-        person2?: Partial<Person>
+        person2?: Partial<Person> | null
         nisa?: Partial<NISAConfig>
         ideco?: Partial<IDeCoConfig>
     }
+    id?: string          // identifier (localStorage key)
+    savedAt?: number     // save time (epoch ms)
+}
+
+export interface ScenarioComparisonResult {
+    planA: SimulationResult
+    planB: SimulationResult
+    planAConfig: SimulationConfig
+    planBConfig: SimulationConfig
+    diffSummary: ScenarioDiffSummary
+}
+
+export interface ScenarioDiffSummary {
+    fireAgeDiff: number | null       // B.fireAge - A.fireAge (negative = B fires earlier)
+                                     // null if either plan doesn't fire
+    finalAssetsDiff: number          // B.finalAssets - A.finalAssets
+    fireAchievementRateDiff: number  // B.achievementRate - A.achievementRate
+    planAFiresOnly: boolean          // Only plan A fires within simulationYears
+    planBFiresOnly: boolean          // Only plan B fires within simulationYears
 }
 
 // ----------------------------------------------------------------------------
@@ -1688,4 +1707,74 @@ export function generateScenarios(baseConfig: SimulationConfig): Scenario[] {
     })
 
     return scenarios
+}
+
+// ----------------------------------------------------------------------------
+// Scenario Comparison (Phase 10)
+// ----------------------------------------------------------------------------
+
+function getDefaultPerson2(): Person {
+    return {
+        currentAge: 33,
+        retirementAge: 65,
+        grossIncome: 5000000,
+        incomeGrowthRate: 0.02,
+        pensionStartAge: 65,
+        pensionAmount: 1200000,
+        employmentType: 'employee',
+    }
+}
+
+export function runScenarioComparison(
+    planAConfig: SimulationConfig,
+    planBConfig: SimulationConfig
+): ScenarioComparisonResult {
+    const planA = runSingleSimulation(planAConfig)
+    const planB = runSingleSimulation(planBConfig)
+
+    const fireAgeDiff = (planB.fireAge !== null && planA.fireAge !== null)
+        ? planB.fireAge - planA.fireAge
+        : null
+
+    const planAFiresOnly = planA.fireAge !== null && planB.fireAge === null
+    const planBFiresOnly = planB.fireAge !== null && planA.fireAge === null
+
+    return {
+        planA,
+        planB,
+        planAConfig,
+        planBConfig,
+        diffSummary: {
+            fireAgeDiff,
+            finalAssetsDiff: planB.finalAssets - planA.finalAssets,
+            fireAchievementRateDiff: planB.fireAchievementRate - planA.fireAchievementRate,
+            planAFiresOnly,
+            planBFiresOnly,
+        },
+    }
+}
+
+export function applyScenarioChanges(
+    baseConfig: SimulationConfig,
+    scenario: Scenario
+): SimulationConfig {
+    const changes = scenario.changes
+    return {
+        ...baseConfig,
+        ...Object.fromEntries(
+            Object.entries(changes).filter(([key]) =>
+                !['person1', 'person2', 'nisa', 'ideco'].includes(key)
+            )
+        ),
+        person1: changes.person1
+            ? { ...baseConfig.person1, ...changes.person1 }
+            : baseConfig.person1,
+        person2: changes.person2 !== undefined
+            ? (changes.person2 === null
+                ? null
+                : { ...(baseConfig.person2 ?? getDefaultPerson2()), ...changes.person2 })
+            : baseConfig.person2,
+        nisa: changes.nisa ? { ...baseConfig.nisa, ...changes.nisa } : baseConfig.nisa,
+        ideco: changes.ideco ? { ...baseConfig.ideco, ...changes.ideco } : baseConfig.ideco,
+    }
 }

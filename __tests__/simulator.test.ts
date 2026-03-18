@@ -8,7 +8,7 @@
  */
 
 import { describe, test, expect } from 'vitest'
-import { runSingleSimulation, SimulationConfig, calculatePensionAmount, applyMacroEconomicSlide, Person, withdrawFromTaxableAccount, calculatePostFireIncome, PostFireIncomeConfig, calculateNHIPremium, calculateNationalPensionPremium, PostFireSocialInsuranceConfig, calculateWithdrawalAmount, WithdrawalStrategy, GuardrailConfig, calculateFireAchievementRate, formatAnnualTableData, formatCashFlowChartData, AnnualTableRow, CashFlowChartGroup, runMonteCarloSimulation, generateMeanReversionReturns, generateBootstrapReturns, DEFAULT_SP500_RETURNS, MCReturnModel } from '../lib/simulator'
+import { runSingleSimulation, SimulationConfig, calculatePensionAmount, applyMacroEconomicSlide, Person, withdrawFromTaxableAccount, calculatePostFireIncome, PostFireIncomeConfig, calculateNHIPremium, calculateNationalPensionPremium, PostFireSocialInsuranceConfig, calculateWithdrawalAmount, WithdrawalStrategy, GuardrailConfig, calculateFireAchievementRate, formatAnnualTableData, formatCashFlowChartData, AnnualTableRow, CashFlowChartGroup, runMonteCarloSimulation, generateMeanReversionReturns, generateBootstrapReturns, DEFAULT_SP500_RETURNS, MCReturnModel, runScenarioComparison, applyScenarioChanges, Scenario, generateScenarios } from '../lib/simulator'
 
 const CURRENT_YEAR = new Date().getFullYear() // 2026
 
@@ -2284,5 +2284,91 @@ describe('MC リターンモデル', () => {
     }), 10)
     expect(result.mcModel).toBe('bootstrap')
     expect(result.successRate).toBeGreaterThanOrEqual(0)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// シナリオA/B比較 (Phase 10)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('シナリオA/B比較', () => {
+  test('同一設定でA/B比較: 差分がゼロ', () => {
+    // 資産200M・支出200K/月 → FIRE番号 = 200K*12/0.04 = 60M、初期資産200Mで即FIRE
+    const config = cfg({
+      currentAssets: 200_000_000,
+      monthlyExpenses: 200_000,
+      investmentReturn: 0.05,
+      simulationYears: 20,
+    })
+    const result = runScenarioComparison(config, config)
+    expect(result.diffSummary.finalAssetsDiff).toBe(0)
+    expect(result.diffSummary.fireAgeDiff).toBe(0)
+    expect(result.diffSummary.fireAchievementRateDiff).toBe(0)
+  })
+
+  test('支出削減シナリオ: B の FIRE が A より早い', () => {
+    // 資産5M・収入600万・支出30万/月 → シミュレーション期間内にFIREを達成できる設定
+    const planA = cfg({
+      currentAssets: 5_000_000,
+      monthlyExpenses: 300_000,
+      investmentReturn: 0.05,
+      simulationYears: 40,
+      person1: {
+        currentAge: 35,
+        retirementAge: 65,
+        grossIncome: 6_000_000,
+        incomeGrowthRate: 0.02,
+        pensionStartAge: 90,
+        pensionAmount: 0,
+      },
+    })
+    const planB = applyScenarioChanges(planA, {
+      name: '支出削減',
+      description: '月次支出を10%カット',
+      changes: { monthlyExpenses: 270_000 },
+    })
+    const result = runScenarioComparison(planA, planB)
+    // 両プランともFIREし、B（支出削減）がAより早くFIREする
+    expect(result.diffSummary.fireAgeDiff).not.toBeNull()
+    expect(result.diffSummary.fireAgeDiff).toBeLessThan(0)  // B fires earlier
+  })
+
+  test('applyScenarioChanges: person1 の変更が正しくマージされる', () => {
+    const base = cfg({})
+    const scenario: Scenario = {
+      name: '副業',
+      description: '副業+100万円',
+      changes: { person1: { grossIncome: 8_000_000 } },
+    }
+    const result = applyScenarioChanges(base, scenario)
+    expect(result.person1.grossIncome).toBe(8_000_000)
+    expect(result.person1.currentAge).toBe(base.person1.currentAge)
+  })
+
+  test('applyScenarioChanges: person2=null のシナリオが正しく適用される', () => {
+    const base = cfg({})
+    const scenario: Scenario = {
+      name: 'シングル',
+      description: '配偶者なしシナリオ',
+      changes: { person2: null },
+    }
+    const result = applyScenarioChanges(base, scenario)
+    expect(result.person2).toBeNull()
+  })
+
+  test('generateScenarios との後方互換: 既存シナリオが動作する', () => {
+    const base = cfg({
+      currentAssets: 10_000_000,
+      monthlyExpenses: 300_000,
+      investmentReturn: 0.05,
+      simulationYears: 30,
+    })
+    const scenarios = generateScenarios(base)
+    for (const scenario of scenarios) {
+      const modified = applyScenarioChanges(base, scenario)
+      expect(modified).toBeDefined()
+      const result = runSingleSimulation(modified)
+      expect(result.yearlyData.length).toBe(31)
+    }
   })
 })
