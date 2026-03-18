@@ -129,7 +129,7 @@ export function FireDashboard() {
             </aside>
 
             {/* Right Panel - Results */}
-            <div className="space-y-6 order-1 lg:order-2">
+            <div className="space-y-6 order-1 lg:order-2 min-w-0">
               {/* Key Metrics Summary */}
               <MetricsSummary config={config} result={result} mcResult={monteCarloResult} />
               
