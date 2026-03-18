@@ -6,7 +6,7 @@ import { Slider } from "@/components/ui/slider"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { SimulationConfig, Person, EmploymentType, WithdrawalStrategy, MCReturnModel, PostFireIncomeConfig } from "@/lib/simulator"
+import { SimulationConfig, Person, EmploymentType, WithdrawalStrategy, MCReturnModel, PostFireIncomeConfig, LifecycleExpenseConfig } from "@/lib/simulator"
 import { formatCurrency } from "@/lib/utils"
 import { User, Users, Wallet, TrendingUp, Baby, PiggyBank, Settings2 } from "lucide-react"
 
@@ -134,6 +134,90 @@ function PersonConfig({
           <option value="homemaker">専業主婦/夫</option>
         </select>
       </div>
+
+      {(person.employmentType ?? 'employee') === 'employee' && (
+        <div className="space-y-3 rounded-lg bg-muted/50 p-3">
+          <div className="flex items-center justify-between">
+            <Label className="text-sm font-medium">時短勤務</Label>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">
+                {person.partTimeUntilAge != null ? '設定あり' : '設定なし'}
+              </span>
+              <Switch
+                id={`parttime-${label}`}
+                checked={person.partTimeUntilAge != null}
+                onCheckedChange={(checked) =>
+                  onChange({
+                    ...person,
+                    partTimeUntilAge: checked ? 40 : null,
+                    partTimeIncomeRatio: checked ? (person.partTimeIncomeRatio ?? 0.8) : undefined,
+                  })
+                }
+              />
+            </div>
+          </div>
+          {person.partTimeUntilAge != null && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs">時短終了年齢</Label>
+                  <span className="text-xs font-mono text-muted-foreground">{person.partTimeUntilAge}歳まで</span>
+                </div>
+                <Slider
+                  value={[person.partTimeUntilAge]}
+                  onValueChange={([value]) => onChange({ ...person, partTimeUntilAge: value })}
+                  min={person.currentAge + 1}
+                  max={person.retirementAge}
+                  step={1}
+                />
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs">時短中の収入比率</Label>
+                  <span className="text-xs font-mono text-muted-foreground">{((person.partTimeIncomeRatio ?? 0.8) * 100).toFixed(0)}%</span>
+                </div>
+                <Slider
+                  value={[(person.partTimeIncomeRatio ?? 0.8) * 100]}
+                  onValueChange={([value]) => onChange({ ...person, partTimeIncomeRatio: value / 100 })}
+                  min={50}
+                  max={100}
+                  step={5}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {childBirthYears && childBirthYears.length > 0 && (
+        <div className="space-y-2">
+          <Label className="text-sm font-medium">産休・育休取得</Label>
+          <p className="text-xs text-muted-foreground">取得する子どもを選択</p>
+          {childBirthYears.map((birthYear, index) => {
+            const checked = (person.maternityLeaveChildBirthYears ?? []).includes(birthYear)
+            return (
+              <div key={birthYear} className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id={`maternity-${label}-${birthYear}`}
+                  checked={checked}
+                  onChange={(e) => {
+                    const current = person.maternityLeaveChildBirthYears ?? []
+                    const updated = e.target.checked
+                      ? [...current, birthYear]
+                      : current.filter(y => y !== birthYear)
+                    onChange({ ...person, maternityLeaveChildBirthYears: updated })
+                  }}
+                  className="h-4 w-4 rounded border-gray-300"
+                />
+                <label htmlFor={`maternity-${label}-${birthYear}`} className="text-sm">
+                  子ども{index + 1}（{birthYear}年生まれ）
+                </label>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
@@ -286,19 +370,79 @@ export function ConfigPanel({ config, onConfigChange }: ConfigPanelProps) {
               </div>
             )}
 
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <Label className="text-sm font-medium">月間生活費</Label>
-                <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.monthlyExpenses)}/月</span>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">生活費モード</Label>
+              <div className="flex gap-2">
+                {(['fixed', 'lifecycle'] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    onClick={() => onConfigChange({ ...config, expenseMode: mode })}
+                    className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                      (config.expenseMode ?? 'fixed') === mode
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted hover:bg-muted/80'
+                    }`}
+                  >
+                    {mode === 'fixed' ? '固定費' : 'ライフステージ'}
+                  </button>
+                ))}
               </div>
-              <Slider
-                value={[config.monthlyExpenses]}
-                onValueChange={([value]) => onConfigChange({ ...config, monthlyExpenses: value })}
-                min={100000}
-                max={1000000}
-                step={10000}
-              />
             </div>
+
+            {(config.expenseMode ?? 'fixed') === 'fixed' && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium">月間生活費</Label>
+                  <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.monthlyExpenses)}/月</span>
+                </div>
+                <Slider
+                  value={[config.monthlyExpenses]}
+                  onValueChange={([value]) => onConfigChange({ ...config, monthlyExpenses: value })}
+                  min={100000}
+                  max={1000000}
+                  step={10000}
+                />
+              </div>
+            )}
+
+            {(config.expenseMode ?? 'fixed') === 'lifecycle' && (
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground">年間生活費（万円）</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { key: 'withPreschooler', label: '乳幼児期(0-5歳)', defaultVal: 276 },
+                    { key: 'withElementaryChild', label: '小学生(6-11歳)', defaultVal: 323 },
+                    { key: 'withJuniorHighChild', label: '中学生(12-14歳)', defaultVal: 347 },
+                    { key: 'withHighSchoolChild', label: '高校生(15-17歳)', defaultVal: 383 },
+                    { key: 'withCollegeChild', label: '大学生(18-21歳)', defaultVal: 396 },
+                    { key: 'emptyNestActive', label: '子育て後(-69歳)', defaultVal: 258 },
+                    { key: 'emptyNestSenior', label: 'シニア(70-79歳)', defaultVal: 224 },
+                    { key: 'emptyNestElderly', label: '高齢期(80歳-)', defaultVal: 193 },
+                  ].map(({ key, label, defaultVal }) => (
+                    <div key={key} className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">{label}</Label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={1000}
+                        value={Math.round((config.lifecycleExpenses?.[key as keyof LifecycleExpenseConfig] ?? defaultVal * 10000) / 10000)}
+                        onChange={(e) => {
+                          const val = Number(e.target.value) * 10000
+                          onConfigChange({
+                            ...config,
+                            lifecycleExpenses: {
+                              ...config.lifecycleExpenses,
+                              [key]: val,
+                            },
+                          })
+                        }}
+                        className="w-full rounded-md border border-input bg-background px-2 py-1 text-sm text-right"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="space-y-3">
               <div className="flex items-center justify-between">
@@ -330,6 +474,7 @@ export function ConfigPanel({ config, onConfigChange }: ConfigPanelProps) {
               person={config.person1}
               label="本人"
               onChange={updatePerson1}
+              childBirthYears={config.children.map(c => c.birthYear)}
             />
           </CardContent>
         </Card>
@@ -359,6 +504,7 @@ export function ConfigPanel({ config, onConfigChange }: ConfigPanelProps) {
                 person={config.person2}
                 label="配偶者"
                 onChange={updatePerson2}
+                childBirthYears={config.children.map(c => c.birthYear)}
               />
             </CardContent>
           )}
@@ -576,6 +722,19 @@ export function ConfigPanel({ config, onConfigChange }: ConfigPanelProps) {
                 </div>
               </div>
             ))}
+
+            <div className="flex items-center justify-between pt-2 border-t">
+              <div>
+                <Label className="text-sm font-medium">児童手当</Label>
+                <p className="text-xs text-muted-foreground">収入に加算</p>
+              </div>
+              <Switch
+                id="child-allowance-toggle"
+                checked={config.childAllowanceEnabled}
+                disabled={config.children.length === 0}
+                onCheckedChange={(checked) => onConfigChange({ ...config, childAllowanceEnabled: checked })}
+              />
+            </div>
           </CardContent>
         </Card>
 
