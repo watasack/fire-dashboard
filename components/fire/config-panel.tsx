@@ -156,12 +156,12 @@ export function ConfigPanel({ config, onConfigChange }: ConfigPanelProps) {
           <CardContent className="space-y-6">
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <Label className="text-sm font-medium">現在の資産</Label>
-                <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.currentAssets, true)}</span>
+                <Label className="text-sm font-medium">現在の資産（現金＋株式）</Label>
+                <span className="text-sm font-mono text-muted-foreground">{formatCurrency((config.cashAssets ?? 0) + (config.stocks ?? config.currentAssets ?? 0), true)}</span>
               </div>
               <Slider
-                value={[config.currentAssets]}
-                onValueChange={([value]) => onConfigChange({ ...config, currentAssets: value })}
+                value={[(config.cashAssets ?? 0) + (config.stocks ?? config.currentAssets ?? 0)]}
+                onValueChange={([value]) => onConfigChange({ ...config, cashAssets: 0, stocks: value, stocksCostBasis: value })}
                 min={0}
                 max={100000000}
                 step={1000000}

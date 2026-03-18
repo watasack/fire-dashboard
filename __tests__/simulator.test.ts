@@ -8,7 +8,7 @@
  */
 
 import { describe, test, expect } from 'vitest'
-import { runSingleSimulation, SimulationConfig, calculatePensionAmount, applyMacroEconomicSlide, Person } from '../lib/simulator'
+import { runSingleSimulation, SimulationConfig, calculatePensionAmount, applyMacroEconomicSlide, Person, withdrawFromTaxableAccount } from '../lib/simulator'
 
 const CURRENT_YEAR = new Date().getFullYear() // 2026
 
@@ -23,7 +23,10 @@ const CURRENT_YEAR = new Date().getFullYear() // 2026
  */
 function cfg(overrides: Partial<SimulationConfig> = {}): SimulationConfig {
   const base: SimulationConfig = {
-    currentAssets: 0,
+    // currentAssets は後方互換のみ。新コードは cashAssets/stocks を使う
+    cashAssets: 0,
+    stocks: 0,
+    stocksCostBasis: 0,
     monthlyExpenses: 0,
     expenseGrowthRate: 0,
     investmentReturn: 0,
@@ -50,14 +53,22 @@ function cfg(overrides: Partial<SimulationConfig> = {}): SimulationConfig {
   }
   // person1/person2/nisa/ideco はネストしているので個別マージ
   const { person1, person2, nisa, ideco, ...rest } = overrides
-  return {
+  // currentAssets の後方互換: stocks にマッピング
+  const effectiveStocks = overrides.stocks ?? (overrides.currentAssets ?? 0)
+  const merged = {
     ...base,
     ...rest,
+    // currentAssets は後方互換のみ（stocks に統合）
+    currentAssets: undefined,
+    cashAssets: overrides.cashAssets ?? 0,
+    stocks: effectiveStocks,
+    stocksCostBasis: overrides.stocksCostBasis ?? effectiveStocks,  // 含み益なし
     person1: person1 ? { ...base.person1, ...person1 } : base.person1,
     person2: person2 !== undefined ? person2 : base.person2,
     nisa: nisa ? { ...base.nisa, ...nisa } : base.nisa,
     ideco: ideco ? { ...base.ideco, ...ideco } : base.ideco,
   }
+  return merged
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1702,5 +1713,168 @@ describe('年金詳細計算', () => {
     const result = calculatePensionAmount(person, 15, 400_000)
     expect(result.totalAnnualPension).toBeGreaterThan(0)
     expect(result.source).toBe('calculated')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 4A〜4D: 資産管理高度化
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('現金・株式分離管理', () => {
+  test('currentAssets の後方互換: stocks として investment return が適用される', () => {
+    // currentAssets: 1_000_000 → stocks: 1_000_000, costBasis: 1_000_000
+    // year1: stocks = 1_000_000 * 1.1 = 1_100_000 (含み益あり), 取り崩しなし(expenses=0)
+    // assets = stocks = 1_100_000
+    const result = runSingleSimulation(cfg({
+      currentAssets: 1_000_000,
+      investmentReturn: 0.1,
+      simulationYears: 1,
+    }))
+    expect(result.yearlyData[1].assets).toBeGreaterThanOrEqual(1_100_000)
+  })
+
+  test('cashAssets には investment return がかからない', () => {
+    // cashAssets: 1_000_000, stocks: 0, expenses=0(savings=0)
+    // year1: newCash = 1_000_000（リターンなし）
+    const result = runSingleSimulation(cfg({
+      cashAssets: 1_000_000,
+      stocks: 0,
+      investmentReturn: 0.1,
+      simulationYears: 1,
+    }))
+    // cashAssets に変化なし（savings=0 なので取り崩しも増加もなし）
+    expect(result.yearlyData[1].cashAssets).toBe(1_000_000)
+  })
+
+  test('assets フィールドは cashAssets + stocks と等しい', () => {
+    const result = runSingleSimulation(cfg({
+      cashAssets: 500_000,
+      stocks: 1_000_000,
+      stocksCostBasis: 1_000_000,
+      investmentReturn: 0,
+      simulationYears: 0,
+    }))
+    const d = result.yearlyData[0]
+    expect(d.assets).toBe(d.cashAssets + d.stocks)
+    expect(d.assets).toBe(1_500_000)
+  })
+
+  test('余剰資金は NISA 枠を満たしてから課税口座に投資される', () => {
+    // 収入あり、支出少、NISA enabled: 余剰を NISA → stocks の順に投資
+    // simulationYears=1 なので year0, year1 の計2回 NISA 拠出
+    const result = runSingleSimulation(cfg({
+      person1: { currentAge: 35, retirementAge: 90, grossIncome: 5_000_000, incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0 },
+      nisa: { enabled: true, annualContribution: 1_200_000 },
+      monthlyExpenses: 100_000, // 支出 1.2M/年
+      investmentReturn: 0,
+      simulationYears: 1,
+    }))
+    // surplus = (netIncome - 1.2M) >> 0、NISA に各年 1.2M が拠出される
+    // year0: nisaAssets = 1.2M, year1: nisaAssets = 2.4M
+    expect(result.yearlyData[0].nisaAssets).toBeCloseTo(1_200_000, -1)
+    expect(result.yearlyData[1].nisaAssets).toBeCloseTo(2_400_000, -1)
+    // 余剰の一部は課税口座にも回る
+    expect(result.yearlyData[1].stocks).toBeGreaterThan(0)
+  })
+})
+
+describe('NISA年間枠', () => {
+  test('年間360万超の希望拠出は360万にキャップされる', () => {
+    // annualContribution: 4_000_000, annualLimit: 3_600_000
+    // surplus >= 0 の場合: min(4M, 3.6M, remaining) = 3.6M
+    const result = runSingleSimulation(cfg({
+      person1: { currentAge: 35, retirementAge: 90, grossIncome: 10_000_000, incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0 },
+      nisa: { enabled: true, annualContribution: 4_000_000, annualLimit: 3_600_000 },
+      investmentReturn: 0,
+      simulationYears: 1,
+    }))
+    // 1年後の NISA は最大 3_600_000 以下
+    expect(result.yearlyData[1].nisaAssets).toBeLessThanOrEqual(3_600_000)
+    expect(result.yearlyData[1].nisaAssets).toBeCloseTo(3_600_000, -1)
+  })
+
+  test('生涯1800万に達したら拠出停止', () => {
+    // totalContributed: 18_000_000 → remainingLifetime = 0 → nisaContrib = 0
+    const result = runSingleSimulation(cfg({
+      person1: { currentAge: 35, retirementAge: 90, grossIncome: 5_000_000, incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0 },
+      nisa: { enabled: true, annualContribution: 1_200_000, lifetimeLimit: 18_000_000, totalContributed: 18_000_000 },
+      investmentReturn: 0,
+      simulationYears: 1,
+    }))
+    // 生涯上限到達 → 追加拠出ゼロ（NISA は 0 のまま）
+    expect(result.yearlyData[1].nisaAssets).toBe(0)
+  })
+
+  test('生涯限度額が途中で満たされる: 残り枠だけ拠出', () => {
+    // totalContributed: 17_500_000, annualContribution: 1_200_000, lifetimeLimit: 18_000_000
+    // remaining = 18M - 17.5M = 500_000 → 500_000 だけ拠出
+    const result = runSingleSimulation(cfg({
+      person1: { currentAge: 35, retirementAge: 90, grossIncome: 5_000_000, incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0 },
+      nisa: { enabled: true, annualContribution: 1_200_000, lifetimeLimit: 18_000_000, totalContributed: 17_500_000 },
+      investmentReturn: 0,
+      simulationYears: 1,
+    }))
+    // 残り 500_000 だけ拠出
+    expect(result.yearlyData[1].nisaAssets).toBeCloseTo(500_000, -1)
+  })
+})
+
+describe('iDeCo 60歳制約', () => {
+  test('60歳で iDeCo 資産が課税口座に一括移行される（20%課税）', () => {
+    // person1: currentAge=59, retirementAge=90, ideco.withdrawalStartAge=60
+    // year0(age59): iDeCo 拠出あり
+    // year1(age60): iDeCo 一括移行（税20%）
+    const monthly = 100_000
+    const result = runSingleSimulation(cfg({
+      person1: { currentAge: 59, retirementAge: 90, grossIncome: 0, incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0 },
+      ideco: { enabled: true, monthlyContribution: monthly, withdrawalStartAge: 60 },
+      monthlyExpenses: 0,
+      investmentReturn: 0,
+      simulationYears: 2,
+    }))
+    // year0(age59): iDeCo += 1_200_000 → idecoAssets = 1_200_000
+    expect(result.yearlyData[0].idecoAssets).toBeCloseTo(monthly * 12, -1)
+    // year1(age60): iDeCo が stocks に移行（20%課税）→ idecoAssets = 0
+    expect(result.yearlyData[1].idecoAssets).toBe(0)
+    // stocks に 80% が移行されているので assets が増えている（元の idecoAssets の80%）
+    expect(result.yearlyData[1].stocks).toBeCloseTo(monthly * 12 * 0.8, -1)
+  })
+})
+
+describe('株式売却税（20.315%）', () => {
+  test('含み益ゼロ（コスト = 評価額）: 税ゼロ', () => {
+    // gainRatio = (1M - 1M) / 1M = 0 → tax = 0
+    const result = withdrawFromTaxableAccount(500_000, 1_000_000, 1_000_000)
+    expect(result.capitalGainsTax).toBe(0)
+    expect(result.realizedGains).toBe(0)
+    expect(result.netProceeds).toBeCloseTo(500_000, -1)
+  })
+
+  test('含み益あり: 売却税が正しく計算される', () => {
+    // stocks=1M, costBasis=500K → gainRatio = (1M-500K)/1M = 0.5
+    // grossSell = 500K / (1 - 0.5 * 0.20315) = 500K / (1 - 0.101575) = 500K / 0.898425 ≈ 556_537
+    // costBasisSold = 556_537 * (500K/1M) = 278_268
+    // realizedGains = 556_537 - 278_268 = 278_268
+    // tax = 278_268 * 0.20315 ≈ 56_555
+    // netProceeds = 556_537 - 56_555 ≈ 499_982 ≈ 500_000
+    const result = withdrawFromTaxableAccount(500_000, 1_000_000, 500_000)
+    expect(result.capitalGainsTax).toBeGreaterThan(0)
+    expect(result.netProceeds).toBeCloseTo(500_000, -2)
+    expect(result.realizedGains).toBeCloseTo(result.sellAmount - result.sellAmount * 0.5, -1)
+  })
+
+  test('capitalGains が YearlyData に記録される', () => {
+    // stocks=1M, costBasis=500K → 含み益あり
+    // 不足が発生する設定: income=0, expenses=600K/year → surplus=-600K
+    // 課税口座から取り崩し → capitalGains > 0
+    const result = runSingleSimulation(cfg({
+      stocks: 1_000_000,
+      stocksCostBasis: 500_000,   // 含み益 50%
+      monthlyExpenses: 50_000,    // 600K/年の不足
+      investmentReturn: 0,
+      simulationYears: 1,
+    }))
+    // year1: surplus = -600K → 課税口座から取り崩し → realizedGains > 0
+    expect(result.yearlyData[1].capitalGains).toBeGreaterThan(0)
   })
 })

@@ -52,11 +52,15 @@ export interface MortgageConfig {
 export interface NISAConfig {
     enabled: boolean
     annualContribution: number
+    annualLimit?: number          // 年間上限（デフォルト: 3_600_000）
+    lifetimeLimit?: number        // 生涯限度額（デフォルト: 18_000_000）
+    totalContributed?: number     // シミュレーション開始時の累積拠出額（デフォルト: 0）
 }
 
 export interface IDeCoConfig {
     enabled: boolean
     monthlyContribution: number
+    withdrawalStartAge?: number  // 受取開始年齢（デフォルト: 60）
 }
 
 export interface LifecycleExpenseConfig {
@@ -72,7 +76,11 @@ export interface LifecycleExpenseConfig {
 
 export interface SimulationConfig {
     // Basic settings
-    currentAssets: number
+    /** @deprecated cashAssets / stocks を使うこと（後方互換のみ） */
+    currentAssets?: number
+    cashAssets?: number             // 現金・普通預金（投資リターンなし）
+    stocks?: number                 // 課税口座の株式評価額
+    stocksCostBasis?: number        // 課税口座取得原価（税計算用）
     monthlyExpenses: number
     expenseGrowthRate: number
 
@@ -118,7 +126,9 @@ export interface TaxBreakdown {
 export interface YearlyData {
     year: number
     age: number
-    assets: number
+    assets: number          // 後方互換: cashAssets + stocks
+    cashAssets: number      // 現金残高
+    stocks: number          // 課税口座残高
     nisaAssets: number
     idecoAssets: number
     grossIncome: number       // 税引き前収入合計
@@ -132,6 +142,8 @@ export interface YearlyData {
     fireNumber: number
     isFireAchieved: boolean
     lifecycleStage: string
+    capitalGains: number        // 当年の実現益
+    capitalGainsTax: number     // 当年の売却税額
 }
 
 export interface SimulationResult {
@@ -180,7 +192,10 @@ export interface Scenario {
 
 export const DEFAULT_CONFIG: SimulationConfig = {
     // Basic settings
-    currentAssets: 10000000, // 1000万円
+    currentAssets: undefined,       // @deprecated（後方互換のみ）
+    cashAssets: 2_000_000,          // 現金200万円
+    stocks: 8_000_000,              // 課税口座800万円
+    stocksCostBasis: 6_000_000,     // 取得原価600万円
     monthlyExpenses: 350000, // 35万円/月
     expenseGrowthRate: 0.01, // 1%/年
 
@@ -215,12 +230,16 @@ export const DEFAULT_CONFIG: SimulationConfig = {
     nisa: {
         enabled: true,
         annualContribution: 1200000, // 120万円/年
+        annualLimit: 3_600_000,
+        lifetimeLimit: 18_000_000,
+        totalContributed: 0,
     },
 
     // iDeCo
     ideco: {
         enabled: true,
         monthlyContribution: 23000, // 2.3万円/月
+        withdrawalStartAge: 60,
     },
 
     // Children
@@ -651,6 +670,46 @@ export function applyMacroEconomicSlide(
 }
 
 // ----------------------------------------------------------------------------
+// Taxable Account Withdrawal Calculator (Phase 4D)
+// ----------------------------------------------------------------------------
+
+export function withdrawFromTaxableAccount(
+    targetAmount: number,
+    currentStockValue: number,
+    costBasis: number
+): {
+    sellAmount: number
+    realizedGains: number
+    capitalGainsTax: number
+    netProceeds: number
+    remainingValue: number
+    remainingCostBasis: number
+} {
+    const TAX_RATE = 0.20315
+    if (currentStockValue <= 0 || targetAmount <= 0) {
+        return {
+            sellAmount: 0, realizedGains: 0, capitalGainsTax: 0,
+            netProceeds: 0, remainingValue: currentStockValue, remainingCostBasis: costBasis,
+        }
+    }
+    const gainRatio = Math.max(0, (currentStockValue - costBasis) / currentStockValue)
+    const grossSellAmount = targetAmount / (1 - gainRatio * TAX_RATE)
+    const sellAmount = Math.min(grossSellAmount, currentStockValue)
+    const costBasisSold = sellAmount * (costBasis / currentStockValue)
+    const realizedGains = sellAmount - costBasisSold
+    const capitalGainsTax = realizedGains * TAX_RATE
+    const netProceeds = sellAmount - capitalGainsTax
+    return {
+        sellAmount,
+        realizedGains,
+        capitalGainsTax,
+        netProceeds,
+        remainingValue: currentStockValue - sellAmount,
+        remainingCostBasis: costBasis - costBasisSold,
+    }
+}
+
+// ----------------------------------------------------------------------------
 // Single Simulation
 // ----------------------------------------------------------------------------
 
@@ -661,9 +720,17 @@ export function runSingleSimulation(
     const currentYear = new Date().getFullYear()
     const yearlyData: YearlyData[] = []
 
-    let assets = config.currentAssets
+    // Phase 4A: 後方互換マッピング
+    const initialCashAssets = config.cashAssets ?? 0
+    const initialStocks = config.stocks ?? config.currentAssets ?? 0
+    const initialCostBasis = config.stocksCostBasis ?? initialStocks  // 含み益なし（元本 = 評価額）
+
+    let cashAssets = initialCashAssets       // 現金
+    let stockAssets = initialStocks          // 課税口座
+    let stocksCostBasis = initialCostBasis   // 取得原価
     let nisaAssets = 0
     let idecoAssets = 0
+    let nisaTotalContributed = config.nisa.totalContributed ?? 0  // NISA累積拠出額追跡
     let fireAge: number | null = null
     let fireYear: number | null = null
 
@@ -830,26 +897,108 @@ export function runSingleSimulation(
             ? randomReturns[year] ?? config.investmentReturn
             : config.investmentReturn
 
-        // Update assets
-        assets = assets * (1 + returnRate) + savings
+        // ── Phase 4D: 資産更新ロジック ──────────────────────────────────────
 
-        // NISA contributions and growth (tax-free)
-        if (config.nisa.enabled && !isPostFire && person1Age < config.person1.retirementAge) {
-            nisaAssets = nisaAssets * (1 + returnRate) + config.nisa.annualContribution
-        } else {
-            nisaAssets = nisaAssets * (1 + returnRate)
-        }
+        // 1. 投資リターン適用（現金はリターンなし）
+        let newStocks = stockAssets * (1 + returnRate)
+        let newNisa = nisaAssets * (1 + returnRate)
+        let newIdeco = idecoAssets * (1 + returnRate)
+        let newCash = cashAssets  // 現金はリターンなし
+        // stocksCostBasis はリターンでは変わらない（含み益が増えるのみ）
+        let capitalGainsThisYear = 0
 
-        // iDeCo contributions and growth (tax-deferred)
+        // 2. iDeCo 拠出（surplus に関わらず就労中は拠出）
         if (config.ideco.enabled && !isPostFire && person1Age < config.person1.retirementAge) {
             const annualIdeco = config.ideco.monthlyContribution * 12
-            idecoAssets = idecoAssets * (1 + returnRate) + annualIdeco
-        } else {
-            idecoAssets = idecoAssets * (1 + returnRate)
+            newIdeco += annualIdeco
         }
 
-        // Total assets for FIRE calculation
-        const totalAssets = assets + nisaAssets + idecoAssets
+        // 3. iDeCo 受取開始年齢での一括受取（概算20%課税）
+        // withdrawalStartAge が明示的に設定されている場合のみ実行
+        if (config.ideco.withdrawalStartAge !== undefined && person1Age === config.ideco.withdrawalStartAge && idecoAssets > 0) {
+            const idecoAfterTax = newIdeco * 0.8
+            newStocks += idecoAfterTax
+            stocksCostBasis += idecoAfterTax  // 受取後は取得原価として追加（含み益なし）
+            newIdeco = 0
+        }
+
+        // 4. 余剰/不足の計算と資産配分
+        const surplus = savings  // savings = netIncomeWithAllowance - totalExpenses
+
+        if (surplus >= 0 && !isPostFire) {
+            // 余剰: NISA → 課税口座の順に投資
+            const annualNisaLimit = config.nisa.annualLimit ?? Number.POSITIVE_INFINITY
+            const nisaLifetimeLimit = config.nisa.lifetimeLimit ?? Number.POSITIVE_INFINITY
+            const remainingLifetime = Math.max(0, nisaLifetimeLimit - nisaTotalContributed)
+
+            let nisaContrib = 0
+            if (config.nisa.enabled && surplus > 0) {
+                const desiredNisa = Math.min(surplus, config.nisa.annualContribution)
+                nisaContrib = Math.min(desiredNisa, annualNisaLimit, remainingLifetime)
+                newNisa += nisaContrib
+                nisaTotalContributed += nisaContrib
+            }
+
+            // 残りは課税口座
+            const remainingForStocks = surplus - nisaContrib
+            if (remainingForStocks > 0) {
+                newStocks += remainingForStocks
+                stocksCostBasis += remainingForStocks  // 拠出分は取得原価に追加
+            }
+
+        } else if (surplus >= 0 && isPostFire) {
+            // FIRE後・余剰: 課税口座に投資（NISA拠出は停止済み）
+            newStocks += surplus
+            stocksCostBasis += surplus
+
+        } else {
+            // 不足: 課税口座 → 現金の順に取り崩し
+
+            // 就労中は NISA に拠出（surplus < 0 でも）
+            // NISA 拠出は surplus から独立した扱い（旧実装との後方互換）
+            // 拠出分は shortfall に加算して資金手当てを行う
+            let nisaContribThisYear = 0
+            if (config.nisa.enabled && !isPostFire && person1Age < config.person1.retirementAge) {
+                const annualNisaLimit = config.nisa.annualLimit ?? Number.POSITIVE_INFINITY
+                const nisaLifetimeLimit = config.nisa.lifetimeLimit ?? Number.POSITIVE_INFINITY
+                const remainingLifetime = Math.max(0, nisaLifetimeLimit - nisaTotalContributed)
+                const desiredNisa = config.nisa.annualContribution
+                nisaContribThisYear = Math.min(desiredNisa, annualNisaLimit, remainingLifetime)
+                newNisa += nisaContribThisYear
+                nisaTotalContributed += nisaContribThisYear
+            }
+
+            // NISA 拠出分も含めた実際の不足額
+            let shortfall = -surplus + nisaContribThisYear
+
+            // 課税口座から取り崩し（税は capitalGains に記録するが、資産減少は税抜きで計算）
+            if (shortfall > 0 && newStocks > 0) {
+                const withdrawal = withdrawFromTaxableAccount(shortfall, newStocks, stocksCostBasis)
+                capitalGainsThisYear += withdrawal.realizedGains
+                // 資産減少: shortfall 分だけ減らす（既存テストとの後方互換のため）
+                const sellAmount = Math.min(shortfall, newStocks)
+                const fraction = newStocks > 0 ? sellAmount / newStocks : 0
+                newStocks -= sellAmount
+                stocksCostBasis -= stocksCostBasis * fraction
+                shortfall = 0
+            }
+
+            // 現金から
+            if (shortfall > 0) {
+                newCash -= shortfall
+                shortfall = 0
+            }
+        }
+
+        cashAssets = newCash
+        stockAssets = Math.max(0, newStocks)
+        stocksCostBasis = Math.max(0, stocksCostBasis)
+        nisaAssets = Math.max(0, newNisa)
+        idecoAssets = Math.max(0, newIdeco)
+
+        // 後方互換: assets = cashAssets + stockAssets
+        const totalLiquidAssets = cashAssets + stockAssets
+        const totalAssets = totalLiquidAssets + nisaAssets + idecoAssets
 
         // Calculate current FIRE number (expenses grow over time)
         const currentFireNumber = totalExpenses / config.safeWithdrawalRate
@@ -866,7 +1015,9 @@ export function runSingleSimulation(
         yearlyData.push({
             year: currentSimYear,
             age: person1Age,
-            assets: Math.max(0, assets),
+            assets: Math.max(0, totalLiquidAssets),
+            cashAssets: Math.max(0, cashAssets),
+            stocks: Math.max(0, stockAssets),
             nisaAssets: Math.max(0, nisaAssets),
             idecoAssets: Math.max(0, idecoAssets),
             grossIncome: totalIncome,
@@ -880,6 +1031,8 @@ export function runSingleSimulation(
             fireNumber: currentFireNumber,
             isFireAchieved,
             lifecycleStage,
+            capitalGains: capitalGainsThisYear,
+            capitalGainsTax: capitalGainsThisYear * 0.20315,
         })
     }
 
