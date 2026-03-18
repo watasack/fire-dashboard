@@ -358,7 +358,7 @@ export const DEFAULT_CONFIG: SimulationConfig = {
     // Primary person
     person1: {
         currentAge: 35,
-        retirementAge: 65,
+        retirementAge: 50,
         grossIncome: 7000000, // 税引き前年収700万円/年
         incomeGrowthRate: 0.02, // 2%/年
         pensionStartAge: 65,
@@ -369,12 +369,15 @@ export const DEFAULT_CONFIG: SimulationConfig = {
     // Spouse (null = no spouse)
     person2: {
         currentAge: 33,
-        retirementAge: 65,
+        retirementAge: 50,
         grossIncome: 5000000, // 税引き前年収500万円/年
         incomeGrowthRate: 0.02, // 2%/年
         pensionStartAge: 65,
         pensionAmount: 1200000, // 120万円/年
         employmentType: 'employee',
+        maternityLeaveChildBirthYears: [2022],
+        partTimeUntilAge: 38,
+        partTimeIncomeRatio: 0.7,
     },
 
     // NISA
@@ -394,12 +397,14 @@ export const DEFAULT_CONFIG: SimulationConfig = {
     },
 
     // Children
-    children: [],
+    children: [
+        { birthYear: 2022, educationPath: "public" as const }
+    ],
     mortgage: null,
     childAllowanceEnabled: true,
 
     // Simulation settings
-    simulationYears: 40,
+    simulationYears: 50,
     inflationRate: 0.01, // 1%
 
     // Lifecycle expense mode
@@ -1648,61 +1653,53 @@ export function runMonteCarloSimulation(
 export function generateScenarios(baseConfig: SimulationConfig): Scenario[] {
     const scenarios: Scenario[] = []
 
-    // Scenario 1: Reduce expenses by 10%
+    // Scenario 1: Retire 5 years earlier
+    const p1EarlyRetirement = Math.max(baseConfig.person1.currentAge + 1, baseConfig.person1.retirementAge - 5)
+    const p2EarlyRetirement = baseConfig.person2
+        ? Math.max(baseConfig.person2.currentAge + 1, baseConfig.person2.retirementAge - 5)
+        : undefined
     scenarios.push({
-        name: "支出を10%削減",
-        description: "月間生活費を10%カット",
-        changes: {
-            monthlyExpenses: baseConfig.monthlyExpenses * 0.9,
-        },
-    })
-
-    // Scenario 2: Increase NISA contribution
-    if (baseConfig.nisa.enabled) {
-        const newContribution = Math.min(baseConfig.nisa.annualContribution * 1.5, 3600000)
-        if (newContribution > baseConfig.nisa.annualContribution) {
-            scenarios.push({
-                name: "投資額を増加",
-                description: `NISA投資を年${Math.round((newContribution - baseConfig.nisa.annualContribution) / 10000)}万円増加`,
-                changes: {
-                    nisa: {
-                        enabled: baseConfig.nisa.enabled,
-                        annualContribution: newContribution,
-                    },
-                },
-            })
-        }
-    } else {
-        scenarios.push({
-            name: "投資額を増加",
-            description: "NISAで年120万円投資を開始",
-            changes: {
-                nisa: {
-                    enabled: true,
-                    annualContribution: 1200000,
-                },
-            },
-        })
-    }
-
-    // Scenario 3: Side income
-    scenarios.push({
-        name: "副業収入+100万円",
-        description: "副業で年間100万円の追加収入",
+        name: "FIRE目標を5年早める",
+        description: "退職年齢を5年前倒しにした場合のFIRE成功確率への影響",
         changes: {
             person1: {
-                grossIncome: (baseConfig.person1.grossIncome ?? baseConfig.person1.currentIncome ?? 0) + 1000000,
+                retirementAge: p1EarlyRetirement,
+            },
+            ...(baseConfig.person2 && p2EarlyRetirement !== undefined
+                ? { person2: { retirementAge: p2EarlyRetirement } }
+                : {}),
+        },
+    })
+
+    // Scenario 2: Reduce monthly expenses by 30,000 yen
+    scenarios.push({
+        name: "支出を月3万円削減",
+        description: "毎月の生活費を3万円削減した場合（外食・娯楽費の見直し）",
+        changes: {
+            monthlyExpenses: Math.max(0, baseConfig.monthlyExpenses - 30000),
+        },
+    })
+
+    // Scenario 3: Max out NISA contribution (3.6M/year)
+    scenarios.push({
+        name: "NISAを上限まで投資",
+        description: "NISAの年間上限（360万円）まで投資額を増やした場合",
+        changes: {
+            nisa: {
+                enabled: true,
+                annualContribution: 3_600_000,
             },
         },
     })
 
-    // Scenario 4: Higher risk tolerance (higher expected return)
+    // Scenario 4: Side hustle / career growth (pre-FIRE income boost via growth rate)
     scenarios.push({
-        name: "リスク許容度を上げる",
-        description: "株式比率を上げて期待リターン+1%",
+        name: "副業で月10万円追加",
+        description: "FIREまでの期間、副業・フリーランスで月10万円の収入を追加した場合",
         changes: {
-            investmentReturn: baseConfig.investmentReturn + 0.01,
-            investmentVolatility: baseConfig.investmentVolatility + 0.03,
+            person1: {
+                grossIncome: (baseConfig.person1.grossIncome ?? baseConfig.person1.currentIncome ?? 0) + 1_200_000,
+            },
         },
     })
 

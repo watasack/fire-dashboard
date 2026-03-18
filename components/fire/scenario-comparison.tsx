@@ -1,24 +1,26 @@
 "use client"
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import { SimulationConfig, runSingleSimulation, generateScenarios, SimulationResult } from "@/lib/simulator"
 import { cn } from "@/lib/utils"
 import { useMemo } from "react"
-import { ArrowDown, ArrowUp, Minus, Lightbulb, TrendingUp, Wallet, Briefcase, PieChart } from "lucide-react"
+import { ArrowDown, ArrowUp, Minus, Lightbulb, TrendingUp, Wallet, Briefcase, Calendar } from "lucide-react"
 
 interface ScenarioComparisonProps {
   baseConfig: SimulationConfig
   baseResult: SimulationResult | null
+  onConfigChange?: (config: SimulationConfig) => void
 }
 
 const SCENARIO_ICONS = {
-  "支出を10%削減": Wallet,
-  "投資額を増加": PieChart,
-  "副業収入+100万円": Briefcase,
-  "リスク許容度を上げる": TrendingUp,
+  "FIRE目標を5年早める": Calendar,
+  "支出を月3万円削減": Wallet,
+  "NISAを上限まで投資": TrendingUp,
+  "副業で月10万円追加": Briefcase,
 }
 
-export function ScenarioComparison({ baseConfig, baseResult }: ScenarioComparisonProps) {
+export function ScenarioComparison({ baseConfig, baseResult, onConfigChange }: ScenarioComparisonProps) {
   const scenarios = useMemo(() => {
     if (!baseResult) return []
 
@@ -58,6 +60,7 @@ export function ScenarioComparison({ baseConfig, baseResult }: ScenarioCompariso
         name: scenario.name,
         description: scenario.description,
         result,
+        mergedConfig,
         fireAgeDelta,
         finalAssetsDelta: result.finalAssets - baseResult.finalAssets,
       }
@@ -165,6 +168,14 @@ export function ScenarioComparison({ baseConfig, baseResult }: ScenarioCompariso
                     )}
                   </div>
                 </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full mt-3 text-xs"
+                  onClick={() => onConfigChange?.(scenario.mergedConfig)}
+                >
+                  この設定を試す →
+                </Button>
               </div>
             )
           })}

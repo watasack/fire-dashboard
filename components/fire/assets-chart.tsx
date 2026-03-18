@@ -65,8 +65,8 @@ export function AssetsChart({ result, monteCarloResult, showPercentiles = true }
         <CardTitle>資産推移予測</CardTitle>
         <CardDescription>
           {showPercentiles && monteCarloResult
-            ? "モンテカルロシミュレーション（1000回）による予測範囲"
-            : "単一シナリオでの資産推移"}
+            ? "1000通りのシミュレーション結果。濃い帯ほど「よくある結果」を示します"
+            : "平均的なシナリオでの資産推移"}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -138,7 +138,7 @@ export function AssetsChart({ result, monteCarloResult, showPercentiles = true }
                   stroke="none"
                   fill="#1a365d"
                   fillOpacity={0.15}
-                  name="10〜90%ile"
+                  name="10〜90%の範囲"
                   legendType="square"
                   isAnimationActive={false}
                 />
@@ -152,7 +152,7 @@ export function AssetsChart({ result, monteCarloResult, showPercentiles = true }
                   stroke="none"
                   fill="#1a365d"
                   fillOpacity={0.3}
-                  name="25〜75%ile"
+                  name="25〜75%の範囲（想定内）"
                   legendType="square"
                   isAnimationActive={false}
                 />
@@ -179,7 +179,7 @@ export function AssetsChart({ result, monteCarloResult, showPercentiles = true }
                 stroke="var(--chart-primary)"
                 strokeWidth={2.5}
                 dot={false}
-                name="予測資産"
+                name="中央値シナリオ"
               />
 
               {/* FIRE number line */}
@@ -190,7 +190,7 @@ export function AssetsChart({ result, monteCarloResult, showPercentiles = true }
                 strokeWidth={2}
                 strokeDasharray="5 5"
                 dot={false}
-                name="必要資産額"
+                name="FIRE達成ライン"
               />
 
               {/* FIRE age reference line */}
@@ -287,7 +287,7 @@ export function IncomeExpenseChart({ result }: IncomeExpenseChartProps) {
               />
               <Bar dataKey="income" fill="#3B82F6" name="収入" opacity={0.85} />
               <Bar dataKey="expenses" fill="#EF4444" name="支出" opacity={0.85} />
-              <Bar dataKey="netCF" fill="#10B981" name="純CF" opacity={0.85} />
+              <Bar dataKey="netCF" fill="#10B981" name="年間収支（黒字/赤字）" opacity={0.85} />
               <Legend
                 wrapperStyle={{ paddingTop: "20px" }}
                 formatter={(value) => <span className="text-sm">{value}</span>}

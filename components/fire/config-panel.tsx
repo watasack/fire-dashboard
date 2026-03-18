@@ -61,7 +61,7 @@ function PersonConfig({
     <div className="space-y-6">
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <FieldLabel label="現在の年齢" tooltip="シミュレーション開始時点の年齢" />
+          <FieldLabel label="現在の年齢" tooltip="今あなたが何歳かを入力します。ここを起点にFIREまでの年数を計算します" />
           <span className="text-sm font-mono text-muted-foreground">{person.currentAge}歳</span>
         </div>
         <Slider
@@ -76,7 +76,7 @@ function PersonConfig({
       {!isHomemaker && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <FieldLabel label="年収" tooltip="税引き前の年間収入（額面）。給与所得控除・社会保険料・所得税・住民税を自動計算します" />
+            <FieldLabel label="年収" tooltip="源泉徴収票の一番上の「支払金額」を入力してください。手取り計算は自動でやります" />
             <span className="text-sm font-mono text-muted-foreground">{formatCurrency(person.grossIncome, true)}</span>
           </div>
           <Slider
@@ -92,7 +92,7 @@ function PersonConfig({
       {!isHomemaker && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <FieldLabel label="年収上昇率" tooltip="毎年の年収上昇率の見込み（昇給・昇進など）。0%なら現状維持" />
+            <FieldLabel label="年収上昇率" tooltip="毎年どれくらい年収が上がるか。「あまり変わらない」→1%、「昇進予定あり」→2〜3%が目安です" />
             <span className="text-sm font-mono text-muted-foreground">{(person.incomeGrowthRate * 100).toFixed(1)}%</span>
           </div>
           <Slider
@@ -111,7 +111,7 @@ function PersonConfig({
 
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <FieldLabel label="退職年齢" tooltip="FIREまたは定年退職する年齢。この年齢を迎えると給与収入がゼロになります" />
+          <FieldLabel label="退職年齢" tooltip="「何歳でFIREしたいか」を入力します。まず目標を入れて、後で調整してみてください" />
           <span className="text-sm font-mono text-muted-foreground">{person.retirementAge}歳</span>
         </div>
         <Slider
@@ -125,7 +125,7 @@ function PersonConfig({
 
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <FieldLabel label="年金受給額（年間）" tooltip="65歳以降に受け取る公的年金の年額。ねんきんネットやねんきん定期便で確認できます" />
+          <FieldLabel label="年金受給額（年間）" tooltip="毎年届く「ねんきん定期便」や「ねんきんネット」で確認できます。会社員は年150〜200万円が目安" />
           <span className="text-sm font-mono text-muted-foreground">{formatCurrency(person.pensionAmount ?? 0, true)}</span>
         </div>
         <Slider
@@ -139,7 +139,7 @@ function PersonConfig({
 
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <FieldLabel label="年金受給開始年齢" tooltip="年金の受け取りを始める年齢。繰り下げると月0.7%増額（最大75歳で84%増）。繰り上げると減額されます" />
+          <FieldLabel label="年金受給開始年齢" tooltip="原則65歳ですが、70歳まで遅らせると42%増、75歳まで遅らせると84%増になります" />
           <span className="text-sm font-mono text-muted-foreground">{person.pensionStartAge}歳</span>
         </div>
         <Slider
@@ -152,7 +152,7 @@ function PersonConfig({
       </div>
 
       <div className="space-y-2">
-        <FieldLabel label="雇用形態" tooltip="会社員: 厚生年金・健康保険に加入。自営業: 国民年金・国民健康保険。専業主婦/夫: 配偶者の扶養に入り、年金は第3号被保険者として保険料負担なしで受給資格あり" />
+        <FieldLabel label="雇用形態" tooltip="税金や年金の計算が変わります。「会社員」= 会社が社保を半分払ってくれる。「自営業」= 全額自分で支払う" />
         <select
           className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
           value={person.employmentType ?? 'employee'}
@@ -167,7 +167,7 @@ function PersonConfig({
       {(person.employmentType ?? 'employee') === 'employee' && (
         <div className="space-y-3 rounded-lg bg-muted/50 p-3">
           <div className="flex items-center justify-between">
-            <FieldLabel label="時短勤務" tooltip="育休後などに時短勤務する場合に設定。指定した年齢まで収入比率を適用します" />
+            <FieldLabel label="時短勤務" tooltip="育休後に時短勤務するならONにしてください。年収が下がる期間をFIREの計算に反映します" />
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground">
                 {person.partTimeUntilAge != null ? '設定あり' : '設定なし'}
@@ -189,7 +189,7 @@ function PersonConfig({
             <div className="space-y-4">
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <FieldLabel label="時短終了年齢" tooltip="時短勤務を終了してフルタイムに戻る年齢" className="text-xs" />
+                  <FieldLabel label="時短終了年齢" tooltip="「何歳でフルタイムに戻るか」を入力します。子どもが小学校入学（6歳）ごろが多いです" className="text-xs" />
                   <span className="text-xs font-mono text-muted-foreground">{person.partTimeUntilAge}歳まで</span>
                 </div>
                 <Slider
@@ -202,7 +202,7 @@ function PersonConfig({
               </div>
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <FieldLabel label="時短中の収入比率" tooltip="フルタイム年収に対する時短期間中の収入の割合（例: 80%なら年収が80%になる）" className="text-xs" />
+                  <FieldLabel label="時短中の収入比率" tooltip="時短でどれくらい収入が減るかです。「7時間→6時間」なら約85%、「週4日」なら80%が目安です" className="text-xs" />
                   <span className="text-xs font-mono text-muted-foreground">{((person.partTimeIncomeRatio ?? 0.8) * 100).toFixed(0)}%</span>
                 </div>
                 <Slider
@@ -219,8 +219,11 @@ function PersonConfig({
       )}
 
       {childBirthYears && childBirthYears.length > 0 && (
-        <div className="space-y-2">
-          <FieldLabel label="産休・育休取得" tooltip="取得した年は給与の代わりに育児休業給付金が支給されます（非課税）。産休2ヶ月＋育休1年として年単位で計算します" />
+        <div className="space-y-2 rounded-lg border border-accent/30 bg-accent/5 p-3">
+          <div className="flex items-center gap-1.5 mb-0.5">
+            <span className="text-xs font-medium text-accent-foreground/80 bg-accent/20 px-1.5 py-0.5 rounded-full">このツールの強み</span>
+          </div>
+          <FieldLabel label="産休・育休取得" tooltip="育休を取る年は、給与の代わりに「育児休業給付金」が出ます（最初の6ヶ月は手取りの約80%相当）。子どもごとにチェックしてください" />
           <p className="text-xs text-muted-foreground">取得する子どもを選択</p>
           {childBirthYears.map((birthYear, index) => {
             const checked = (person.maternityLeaveChildBirthYears ?? []).includes(birthYear)
@@ -295,13 +298,13 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">基本設定</CardTitle>
-          <CardDescription>現在の資産状況と生活費を設定</CardDescription>
+          <CardDescription>まずここから。資産・生活費を入力してFIRE時期を計算します</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           {!showAssetDetail ? (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <FieldLabel label="現在の資産（現金＋株式）" tooltip="現在保有する資産の合計。NISAは別途設定します。詳細入力で現金・株式を分けると売却時の譲渡税をより正確に計算できます" />
+                <FieldLabel label="現在の資産（現金＋株式）" tooltip="証券口座・銀行口座の残高の合計を入力してください。NISAは投資タブで入力します" />
                 <span className="text-sm font-mono text-muted-foreground">{formatCurrency((config.cashAssets ?? 0) + (config.stocks ?? config.currentAssets ?? 0), true)}</span>
               </div>
               <Slider
@@ -322,7 +325,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
             <div className="space-y-4">
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <FieldLabel label="現金・預金" tooltip="普通預金・定期預金など。株と異なり投資リターンは発生しません" />
+                  <FieldLabel label="現金・預金" tooltip="銀行口座の合計残高です（普通・定期・財形など）。投資リターンは発生しません" />
                   <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.cashAssets ?? 0, true)}</span>
                 </div>
                 <Slider
@@ -336,7 +339,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
 
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <FieldLabel label="株式評価額（課税口座）" tooltip="課税口座（特定口座等）の株式・投資信託の現在の評価額" />
+                  <FieldLabel label="株式評価額（課税口座）" tooltip="証券会社の特定口座にある株・投信の今の評価額。NISAは含めません" />
                   <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.stocks ?? 0, true)}</span>
                 </div>
                 <Slider
@@ -354,7 +357,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
 
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <FieldLabel label="株式取得原価" tooltip="株式を購入したときの合計金額。評価額との差が含み益になり、売却時に20.315%の譲渡税がかかります" />
+                  <FieldLabel label="株式取得原価" tooltip="株を最初に買ったときの合計金額。「含み益 = 評価額 − 取得原価」の部分に売却時20%の税金がかかります" />
                   <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.stocksCostBasis ?? 0, true)}</span>
                 </div>
                 <Slider
@@ -385,7 +388,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
           )}
 
           <div className="space-y-2">
-            <FieldLabel label="生活費モード" tooltip="固定費: 毎年同額で計算。ライフステージ: 子どもの年齢に連動して自動調整（子育て期は増加、老後は減少）" />
+            <FieldLabel label="生活費モード" tooltip="「固定費」は手軽でシンプル。「ライフステージ」にすると子育て期は生活費が増え、老後は減る現実に近い計算になります" />
             <div className="flex gap-2">
               {(['fixed', 'lifecycle'] as const).map((mode) => (
                 <button
@@ -406,7 +409,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
           {(config.expenseMode ?? 'fixed') === 'fixed' && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <FieldLabel label="月間生活費" tooltip="毎月の基本生活費。住宅ローン返済額・教育費は別途ライフタブで入力します" />
+                <FieldLabel label="月間生活費" tooltip="食費・光熱費・通信費など毎月かかる生活費の合計。住宅ローンや教育費は後のライフタブで入力します" />
                 <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.monthlyExpenses)}/月</span>
               </div>
               <Slider
@@ -460,7 +463,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
 
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <FieldLabel label="生活費上昇率" tooltip="物価上昇や生活水準の向上による年間上昇率。インフレ率と同じ値が一般的です" />
+              <FieldLabel label="生活費上昇率" tooltip="毎年どれくらい生活費が上がるかの設定。物価上昇（インフレ）に合わせて1〜2%が一般的です" />
               <span className="text-sm font-mono text-muted-foreground">{(config.expenseGrowthRate * 100).toFixed(1)}%</span>
             </div>
             <Slider
@@ -533,12 +536,12 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">投資設定</CardTitle>
-          <CardDescription>運用利回りとリスク設定</CardDescription>
+          <CardDescription>資産運用の想定リターンとリスクを設定します</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <FieldLabel label="期待リターン" tooltip="年間の投資リターンの期待値（税引き前）。S&P500の歴史的平均は約7%。将来を保証するものではありません" />
+              <FieldLabel label="期待リターン" tooltip="毎年平均何%増えると想定するかです。全世界株インデックスなら5〜7%が過去実績です（ただし将来保証はなし）" />
               <span className="text-sm font-mono text-muted-foreground">{(config.investmentReturn * 100).toFixed(1)}%</span>
             </div>
             <Slider
@@ -552,7 +555,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
 
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <FieldLabel label="リスク（標準偏差）" tooltip="リターンのブレ幅（標準偏差）。大きいほど好不況の振れ幅が増します。S&P500は約15〜20%" />
+              <FieldLabel label="リスク（標準偏差）" tooltip="「当たり年と外れ年の差」です。大きくするほどリーマンショック級の暴落も計算に含まれます。株式なら15〜20%が現実的" />
               <span className="text-sm font-mono text-muted-foreground">{(config.investmentVolatility * 100).toFixed(1)}%</span>
             </div>
             <Slider
@@ -566,7 +569,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
 
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <FieldLabel label="安全引き出し率（SWR）" tooltip="FIRE後に毎年資産から取り崩す割合。4%ルール（資産×25倍でFIRE）が有名。低いほど資産が長持ちしやすくなります" />
+              <FieldLabel label="安全引き出し率（SWR）" tooltip="「資産のうち毎年何%を使うか」です。4%なら「必要年収÷0.04 = 必要資産」。保守的にするなら3〜3.5%がおすすめ" />
               <span className="text-sm font-mono text-muted-foreground">{(config.safeWithdrawalRate * 100).toFixed(1)}%</span>
             </div>
             <Slider
@@ -605,7 +608,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
           <CardContent className="space-y-6">
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <FieldLabel label="年間投資額" tooltip="新NISAへの年間拠出額。上限は年360万円（成長投資枠240万＋つみたて枠120万）、生涯上限1,800万円。運用益・配当は非課税" />
+                <FieldLabel label="年間投資額" tooltip="NISAは運用益に税金がかかりません。毎年いくら入れているかを入力してください（上限は年360万円）" />
                 <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.nisa.annualContribution, true)}</span>
               </div>
               <Slider
@@ -647,7 +650,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
           <CardContent className="space-y-6">
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <FieldLabel label="月額拠出額" tooltip="iDeCo（個人型確定拠出年金）の月額掛金。掛金は全額所得控除で節税効果あり。60歳まで引き出せません" />
+                <FieldLabel label="月額拠出額" tooltip="掛金が全額「所得控除」になるので税金が減ります。ただし60歳まで絶対に引き出せないのが注意点です" />
                 <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.ideco.monthlyContribution)}/月</span>
               </div>
               <Slider
@@ -662,7 +665,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <FieldLabel label="受取開始年齢" tooltip="iDeCoの受け取りを開始する年齢（60〜75歳）。受取時に退職所得控除または公的年金等控除が適用されます" />
+                <FieldLabel label="受取開始年齢" tooltip="FIREが早くても60歳まで受け取れません。受取時に税控除があります" />
                 <span className="text-sm font-mono text-muted-foreground">
                   {config.ideco.withdrawalStartAge ?? 60}歳
                 </span>
@@ -691,12 +694,12 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
             <Baby className="h-4 w-4" />
             子育て
           </CardTitle>
-          <CardDescription>子どもの人数と教育費を設定</CardDescription>
+          <CardDescription>子どもの人数・誕生年を入力すると、教育費と児童手当を自動計算します</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <FieldLabel label="子どもの人数" tooltip="シミュレーションに含める子どもの人数。教育費と児童手当の計算に反映されます" />
+              <FieldLabel label="子どもの人数" tooltip="子どもの人数を入力すると、教育費と児童手当が自動でFIRE計算に反映されます" />
               <span className="text-sm font-mono text-muted-foreground">{config.children.length}人</span>
             </div>
             <Slider
@@ -720,7 +723,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
               <p className="text-sm font-medium">子ども {index + 1}</p>
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <FieldLabel label="誕生年" tooltip="子どもの誕生年（西暦）。教育費の発生タイミングと児童手当の計算に使います" />
+                  <FieldLabel label="誕生年" tooltip="西暦で入力してください（例: 2024年生まれなら2024）。学費の発生タイミングを自動で計算します" />
                   <span className="text-sm font-mono text-muted-foreground">{child.birthYear}年</span>
                 </div>
                 <Slider
@@ -736,7 +739,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
                 />
               </div>
               <div className="flex items-center gap-4 pt-2">
-                <FieldLabel label="教育費" tooltip="公立: 小〜大学まで全て公立。私立: 全て私立。混合: 小・中は公立、高・大学は私立" />
+                <FieldLabel label="教育費" tooltip="「混合（小中公立・高大学私立）」が日本の平均的な家庭のパターンです" />
                 <div className="flex gap-2">
                   {(["public", "mixed", "private"] as const).map((path) => (
                     <button
@@ -762,7 +765,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
 
           <div className="flex items-center justify-between pt-2 border-t">
             <div>
-              <FieldLabel label="児童手当" tooltip="中学校卒業まで支給される児童手当を収入に加算します（第1・2子: 月1万円、第3子以降: 月1.5万円）" />
+              <FieldLabel label="児童手当" tooltip="月1万円もらえる児童手当を計算に入れます。受け取っているならONのままにしてください" />
               <p className="text-xs text-muted-foreground">収入に加算</p>
             </div>
             <Switch
@@ -780,7 +783,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="text-base">セミFIRE</CardTitle>
-              <CardDescription>FIRE後も一定期間、収入を得る場合に設定</CardDescription>
+              <CardDescription>完全にやめるのではなく、副業・パートで少し働き続けるシナリオです</CardDescription>
             </div>
             <Switch
               id="semi-fire-toggle"
@@ -799,7 +802,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
           <CardContent className="space-y-6">
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <FieldLabel label="月収（税引き前）" tooltip="FIRE後に副業・パート・フリーランス等から得る税引き前の月間収入。社会保険料・税金を自動計算します" />
+                <FieldLabel label="月収（税引き前）" tooltip="FIRE後に副業やパートで稼ぐ月収を入力します。月10万円でも計算が大きく変わります" />
                 <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.postFireIncome.monthlyAmount)}/月</span>
               </div>
               <Slider
@@ -816,7 +819,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
 
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <FieldLabel label="終了年齢" tooltip="この年齢になるとセミFIREを終了し、完全引退（収入ゼロ）に移行します" />
+                <FieldLabel label="終了年齢" tooltip="ここまでは働いて、それ以降は年金生活に切り替えるイメージです" />
                 <span className="text-sm font-mono text-muted-foreground">{config.postFireIncome.untilAge}歳まで</span>
               </div>
               <Slider
@@ -839,7 +842,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="text-base">住宅ローン</CardTitle>
-              <CardDescription>月額返済額をキャッシュフローに反映します</CardDescription>
+              <CardDescription>ローン返済額をFIRE計算に含めます。完済後はキャッシュフローが改善します</CardDescription>
             </div>
             <Switch
               id="mortgage-toggle"
@@ -858,7 +861,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
           <CardContent className="space-y-6">
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <FieldLabel label="月額返済額" tooltip="元利合計の月次返済額。完済年までキャッシュフローから毎月差し引かれます" />
+                <FieldLabel label="月額返済額" tooltip="毎月の住宅ローン返済額です。完済年まで支出として計算されます" />
                 <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.mortgage.monthlyPayment)}/月</span>
               </div>
               <Slider
@@ -875,7 +878,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
 
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <FieldLabel label="完済年" tooltip="住宅ローンの完済予定年（西暦）。この年以降は返済が発生しません" />
+                <FieldLabel label="完済年" tooltip="ローンが終わる予定の西暦年。完済後は月々の支出が減るので、FIREが近づきます" />
                 <span className="text-sm font-mono text-muted-foreground">{config.mortgage.endYear}年</span>
               </div>
               <Slider
@@ -905,7 +908,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
           <div className="flex items-center justify-between py-1">
             <FieldLabel
               label="モンテカルロシミュレーション"
-              tooltip="1000回のシミュレーションで市場変動を考慮した成功確率を計算します。オフにすると平均シナリオのみ（高速）"
+              tooltip="1000通りの市場シナリオでFIRE成功確率を計算します。OFFにすると平均シナリオのみ（計算が速くなります）"
             />
             <Switch
               id="monte-carlo-toggle-panel"
@@ -916,7 +919,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
           <div className="h-px bg-border" />
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <FieldLabel label="シミュレーション期間" tooltip="何年後まで資産推移を計算するか。老後の資産状況を把握するため、少なくとも退職後30〜40年分を推奨します" />
+              <FieldLabel label="シミュレーション期間" tooltip="退職後30〜40年分を見るのがおすすめです。例えば45歳でFIREを考えているなら、少なくとも40年（85歳まで）に設定してください" />
               <span className="text-sm font-mono text-muted-foreground">{config.simulationYears}年</span>
             </div>
             <Slider
@@ -930,7 +933,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
 
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <FieldLabel label="インフレ率" tooltip="物価上昇率。生活費がこの割合で毎年増加します。日銀の目標は2%。生活費上昇率と合わせて設定します" />
+              <FieldLabel label="インフレ率" tooltip="毎年物価がどれくらい上がるかです。日銀目標の2%に設定しておくのが一般的です" />
               <span className="text-sm font-mono text-muted-foreground">{(config.inflationRate * 100).toFixed(1)}%</span>
             </div>
             <Slider
@@ -973,7 +976,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
             <div className="space-y-4">
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <FieldLabel label="裁量支出比率" tooltip="生活費のうち、相場下落時に削減できる裁量的な支出の割合。食費・光熱費などの必須支出以外（旅行・外食・娯楽等）が目安" />
+                  <FieldLabel label="裁量支出比率" tooltip="生活費の中で「暴落時に削れる部分」の割合。旅行・外食・服などが対象。30%が一般的な想定です" />
                   <span className="text-sm font-mono text-muted-foreground">{((config.guardrailConfig?.discretionaryRatio ?? 0.3) * 100).toFixed(0)}%</span>
                 </div>
                 <Slider
@@ -1133,7 +1136,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">FIRE後の社会保険料</CardTitle>
-          <CardDescription>国保・国民年金の計算パラメータ（通常は変更不要）</CardDescription>
+          <CardDescription>FIREした後に自分で支払う社会保険料の計算設定です。通常は変更不要です</CardDescription>
         </CardHeader>
         <CardContent>
           <details className="group">
@@ -1144,7 +1147,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
             <div className="mt-4 space-y-4">
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <FieldLabel label="医療分所得割率" tooltip="国保の医療分として所得に対して課税される割合。自治体ごとに異なります（全国平均約11%）" className="text-xs" />
+                  <FieldLabel label="医療分所得割率" tooltip="国保の医療費分として収入に対してかかる率。自治体で異なりますが全国平均は約11%です" className="text-xs" />
                   <span className="text-xs font-mono text-muted-foreground">
                     {(config.postFireSocialInsurance.nhisoIncomeRate * 100).toFixed(2)}%
                   </span>
@@ -1161,7 +1164,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <FieldLabel label="後期高齢者支援金分所得割率" tooltip="国保のうち後期高齢者医療制度への支援金として所得に対して課税される割合" className="text-xs" />
+                  <FieldLabel label="後期高齢者支援金分所得割率" tooltip="国保保険料のうち「高齢者支援のための上乗せ分」の料率（全国平均約2.6%）です" className="text-xs" />
                   <span className="text-xs font-mono text-muted-foreground">
                     {(config.postFireSocialInsurance.nhisoSupportIncomeRate * 100).toFixed(2)}%
                   </span>
@@ -1178,7 +1181,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <FieldLabel label="均等割（1人あたり）" tooltip="所得に関わらず加入者1人ごとに定額でかかる国保保険料" className="text-xs" />
+                  <FieldLabel label="均等割（1人あたり）" tooltip="収入がゼロでも1人あたり年約5万円かかる定額の国保保険料です" className="text-xs" />
                   <span className="text-xs font-mono text-muted-foreground">
                     {formatCurrency(config.postFireSocialInsurance.nhisoFixedAmountPerPerson)}
                   </span>
@@ -1195,7 +1198,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <FieldLabel label="平等割（世帯）" tooltip="所得・人数に関わらず世帯単位でかかる定額の国保保険料（自治体によっては0円）" className="text-xs" />
+                  <FieldLabel label="平等割（世帯）" tooltip="世帯に1つかかる定額料金です。自治体によっては「均等割のみ」でここは0円の場合もあります" className="text-xs" />
                   <span className="text-xs font-mono text-muted-foreground">
                     {formatCurrency(config.postFireSocialInsurance.nhisoHouseholdFixed)}
                   </span>
@@ -1212,7 +1215,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <FieldLabel label="国保年間上限額" tooltip="国保保険料の年間上限額。これを超える保険料はかかりません" className="text-xs" />
+                  <FieldLabel label="国保年間上限額" tooltip="国保には上限があります。高収入でもここまでしかかかりません（現在の上限: 約106万円/年）" className="text-xs" />
                   <span className="text-xs font-mono text-muted-foreground">
                     {formatCurrency(config.postFireSocialInsurance.nhisoMaxAnnual, true)}
                   </span>
@@ -1229,7 +1232,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <FieldLabel label="国民年金月額保険料" tooltip="FIRE後に支払う国民年金の月額保険料（第1号被保険者）。毎年改定されます" className="text-xs" />
+                  <FieldLabel label="国民年金月額保険料" tooltip="FIREすると年金を自分で払います。今は月約17,000円。夫婦2人なら月約34,000円です" className="text-xs" />
                   <span className="text-xs font-mono text-muted-foreground">
                     {formatCurrency(config.postFireSocialInsurance.nationalPensionMonthlyPremium)}/月
                   </span>
@@ -1246,7 +1249,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <FieldLabel label="介護分所得割率" tooltip="40〜64歳の第2号被保険者が支払う介護保険料の所得割率" className="text-xs" />
+                  <FieldLabel label="介護分所得割率" tooltip="40〜64歳は介護保険料が国保に追加されます（収入の約2%）。65歳以降は年金から天引きになります" className="text-xs" />
                   <span className="text-xs font-mono text-muted-foreground">
                     {(config.postFireSocialInsurance.longTermCareRate * 100).toFixed(2)}%
                   </span>
@@ -1263,7 +1266,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <FieldLabel label="介護分上限額" tooltip="介護保険料の年間上限額" className="text-xs" />
+                  <FieldLabel label="介護分上限額" tooltip="介護保険料にも上限があります（年約17万円）。高収入でもここを超えません" className="text-xs" />
                   <span className="text-xs font-mono text-muted-foreground">
                     {formatCurrency(config.postFireSocialInsurance.longTermCareMax, true)}
                   </span>

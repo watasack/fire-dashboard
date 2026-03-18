@@ -13,9 +13,9 @@ const jetbrainsMono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "FIRE シミュレーター | 経済的自立への道筋",
-  description: "共働き世帯向けFIRE達成シミュレーター。モンテカルロ法による信頼性の高い試算で、あなたの経済的自立への最適な道筋を見つけましょう。",
-  keywords: ["FIRE", "経済的自立", "早期退職", "資産形成", "シミュレーター", "共働き"],
+  title: "共働き・子育てFIREシミュレーター | 育休・時短を考慮した確率計算",
+  description: "育休・時短・教育費など共働き世帯のリアルを反映したFIREシミュレーター。1000通りのシミュレーションでFIRE成功確率を計算。登録不要・無料デモあり。",
+  keywords: ["FIRE", "共働きFIRE", "育休FIRE", "FIREシミュレーター", "早期退職", "経済的自立", "子育てFIRE", "育休影響", "セミFIRE"],
 }
 
 export const viewport: Viewport = {

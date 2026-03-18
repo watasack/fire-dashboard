@@ -89,7 +89,7 @@ export function MetricsSummary({ config, result, mcResult, isCalculating }: Metr
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-background">
                   <Target className="h-4 w-4 text-primary" />
                 </div>
-                <p className="text-xs text-muted-foreground">FIRE達成率（現時点）</p>
+                <p className="text-xs text-muted-foreground">目標達成率（現在）</p>
               </div>
               <p className={`font-semibold text-lg ${achievementColor}`}>{achievementPercent}%</p>
               <div className="mt-2 h-2 rounded-full bg-muted overflow-hidden">
@@ -110,17 +110,17 @@ export function MetricsSummary({ config, result, mcResult, isCalculating }: Metr
                   <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-background">
                     <ShieldAlert className="h-4 w-4 text-primary" />
                   </div>
-                  <p className="text-xs text-muted-foreground">資産持続性（モンテカルロ）</p>
+                  <p className="text-xs text-muted-foreground">FIRE成功確率（1000通り）</p>
                 </div>
                 <p className="font-semibold text-sm leading-snug">{mcResult.successCountFormatted}</p>
                 {mcResult.depletionAgeP10 !== null && (
                   <p className="text-xs text-muted-foreground mt-1">
-                    最悪ケース(下位10%): {mcResult.depletionAgeP10}歳まで持ちます
+                    最悪シナリオ（下位10%）: {mcResult.depletionAgeP10}歳まで資産が持ちます
                   </p>
                 )}
                 {mcResult.depletionAgeP10 === null && (
                   <p className="text-xs text-green-600 mt-1">
-                    全シナリオで枯渇しませんでした
+                    1000通り全てで90歳まで資産が持続しました
                   </p>
                 )}
               </div>

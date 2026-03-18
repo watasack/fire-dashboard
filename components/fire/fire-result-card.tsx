@@ -47,7 +47,7 @@ export function FireResultCard({ result, monteCarloResult, currentAge, isCalcula
             ) : (
               <AlertCircle className="h-5 w-5 text-accent" />
             )}
-            FIRE達成予測
+            FIRE達成シミュレーション
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -65,7 +65,7 @@ export function FireResultCard({ result, monteCarloResult, currentAge, isCalcula
                   </TooltipTrigger>
                   <TooltipContent>
                     <p className="max-w-xs text-xs">
-                      モンテカルロシミュレーション（1000回）の中央値です。
+                      1000通りのシナリオでの中央値（ちょうど真ん中のシナリオ）です。
                       {monteCarloResult && (
                         <>
                           <br />10%ile: {monteCarloResult.percentile10}歳
@@ -104,7 +104,7 @@ export function FireResultCard({ result, monteCarloResult, currentAge, isCalcula
               </p>
               <p className="text-sm text-muted-foreground">
                 {fireProbability >= 0.8 ? "高い確率" :
-                 fireProbability >= 0.5 ? "現実的" : "要改善"}
+                 fireProbability >= 0.5 ? "現実的" : "改善の余地あり"}
               </p>
             </div>
 
@@ -146,10 +146,28 @@ export function FireResultCard({ result, monteCarloResult, currentAge, isCalcula
             </div>
           </div>
 
+          {/* Plain-language narrative */}
+          {monteCarloResult && (
+            <div className="mt-4 pt-4 border-t">
+              <p className="text-xs leading-relaxed text-muted-foreground bg-muted/40 rounded-lg px-3 py-2.5">
+                {(() => {
+                  const prob = Math.round(fireProbability * 100)
+                  if (fireAge && fireProbability >= 0.8) {
+                    return `1000通りのシナリオのうち${prob}%で、90歳まで資産が持ちます。現在のプランは堅実です。`
+                  } else if (fireAge && fireProbability >= 0.5) {
+                    return `1000通りのシナリオのうち${prob}%で成功します。積立額の増加や目標年齢の調整で確率をさらに高められます。`
+                  } else {
+                    return `現在のプランでは、目標でのFIRE達成が難しい状況です（成功率${prob}%）。積立額の増加、支出の見直し、またはFIRE目標年齢の延長を検討してみましょう。`
+                  }
+                })()}
+              </p>
+            </div>
+          )}
+
           {/* FIRE Timeline */}
           {firePosition !== null && (
             <div className="mt-4 pt-4 border-t">
-              <p className="text-xs text-muted-foreground mb-3">FIREまでの道のり</p>
+              <p className="text-xs text-muted-foreground mb-3">あと何年でFIREできるか</p>
               <div className="relative">
                 {/* Track */}
                 <div className="h-1.5 bg-muted rounded-full overflow-visible">
