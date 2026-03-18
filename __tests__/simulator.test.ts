@@ -8,7 +8,7 @@
  */
 
 import { describe, test, expect } from 'vitest'
-import { runSingleSimulation, SimulationConfig, calculatePensionAmount, applyMacroEconomicSlide, Person, withdrawFromTaxableAccount, calculatePostFireIncome, PostFireIncomeConfig } from '../lib/simulator'
+import { runSingleSimulation, SimulationConfig, calculatePensionAmount, applyMacroEconomicSlide, Person, withdrawFromTaxableAccount, calculatePostFireIncome, PostFireIncomeConfig, calculateNHIPremium, calculateNationalPensionPremium, PostFireSocialInsuranceConfig } from '../lib/simulator'
 
 const CURRENT_YEAR = new Date().getFullYear() // 2026
 
@@ -50,6 +50,16 @@ function cfg(overrides: Partial<SimulationConfig> = {}): SimulationConfig {
     simulationYears: 1,
     inflationRate: 0,
     expenseMode: 'fixed',
+    postFireSocialInsurance: {
+      nhisoIncomeRate: 0,
+      nhisoSupportIncomeRate: 0,
+      nhisoFixedAmountPerPerson: 0,
+      nhisoHouseholdFixed: 0,
+      nhisoMaxAnnual: 0,
+      nationalPensionMonthlyPremium: 0,
+      longTermCareRate: 0,
+      longTermCareMax: 0,
+    },
   }
   // person1/person2/nisa/ideco はネストしているので個別マージ
   const { person1, person2, nisa, ideco, ...rest } = overrides
@@ -1977,5 +1987,71 @@ describe('セミFIRE（FIRE後収入）', () => {
   test('calculatePostFireIncome: untilAge 以上は0を返す', () => {
     expect(calculatePostFireIncome({ monthlyAmount: 100_000, untilAge: 50 }, 50, true)).toBe(0)
     expect(calculatePostFireIncome({ monthlyAmount: 100_000, untilAge: 50 }, 51, true)).toBe(0)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FIRE後税金・社会保険
+// ─────────────────────────────────────────────────────────────────────────────
+
+const testSIConfig = (): PostFireSocialInsuranceConfig => ({
+  nhisoIncomeRate: 0.1100,
+  nhisoSupportIncomeRate: 0.0259,
+  nhisoFixedAmountPerPerson: 50_000,
+  nhisoHouseholdFixed: 30_000,
+  nhisoMaxAnnual: 1_060_000,
+  nationalPensionMonthlyPremium: 16_980,
+  longTermCareRate: 0.0200,
+  longTermCareMax: 170_000,
+})
+
+describe('FIRE後税金・社会保険', () => {
+  test('FIRE後60歳未満: 国民年金保険料が計算される', () => {
+    expect(calculateNationalPensionPremium(45, testSIConfig())).toBe(16_980 * 12)
+  })
+
+  test('FIRE後60歳以上: 国民年金保険料ゼロ', () => {
+    expect(calculateNationalPensionPremium(60, testSIConfig())).toBe(0)
+    expect(calculateNationalPensionPremium(70, testSIConfig())).toBe(0)
+  })
+
+  test('前年所得ゼロ: 国保は均等割+平等割のみ（householdSize=1, age=45）', () => {
+    // medicalFixed = 50_000 + 30_000 = 80_000
+    // supportFixed = 50_000 * 0.3 = 15_000
+    // careFixed    = 50_000 * 0.5 = 25_000
+    // total = 120_000
+    expect(calculateNHIPremium(0, 1, testSIConfig(), 45)).toBe(120_000)
+  })
+
+  test('前年所得が高い: 国保が各分上限の合計（1,060,000）に達する', () => {
+    // 所得が非常に高い場合: 医療650,000 + 支援240,000 + 介護170,000 = 1,060,000
+    expect(calculateNHIPremium(10_000_000, 1, testSIConfig(), 45)).toBe(1_060_000)
+  })
+
+  test('65歳以降: 介護保険料がゼロになる', () => {
+    const nhip45 = calculateNHIPremium(1_000_000, 1, testSIConfig(), 45)
+    const nhip65 = calculateNHIPremium(1_000_000, 1, testSIConfig(), 65)
+    expect(nhip65).toBeLessThan(nhip45)
+  })
+
+  test('世帯人数が多いと均等割が増える', () => {
+    const nhip1 = calculateNHIPremium(500_000, 1, testSIConfig(), 45)
+    const nhip2 = calculateNHIPremium(500_000, 2, testSIConfig(), 45)
+    expect(nhip2).toBeGreaterThan(nhip1)
+  })
+
+  test('FIRE後の expenses に国保・国民年金が加算される', () => {
+    const result = runSingleSimulation(cfg({
+      currentAssets: 500_000_000,
+      monthlyExpenses: 100_000,
+      postFireSocialInsurance: testSIConfig(),
+      person1: { currentAge: 35, retirementAge: 65, grossIncome: 0,
+        incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0, employmentType: 'employee' },
+      investmentReturn: 0, simulationYears: 5,
+    }))
+    // year0 で即FIRE達成 → year1 (isPostFire=true) から社保計算開始
+    expect(result.yearlyData[1].postFireSocialInsurance).toBeGreaterThan(0)
+    expect(result.yearlyData[1].nhInsurancePremium).toBeGreaterThan(0)
+    expect(result.yearlyData[1].nationalPensionPremium).toBe(16_980 * 12)
   })
 })

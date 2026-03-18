@@ -79,6 +79,17 @@ export interface PostFireIncomeConfig {
     untilAge: number         // セミFIRE終了年齢（この年齢になったら収入ゼロ）
 }
 
+export interface PostFireSocialInsuranceConfig {
+    nhisoIncomeRate: number        // 医療分所得割率（デフォルト: 0.1100）
+    nhisoSupportIncomeRate: number // 後期高齢者支援金分所得割率（デフォルト: 0.0259）
+    nhisoFixedAmountPerPerson: number  // 均等割/人（デフォルト: 50_000）
+    nhisoHouseholdFixed: number    // 平等割（デフォルト: 30_000）
+    nhisoMaxAnnual: number         // 参考値（デフォルト: 1_060_000）
+    nationalPensionMonthlyPremium: number  // 国民年金月額（デフォルト: 16_980）
+    longTermCareRate: number       // 介護分所得割（デフォルト: 0.0200）
+    longTermCareMax: number        // 介護分上限（デフォルト: 170_000）
+}
+
 export interface SimulationConfig {
     // Basic settings
     /** @deprecated cashAssets / stocks を使うこと（後方互換のみ） */
@@ -117,6 +128,9 @@ export interface SimulationConfig {
 
     // Semi-FIRE / Post-FIRE income
     postFireIncome?: PostFireIncomeConfig | null   // デフォルト: null
+
+    // Post-FIRE social insurance
+    postFireSocialInsurance: PostFireSocialInsuranceConfig
 }
 
 export interface TaxBreakdown {
@@ -154,6 +168,9 @@ export interface YearlyData {
     capitalGainsTax: number     // 当年の売却税額
     isSemiFire: boolean         // 当年がセミFIRE期間かどうか
     semiFireIncome: number      // セミFIRE収入（税引き前年額）
+    nhInsurancePremium: number        // 国保保険料（FIRE後のみ、就労中は0）
+    nationalPensionPremium: number    // 国民年金保険料（FIRE後60歳未満のみ）
+    postFireSocialInsurance: number   // 国保 + 国民年金の合計
 }
 
 export interface SimulationResult {
@@ -266,6 +283,18 @@ export const DEFAULT_CONFIG: SimulationConfig = {
 
     // Semi-FIRE / Post-FIRE income
     postFireIncome: null,
+
+    // Post-FIRE social insurance
+    postFireSocialInsurance: {
+        nhisoIncomeRate: 0.1100,
+        nhisoSupportIncomeRate: 0.0259,
+        nhisoFixedAmountPerPerson: 50_000,
+        nhisoHouseholdFixed: 30_000,
+        nhisoMaxAnnual: 1_060_000,
+        nationalPensionMonthlyPremium: 16_980,
+        longTermCareRate: 0.0200,
+        longTermCareMax: 170_000,
+    },
 }
 
 // ----------------------------------------------------------------------------
@@ -738,6 +767,60 @@ export function calculatePostFireIncome(
 }
 
 // ----------------------------------------------------------------------------
+// Post-FIRE Social Insurance
+// ----------------------------------------------------------------------------
+
+export function calculateNHIPremium(
+    lastYearTotalIncome: number,
+    householdSize: number,
+    config: PostFireSocialInsuranceConfig,
+    age: number
+): number {
+    const deductedIncome = Math.max(0, lastYearTotalIncome - 430_000)
+
+    // 医療分（上限650,000円）
+    const medicalIncomeRate = deductedIncome * config.nhisoIncomeRate
+    const medicalFixed = config.nhisoFixedAmountPerPerson * householdSize + config.nhisoHouseholdFixed
+    const medicalTotal = Math.min(medicalIncomeRate + medicalFixed, 650_000)
+
+    // 後期高齢者支援金分（上限240,000円）
+    const supportIncomeRate = deductedIncome * config.nhisoSupportIncomeRate
+    const supportFixed = config.nhisoFixedAmountPerPerson * 0.3 * householdSize
+    const supportTotal = Math.min(supportIncomeRate + supportFixed, 240_000)
+
+    // 介護分（40〜64歳のみ、上限170,000円）
+    let careTotal = 0
+    if (age >= 40 && age < 65) {
+        const careIncomeRate = deductedIncome * config.longTermCareRate
+        const careFixed = config.nhisoFixedAmountPerPerson * 0.5 * householdSize
+        careTotal = Math.min(careIncomeRate + careFixed, config.longTermCareMax)
+    }
+
+    return medicalTotal + supportTotal + careTotal
+}
+
+export function calculateNationalPensionPremium(
+    age: number,
+    config: PostFireSocialInsuranceConfig
+): number {
+    if (age >= 60) return 0
+    return config.nationalPensionMonthlyPremium * 12
+}
+
+export function calculatePostFireSocialInsurance(
+    personAge: number,
+    lastYearGrossIncome: number,
+    capitalGainsLastYear: number,
+    householdSize: number,
+    config: PostFireSocialInsuranceConfig
+): number {
+    const lastYearTotalIncome = lastYearGrossIncome + capitalGainsLastYear
+    const nhip = calculateNHIPremium(lastYearTotalIncome, householdSize, config, personAge)
+    const npp = calculateNationalPensionPremium(personAge, config)
+    return nhip + npp
+}
+
+// ----------------------------------------------------------------------------
 // Single Simulation
 // ----------------------------------------------------------------------------
 
@@ -761,6 +844,8 @@ export function runSingleSimulation(
     let nisaTotalContributed = config.nisa.totalContributed ?? 0  // NISA累積拠出額追跡
     let fireAge: number | null = null
     let fireYear: number | null = null
+    let capitalGainsLastYear = 0    // 前年の売却益
+    let lastYearFireIncome = 0      // 前年の就労収入（FIRE後: セミFIRE収入, FIRE前: 給与収入）
 
     // Calculate FIRE number based on current expenses
     const annualExpenses = config.monthlyExpenses * 12
@@ -931,8 +1016,24 @@ export function runSingleSimulation(
         // Calculate mortgage cost
         const mortgageCost = calculateMortgageCost(config.mortgage, currentSimYear)
 
-        // Total expenses
-        const totalExpenses = baseExpenses + childCosts + mortgageCost
+        // FIRE後社会保険料（国保 + 国民年金）
+        const householdSize = config.person2 ? 2 : 1
+        let nhip = 0
+        let npp = 0
+        let postFireSI = 0
+        if (isPostFire) {
+            nhip = calculateNHIPremium(
+                lastYearFireIncome + capitalGainsLastYear,
+                householdSize,
+                config.postFireSocialInsurance,
+                person1Age
+            )
+            npp = calculateNationalPensionPremium(person1Age, config.postFireSocialInsurance)
+            postFireSI = nhip + npp
+        }
+
+        // Total expenses（FIRE後は社会保険料を上乗せ）
+        const totalExpenses = baseExpenses + childCosts + mortgageCost + postFireSI
 
         // Calculate child allowance (non-taxable, added directly to net income)
         const childAllowance = (config.childAllowanceEnabled !== false)
@@ -1086,7 +1187,14 @@ export function runSingleSimulation(
             capitalGainsTax: capitalGainsThisYear * 0.20315,
             isSemiFire,
             semiFireIncome: semiFIREGross,
+            nhInsurancePremium: isPostFire ? nhip : 0,
+            nationalPensionPremium: isPostFire ? npp : 0,
+            postFireSocialInsurance: isPostFire ? postFireSI : 0,
         })
+
+        // 次の年のために前年値を更新
+        capitalGainsLastYear = capitalGainsThisYear
+        lastYearFireIncome = isPostFire ? semiFIREGross : totalIncome
     }
 
     const finalData = yearlyData[yearlyData.length - 1]
