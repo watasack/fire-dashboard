@@ -10,6 +10,17 @@ export type EmploymentType = 'employee' | 'selfEmployed' | 'homemaker'
 
 export type WithdrawalStrategy = 'fixed' | 'percentage' | 'guardrail'
 
+export type MCReturnModel = 'normal' | 'meanReversion' | 'bootstrap'
+
+export interface MeanReversionConfig {
+    speed: number    // 平均回帰速度（0.0〜1.0、推奨: 0.3）
+}
+
+export interface BootstrapConfig {
+    historicalReturns: number[]    // 過去の年次リターンデータ（小数: 0.10 = 10%）
+    blockSize?: number             // ブロックサイズ（デフォルト: 1）
+}
+
 export interface GuardrailConfig {
     threshold1: number       // デフォルト: -0.10
     reduction1: number       // デフォルト: 0.40
@@ -147,6 +158,11 @@ export interface SimulationConfig {
     // Withdrawal strategy (Phase 7)
     withdrawalStrategy?: WithdrawalStrategy   // デフォルト: 'fixed'
     guardrailConfig?: GuardrailConfig         // guardrail 選択時に使用
+
+    // MC return model (Phase 9)
+    mcReturnModel?: MCReturnModel             // デフォルト: 'normal'
+    meanReversionConfig?: MeanReversionConfig
+    bootstrapConfig?: BootstrapConfig
 }
 
 export interface TaxBreakdown {
@@ -224,6 +240,7 @@ export interface MonteCarloResult {
     depletionAgeP10: number | null      // 下位10%シナリオの枯渇年齢
     depletionAgeP50: number | null      // 中央値シナリオの枯渇年齢
     successCountFormatted: string       // 例: "1000通りのうち800通りで90歳まで資産が持ちました"
+    mcModel: MCReturnModel              // 使用したMCモデル
 }
 
 export interface AnnualTableRow {
@@ -374,6 +391,7 @@ export const DEFAULT_CONFIG: SimulationConfig = {
 
     // Withdrawal strategy (Phase 7)
     withdrawalStrategy: 'fixed',
+    mcReturnModel: 'normal',
     guardrailConfig: {
         threshold1: -0.10,
         reduction1: 0.40,
@@ -1396,24 +1414,113 @@ export function runSingleSimulation(
 }
 
 // ----------------------------------------------------------------------------
+// Historical Return Data
+// ----------------------------------------------------------------------------
+
+// S&P500の年次リターン（1970〜2024年の概算値, 50年分）
+export const DEFAULT_SP500_RETURNS: number[] = [
+    0.040, -0.146, 0.187, -0.145, -0.262,
+    0.371, 0.238, -0.071, 0.065, 0.184,
+    0.321, -0.049, 0.215, 0.223, 0.062,
+    0.316, 0.185, 0.052, 0.166, 0.315,
+    0.026, 0.076, 0.099, 0.013, 0.379,
+    0.228, 0.333, 0.285, 0.210, -0.091,
+    -0.119, -0.221, 0.287, 0.108, 0.048,
+    0.158, 0.057, -0.370, 0.264, 0.152,
+    0.021, 0.160, 0.323, 0.135, 0.014,
+    0.119, 0.218, -0.044, 0.314, 0.245,
+]
+
+// ----------------------------------------------------------------------------
 // Random Number Generation (Box-Muller Transform)
 // ----------------------------------------------------------------------------
 
-function generateNormalRandom(mean: number, stdDev: number): number {
-    const u1 = Math.random()
-    const u2 = Math.random()
-    const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2)
-    return mean + stdDev * z
-}
-
-function generateRandomReturns(
+export function generateMeanReversionReturns(
     years: number,
     mean: number,
-    volatility: number
+    volatility: number,
+    speed: number
 ): number[] {
-    return Array.from({ length: years + 1 }, () =>
-        generateNormalRandom(mean, volatility)
-    )
+    const returns: number[] = []
+    let prevReturn = mean  // 初期値: 期待値から開始
+
+    for (let t = 0; t <= years; t++) {
+        const u1 = Math.random()
+        const u2 = Math.random()
+        const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2)
+        const epsilon = volatility * z
+        const r_t = mean + speed * (mean - prevReturn) + epsilon
+        returns.push(r_t)
+        prevReturn = r_t
+    }
+
+    return returns
+}
+
+export function generateBootstrapReturns(
+    years: number,
+    historicalReturns: number[],
+    blockSize: number = 1
+): number[] {
+    const returns: number[] = []
+
+    if (blockSize <= 1) {
+        // 単純ブートストラップ
+        for (let t = 0; t <= years; t++) {
+            const idx = Math.floor(Math.random() * historicalReturns.length)
+            returns.push(historicalReturns[idx])
+        }
+    } else {
+        // ブロックブートストラップ
+        while (returns.length <= years) {
+            const maxStart = historicalReturns.length - blockSize
+            const startIdx = Math.floor(Math.random() * maxStart)
+            const block = historicalReturns.slice(startIdx, startIdx + blockSize)
+            returns.push(...block)
+        }
+        returns.splice(years + 1)  // 必要な長さにトリム
+    }
+
+    return returns
+}
+
+function generateRandomReturns(years: number, config: SimulationConfig): number[] {
+    const model = config.mcReturnModel ?? 'normal'
+
+    if (model === 'meanReversion') {
+        return generateMeanReversionReturns(
+            years,
+            config.investmentReturn,
+            config.investmentVolatility,
+            config.meanReversionConfig?.speed ?? 0.3
+        )
+    }
+
+    if (model === 'bootstrap') {
+        const historicalReturns = config.bootstrapConfig?.historicalReturns
+        if (!historicalReturns || historicalReturns.length === 0) {
+            // フォールバック: 正規分布
+            return Array.from({ length: years + 1 }, () => {
+                const u1 = Math.random()
+                const u2 = Math.random()
+                const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2)
+                return config.investmentReturn + config.investmentVolatility * z
+            })
+        }
+        return generateBootstrapReturns(
+            years,
+            historicalReturns,
+            config.bootstrapConfig?.blockSize ?? 1
+        )
+    }
+
+    // 'normal' (デフォルト)
+    return Array.from({ length: years + 1 }, () => {
+        const u1 = Math.random()
+        const u2 = Math.random()
+        const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2)
+        return config.investmentReturn + config.investmentVolatility * z
+    })
 }
 
 // ----------------------------------------------------------------------------
@@ -1437,8 +1544,7 @@ export function runMonteCarloSimulation(
     for (let i = 0; i < iterations; i++) {
         const randomReturns = generateRandomReturns(
             config.simulationYears,
-            config.investmentReturn,
-            config.investmentVolatility
+            config
         )
 
         const result = runSingleSimulation(config, randomReturns)
@@ -1512,6 +1618,7 @@ export function runMonteCarloSimulation(
         depletionAgeP10,
         depletionAgeP50,
         successCountFormatted,
+        mcModel: config.mcReturnModel ?? 'normal',
     }
 }
 

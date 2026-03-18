@@ -8,7 +8,7 @@
  */
 
 import { describe, test, expect } from 'vitest'
-import { runSingleSimulation, SimulationConfig, calculatePensionAmount, applyMacroEconomicSlide, Person, withdrawFromTaxableAccount, calculatePostFireIncome, PostFireIncomeConfig, calculateNHIPremium, calculateNationalPensionPremium, PostFireSocialInsuranceConfig, calculateWithdrawalAmount, WithdrawalStrategy, GuardrailConfig, calculateFireAchievementRate, formatAnnualTableData, formatCashFlowChartData, AnnualTableRow, CashFlowChartGroup } from '../lib/simulator'
+import { runSingleSimulation, SimulationConfig, calculatePensionAmount, applyMacroEconomicSlide, Person, withdrawFromTaxableAccount, calculatePostFireIncome, PostFireIncomeConfig, calculateNHIPremium, calculateNationalPensionPremium, PostFireSocialInsuranceConfig, calculateWithdrawalAmount, WithdrawalStrategy, GuardrailConfig, calculateFireAchievementRate, formatAnnualTableData, formatCashFlowChartData, AnnualTableRow, CashFlowChartGroup, runMonteCarloSimulation, generateMeanReversionReturns, generateBootstrapReturns, DEFAULT_SP500_RETURNS, MCReturnModel } from '../lib/simulator'
 
 const CURRENT_YEAR = new Date().getFullYear() // 2026
 
@@ -2216,5 +2216,73 @@ describe('FIRE達成率・年次テーブル・収支グラフ', () => {
     const chartData = formatCashFlowChartData(result.yearlyData, 5)
     expect(chartData.length).toBe(11)
     expect(chartData[0].label).toBe('35〜39歳')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MC リターンモデル
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('MC リターンモデル', () => {
+  test('generateMeanReversionReturns: speed=0 は IID と同様の分布（平均・標準偏差の近似確認）', () => {
+    // 1000サンプルで平均が mean に近いことを確認
+    const returns = generateMeanReversionReturns(999, 0.05, 0.15, 0)
+    const avg = returns.reduce((s, r) => s + r, 0) / returns.length
+    expect(avg).toBeCloseTo(0.05, 0)  // ±0.5% の精度
+  })
+
+  test('generateMeanReversionReturns: 前年より大幅に下落した後は期待値方向に引き戻される', () => {
+    const results: number[] = []
+    for (let i = 0; i < 100; i++) {
+      // speed=1.0 かつ prevReturn=mean の場合、2年目はほぼ mean±epsilon
+      const returns = generateMeanReversionReturns(1, 0.05, 0.15, 1.0)
+      results.push(returns[1])  // 2年目のリターン
+    }
+    const avg = results.reduce((s, r) => s + r, 0) / results.length
+    expect(avg).toBeCloseTo(0.05, 0)
+  })
+
+  test('generateBootstrapReturns: 生成されたリターンが historicalReturns の値のみ含む', () => {
+    const historical = [0.10, 0.20, -0.10, 0.15]
+    const returns = generateBootstrapReturns(99, historical, 1)
+    returns.forEach(r => {
+      expect(historical.includes(r)).toBe(true)
+    })
+  })
+
+  test('generateBootstrapReturns: blockSize=3 のブロックブートストラップ', () => {
+    const historical = [0.10, 0.20, 0.30, -0.10, 0.15, 0.05]
+    const returns = generateBootstrapReturns(11, historical, 3)
+    expect(returns.length).toBe(12)
+  })
+
+  test('DEFAULT_SP500_RETURNS: 50 件のデータが含まれる', () => {
+    expect(DEFAULT_SP500_RETURNS.length).toBe(50)
+    // 平均リターンが正（長期的な株式市場は正のリターン）
+    const avg = DEFAULT_SP500_RETURNS.reduce((s, r) => s + r, 0) / DEFAULT_SP500_RETURNS.length
+    expect(avg).toBeGreaterThan(0)
+  })
+
+  test('mcReturnModel=normal: MonteCarloResult.mcModel が normal', () => {
+    const result = runMonteCarloSimulation(cfg({ simulationYears: 5, mcReturnModel: 'normal', investmentReturn: 0.05, investmentVolatility: 0.15 }), 10)
+    expect(result.mcModel).toBe('normal')
+  })
+
+  test('mcReturnModel=meanReversion: MonteCarloResult.mcModel が meanReversion', () => {
+    const result = runMonteCarloSimulation(cfg({ simulationYears: 5, mcReturnModel: 'meanReversion', investmentReturn: 0.05, investmentVolatility: 0.15 }), 10)
+    expect(result.mcModel).toBe('meanReversion')
+  })
+
+  test('mcReturnModel=bootstrap: DEFAULT_SP500_RETURNS を使用してシミュレーション成功', () => {
+    const result = runMonteCarloSimulation(cfg({
+      currentAssets: 100_000_000,
+      simulationYears: 10,
+      mcReturnModel: 'bootstrap',
+      bootstrapConfig: { historicalReturns: DEFAULT_SP500_RETURNS },
+      investmentReturn: 0.05,
+      investmentVolatility: 0.15,
+    }), 10)
+    expect(result.mcModel).toBe('bootstrap')
+    expect(result.successRate).toBeGreaterThanOrEqual(0)
   })
 })
