@@ -243,7 +243,7 @@ export function IncomeExpenseChart({ result }: IncomeExpenseChartProps) {
     age: d.age,
     income: d.income,
     expenses: d.expenses,
-    savings: d.savings,
+    netCF: d.income - d.expenses,
     childCosts: d.childCosts,
   }))
 
@@ -285,16 +285,9 @@ export function IncomeExpenseChart({ result }: IncomeExpenseChartProps) {
                   )
                 }}
               />
-              <Bar dataKey="income" fill="var(--chart-success)" name="収入" opacity={0.8} />
-              <Bar dataKey="expenses" fill="var(--chart-danger)" name="支出" opacity={0.8} />
-              <Line
-                type="monotone"
-                dataKey="savings"
-                stroke="var(--chart-info)"
-                strokeWidth={2}
-                dot={false}
-                name="貯蓄"
-              />
+              <Bar dataKey="income" fill="#3B82F6" name="収入" opacity={0.85} />
+              <Bar dataKey="expenses" fill="#EF4444" name="支出" opacity={0.85} />
+              <Bar dataKey="netCF" fill="#10B981" name="純CF" opacity={0.85} />
               <Legend
                 wrapperStyle={{ paddingTop: "20px" }}
                 formatter={(value) => <span className="text-sm">{value}</span>}
