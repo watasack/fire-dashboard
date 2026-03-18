@@ -11,8 +11,6 @@ import { AnnualCashFlowTable } from "./annual-cashflow-table"
 import { CashFlowChart } from "./cashflow-chart"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent } from "@/components/ui/card"
-import { Switch } from "@/components/ui/switch"
-import { Label } from "@/components/ui/label"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { BarChart3, Settings, Lightbulb, TrendingUp, Info, ShieldCheck, Table2 } from "lucide-react"
 
@@ -38,7 +36,7 @@ export function FireDashboard() {
   const [result, setResult] = useState<SimulationResult | null>(null)
   const [monteCarloResult, setMonteCarloResult] = useState<MonteCarloResult | null>(null)
   const [isCalculating, setIsCalculating] = useState(false)
-  const [useMonteCarco, setUseMonteCarlo] = useState(true)
+  const [useMonteCarlo, setUseMonteCarlo] = useState(true)
 
   // Debounce config changes for smooth slider interactions
   const debouncedConfig = useDebounce(config, 300)
@@ -52,7 +50,7 @@ export function FireDashboard() {
       const singleResult = runSingleSimulation(debouncedConfig)
       setResult(singleResult)
 
-      if (useMonteCarco) {
+      if (useMonteCarlo) {
         const mcResult = runMonteCarloSimulation(debouncedConfig, 1000)
         setMonteCarloResult(mcResult)
       } else {
@@ -63,7 +61,7 @@ export function FireDashboard() {
     }, 50)
 
     return () => clearTimeout(timer)
-  }, [debouncedConfig, useMonteCarco])
+  }, [debouncedConfig, useMonteCarlo])
 
   const handleConfigChange = useCallback((newConfig: SimulationConfig) => {
     setConfig(newConfig)
@@ -84,26 +82,37 @@ export function FireDashboard() {
                 <p className="text-xs text-muted-foreground">経済的自立への道筋を計算</p>
               </div>
             </div>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="monte-carlo-toggle"
-                  checked={useMonteCarco}
-                  onCheckedChange={setUseMonteCarlo}
-                />
-                <Label htmlFor="monte-carlo-toggle" className="text-sm cursor-pointer">
-                  モンテカルロ
-                </Label>
-              </div>
+            </div>
+        </header>
+
+        {/* KPI Banner */}
+        <div className="sticky top-16 z-40 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
+          <div className="container mx-auto px-4 h-12 flex items-center justify-center gap-6">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-muted-foreground">FIRE達成</span>
+              <span className={`text-sm font-semibold tabular-nums transition-opacity ${isCalculating ? 'opacity-50' : ''}`}>
+                {result?.fireAge != null ? `${result.fireAge}歳` : '—'}
+              </span>
+            </div>
+            <div className="w-px h-4 bg-border" />
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-muted-foreground">
+                {monteCarloResult ? '成功率' : '達成率'}
+              </span>
+              <span className={`text-sm font-semibold tabular-nums transition-opacity ${isCalculating ? 'opacity-50' : ''}`}>
+                {monteCarloResult
+                  ? `${Math.round(monteCarloResult.successRate * 100)}%`
+                  : `${Math.round((result?.fireAchievementRate ?? 0) * 100)}%`}
+              </span>
             </div>
           </div>
-        </header>
+        </div>
 
         <main className="container mx-auto px-4 py-6">
           <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
             {/* Left Panel - Configuration */}
-            <aside className="space-y-6">
-              <ConfigPanel config={config} onConfigChange={handleConfigChange} />
+            <aside className="space-y-6 order-2 lg:order-1">
+              <ConfigPanel config={config} onConfigChange={handleConfigChange} useMonteCarlo={useMonteCarlo} onMonteCarloChange={setUseMonteCarlo} />
               
               {/* Trust indicators */}
               <Card className="border-primary/20 bg-primary/5">
@@ -120,7 +129,7 @@ export function FireDashboard() {
             </aside>
 
             {/* Right Panel - Results */}
-            <div className="space-y-6">
+            <div className="space-y-6 order-1 lg:order-2">
               {/* Key Metrics Summary */}
               <MetricsSummary config={config} result={result} mcResult={monteCarloResult} />
               
@@ -157,7 +166,7 @@ export function FireDashboard() {
                   <AssetsChart
                     result={result}
                     monteCarloResult={monteCarloResult}
-                    showPercentiles={useMonteCarco}
+                    showPercentiles={useMonteCarlo}
                   />
                 </TabsContent>
 

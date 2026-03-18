@@ -14,6 +14,8 @@ import { User, Users, Wallet, TrendingUp, Baby, PiggyBank, Settings2, HelpCircle
 interface ConfigPanelProps {
   config: SimulationConfig
   onConfigChange: (config: SimulationConfig) => void
+  useMonteCarlo: boolean
+  onMonteCarloChange: (value: boolean) => void
 }
 
 function FieldLabel({ label, tooltip, className }: { label: string; tooltip: string; className?: string }) {
@@ -23,7 +25,9 @@ function FieldLabel({ label, tooltip, className }: { label: string; tooltip: str
         <TooltipTrigger asChild>
           <span className={cn("flex items-center gap-1 cursor-default", className)}>
             <span className="text-sm font-medium">{label}</span>
-            <HelpCircle className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0" />
+            <span className="inline-flex p-2.5 -m-2.5">
+              <HelpCircle className="h-4 w-4 text-muted-foreground/60 shrink-0" />
+            </span>
           </span>
         </TooltipTrigger>
         <TooltipContent side="top" className="max-w-[240px] text-xs leading-relaxed">
@@ -241,7 +245,7 @@ function PersonConfig({
   )
 }
 
-export function ConfigPanel({ config, onConfigChange }: ConfigPanelProps) {
+export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarloChange }: ConfigPanelProps) {
   const [showAssetDetail, setShowAssetDetail] = useState(false)
 
   const defaultGuardrail = {
@@ -906,6 +910,18 @@ export function ConfigPanel({ config, onConfigChange }: ConfigPanelProps) {
             <CardTitle className="text-base">シミュレーション設定</CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
+            <div className="flex items-center justify-between py-1">
+              <FieldLabel
+                label="モンテカルロシミュレーション"
+                tooltip="1000回のシミュレーションで市場変動を考慮した成功確率を計算します。オフにすると平均シナリオのみ（高速）"
+              />
+              <Switch
+                id="monte-carlo-toggle-panel"
+                checked={useMonteCarlo}
+                onCheckedChange={onMonteCarloChange}
+              />
+            </div>
+            <div className="h-px bg-border" />
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <FieldLabel label="シミュレーション期間" tooltip="何年後まで資産推移を計算するか。老後の資産状況を把握するため、少なくとも退職後30〜40年分を推奨します" />
