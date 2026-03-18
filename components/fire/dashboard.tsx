@@ -7,12 +7,14 @@ import { ConfigPanel } from "./config-panel"
 import { AssetsChart, IncomeExpenseChart } from "./assets-chart"
 import { ScenarioComparison } from "./scenario-comparison"
 import { MetricsSummary } from "./metrics-summary"
+import { AnnualCashFlowTable } from "./annual-cashflow-table"
+import { CashFlowChart } from "./cashflow-chart"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { TooltipProvider } from "@/components/ui/tooltip"
-import { BarChart3, Settings, Lightbulb, TrendingUp, Info, ShieldCheck } from "lucide-react"
+import { BarChart3, Settings, Lightbulb, TrendingUp, Info, ShieldCheck, Table2 } from "lucide-react"
 
 // Debounce hook
 function useDebounce<T>(value: T, delay: number): T {
@@ -120,7 +122,7 @@ export function FireDashboard() {
             {/* Right Panel - Results */}
             <div className="space-y-6">
               {/* Key Metrics Summary */}
-              <MetricsSummary config={config} result={result} />
+              <MetricsSummary config={config} result={result} mcResult={monteCarloResult} />
               
               {/* FIRE Result Card */}
               <FireResultCard
@@ -132,7 +134,7 @@ export function FireDashboard() {
 
               {/* Charts and Analysis Tabs */}
               <Tabs defaultValue="assets" className="w-full">
-                <TabsList className="grid w-full grid-cols-3">
+                <TabsList className="grid w-full grid-cols-4">
                   <TabsTrigger value="assets" className="flex items-center gap-1.5">
                     <BarChart3 className="h-4 w-4" />
                     <span>資産推移</span>
@@ -140,6 +142,10 @@ export function FireDashboard() {
                   <TabsTrigger value="cashflow" className="flex items-center gap-1.5">
                     <TrendingUp className="h-4 w-4" />
                     <span>収支</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="annual" className="flex items-center gap-1.5">
+                    <Table2 className="h-4 w-4" />
+                    <span>年次表</span>
                   </TabsTrigger>
                   <TabsTrigger value="scenarios" className="flex items-center gap-1.5">
                     <Lightbulb className="h-4 w-4" />
@@ -155,8 +161,13 @@ export function FireDashboard() {
                   />
                 </TabsContent>
 
-                <TabsContent value="cashflow" className="mt-4">
+                <TabsContent value="cashflow" className="mt-4 space-y-4">
+                  <CashFlowChart result={result} />
                   <IncomeExpenseChart result={result} />
+                </TabsContent>
+
+                <TabsContent value="annual" className="mt-4">
+                  <AnnualCashFlowTable result={result} />
                 </TabsContent>
 
                 <TabsContent value="scenarios" className="mt-4">

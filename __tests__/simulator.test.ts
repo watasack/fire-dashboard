@@ -8,7 +8,7 @@
  */
 
 import { describe, test, expect } from 'vitest'
-import { runSingleSimulation, SimulationConfig, calculatePensionAmount, applyMacroEconomicSlide, Person, withdrawFromTaxableAccount, calculatePostFireIncome, PostFireIncomeConfig, calculateNHIPremium, calculateNationalPensionPremium, PostFireSocialInsuranceConfig, calculateWithdrawalAmount, WithdrawalStrategy, GuardrailConfig } from '../lib/simulator'
+import { runSingleSimulation, SimulationConfig, calculatePensionAmount, applyMacroEconomicSlide, Person, withdrawFromTaxableAccount, calculatePostFireIncome, PostFireIncomeConfig, calculateNHIPremium, calculateNationalPensionPremium, PostFireSocialInsuranceConfig, calculateWithdrawalAmount, WithdrawalStrategy, GuardrailConfig, calculateFireAchievementRate, formatAnnualTableData, formatCashFlowChartData, AnnualTableRow, CashFlowChartGroup } from '../lib/simulator'
 
 const CURRENT_YEAR = new Date().getFullYear() // 2026
 
@@ -2145,5 +2145,76 @@ describe('取り崩し戦略', () => {
       simulationYears: 10,
     }))
     expect(result.depletionAge).toBeNull()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FIRE達成率・年次テーブル・収支グラフ
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('FIRE達成率・年次テーブル・収支グラフ', () => {
+  test('calculateFireAchievementRate: 資産が67%の場合', () => {
+    // fireNumber = 150_000 * 12 / 0.04 = 45_000_000
+    // currentAssets = 30_000_000 → rate = 30M / 45M ≈ 0.667
+    // ※ year0 のデータは支出引き後の状態なので rate はやや下回る
+    const result = runSingleSimulation(cfg({
+      currentAssets: 30_000_000,
+      monthlyExpenses: 150_000,
+      safeWithdrawalRate: 0.04,
+      simulationYears: 0,
+    }))
+    // 支出(1.8M)が引かれた後の assets / fireNumber なので 0.62〜0.67 の範囲
+    expect(result.fireAchievementRate).toBeGreaterThan(0.5)
+    expect(result.fireAchievementRate).toBeLessThan(0.75)
+  })
+
+  test('calculateFireAchievementRate: FIRE達成済み（>=1.0）', () => {
+    // currentAssets = 100M, fireNumber = 45M → rate >= 1.0
+    const result = runSingleSimulation(cfg({
+      currentAssets: 100_000_000,
+      monthlyExpenses: 150_000,
+      safeWithdrawalRate: 0.04,
+      simulationYears: 0,
+    }))
+    expect(result.fireAchievementRate).toBeGreaterThanOrEqual(1.0)
+  })
+
+  test('formatAnnualTableData: totalAssets が assets + nisaAssets + idecoAssets と等しい', () => {
+    const result = runSingleSimulation(cfg({
+      currentAssets: 10_000_000,
+      nisa: { enabled: true, annualContribution: 500_000 },
+      investmentReturn: 0.05,
+      simulationYears: 5,
+    }))
+    const tableData = formatAnnualTableData(result.yearlyData)
+    tableData.forEach((row, i) => {
+      const data = result.yearlyData[i]
+      expect(row.totalAssets).toBe(data.assets + data.nisaAssets + data.idecoAssets)
+    })
+  })
+
+  test('formatAnnualTableData: netCashFlow = income - expenses', () => {
+    const result = runSingleSimulation(cfg({
+      currentAssets: 0,
+      person1: { currentAge: 35, retirementAge: 65, grossIncome: 5_000_000, incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0, employmentType: 'employee' },
+      monthlyExpenses: 200_000,
+      simulationYears: 3,
+    }))
+    const tableData = formatAnnualTableData(result.yearlyData)
+    tableData.forEach((row, i) => {
+      const data = result.yearlyData[i]
+      expect(row.netCashFlow).toBeCloseTo(data.income - data.expenses, 0)
+    })
+  })
+
+  test('formatCashFlowChartData: 55年分 → 11グループ（5年単位）', () => {
+    const result = runSingleSimulation(cfg({
+      currentAssets: 0,
+      simulationYears: 54, // 55件 (year0〜year54)
+      person1: { currentAge: 35, retirementAge: 90, grossIncome: 0, incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0, employmentType: 'employee' },
+    }))
+    const chartData = formatCashFlowChartData(result.yearlyData, 5)
+    expect(chartData.length).toBe(11)
+    expect(chartData[0].label).toBe('35〜39歳')
   })
 })

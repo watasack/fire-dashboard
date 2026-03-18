@@ -204,6 +204,7 @@ export interface SimulationResult {
     }
     depletionAge: number | null    // 資産枯渇年齢（全期間持つ場合は null）
     peakAssets: number             // シミュレーション期間中の資産ピーク
+    fireAchievementRate: number    // FIRE達成率（0.0〜1.0以上、year0 資産 / fireNumber）
 }
 
 export interface YearlyPercentiles {
@@ -220,6 +221,73 @@ export interface MonteCarloResult {
     percentile90: number | null
     successRate: number
     yearlyPercentiles: YearlyPercentiles[]
+    depletionAgeP10: number | null      // 下位10%シナリオの枯渇年齢
+    depletionAgeP50: number | null      // 中央値シナリオの枯渇年齢
+    successCountFormatted: string       // 例: "1000通りのうち800通りで90歳まで資産が持ちました"
+}
+
+export interface AnnualTableRow {
+    year: number
+    age: number
+    totalAssets: number
+    grossIncome: number
+    netIncome: number
+    expenses: number
+    netCashFlow: number
+    isFireAchieved: boolean
+    isSemiFire: boolean
+    fireNumber: number
+}
+
+export interface CashFlowChartGroup {
+    label: string     // 例: "35〜39歳"
+    income: number    // 期間合計収入
+    expenses: number  // 期間合計支出
+    netCF: number     // 期間合計純CF
+}
+
+export function calculateFireAchievementRate(
+    yearlyData: YearlyData[],
+    fireNumber: number
+): number {
+    if (yearlyData.length === 0 || fireNumber <= 0) return 0
+    const year0 = yearlyData[0]
+    const totalCurrentAssets = year0.assets + year0.nisaAssets + year0.idecoAssets
+    return totalCurrentAssets / fireNumber
+}
+
+export function formatAnnualTableData(yearlyData: YearlyData[]): AnnualTableRow[] {
+    return yearlyData.map(data => ({
+        year: data.year,
+        age: data.age,
+        totalAssets: data.assets + data.nisaAssets + data.idecoAssets,
+        grossIncome: data.grossIncome,
+        netIncome: data.income,
+        expenses: data.expenses,
+        netCashFlow: data.income - data.expenses,
+        isFireAchieved: data.isFireAchieved,
+        isSemiFire: data.isSemiFire,
+        fireNumber: data.fireNumber,
+    }))
+}
+
+export function formatCashFlowChartData(
+    yearlyData: YearlyData[],
+    groupByYears: number = 5
+): CashFlowChartGroup[] {
+    const groups: CashFlowChartGroup[] = []
+    for (let i = 0; i < yearlyData.length; i += groupByYears) {
+        const group = yearlyData.slice(i, i + groupByYears)
+        const startAge = group[0].age
+        const endAge = group[group.length - 1].age
+        groups.push({
+            label: `${startAge}〜${endAge}歳`,
+            income: group.reduce((sum, d) => sum + d.income, 0),
+            expenses: group.reduce((sum, d) => sum + d.expenses, 0),
+            netCF: group.reduce((sum, d) => sum + d.income - d.expenses, 0),
+        })
+    }
+    return groups
 }
 
 export interface Scenario {
@@ -1308,6 +1376,8 @@ export function runSingleSimulation(
         }
     }
 
+    const fireAchievementRate = calculateFireAchievementRate(yearlyData, fireNumber)
+
     return {
         yearlyData,
         fireAge,
@@ -1321,6 +1391,7 @@ export function runSingleSimulation(
         },
         depletionAge,
         peakAssets,
+        fireAchievementRate,
     }
 }
 
@@ -1355,6 +1426,7 @@ export function runMonteCarloSimulation(
 ): MonteCarloResult {
     const fireAges: (number | null)[] = []
     const yearlyAssets: number[][] = []
+    const depletionAges: (number | null)[] = []
 
     // Initialize arrays for each year
     for (let year = 0; year <= config.simulationYears; year++) {
@@ -1371,6 +1443,7 @@ export function runMonteCarloSimulation(
 
         const result = runSingleSimulation(config, randomReturns)
         fireAges.push(result.fireAge)
+        depletionAges.push(result.depletionAge)
 
         // Collect yearly assets
         result.yearlyData.forEach((data, year) => {
@@ -1413,12 +1486,32 @@ export function runMonteCarloSimulation(
         }
     })
 
+    // Calculate depletion age percentiles
+    const sortedDepletionAges = depletionAges
+        .filter((a): a is number => a !== null)
+        .sort((a, b) => a - b)
+
+    const depletionAgeP10 = sortedDepletionAges.length > 0
+        ? sortedDepletionAges[Math.floor(sortedDepletionAges.length * 0.10)]
+        : null
+    const depletionAgeP50 = sortedDepletionAges.length > 0
+        ? sortedDepletionAges[Math.floor(sortedDepletionAges.length * 0.50)]
+        : null
+
+    // 90歳まで資産が持つ成功率の文言
+    const targetAge = config.person1.currentAge + config.simulationYears
+    const successCount = depletionAges.filter(a => a === null || a > targetAge).length
+    const successCountFormatted = `${iterations}通りのうち${successCount}通りで${targetAge}歳まで資産が持ちました`
+
     return {
         medianFireAge,
         percentile10,
         percentile90,
         successRate,
         yearlyPercentiles,
+        depletionAgeP10,
+        depletionAgeP50,
+        successCountFormatted,
     }
 }
 
