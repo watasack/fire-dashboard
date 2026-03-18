@@ -25,7 +25,7 @@ export function AnnualCashFlowTable({ result }: AnnualCashFlowTableProps) {
   const rows = formatAnnualTableData(result.yearlyData)
 
   return (
-    <Card>
+    <Card className="overflow-hidden">
       <CardHeader>
         <CardTitle>年次収支テーブル</CardTitle>
         <CardDescription>年齢別の資産・収入・支出・純キャッシュフロー一覧</CardDescription>
