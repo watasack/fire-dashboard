@@ -26,7 +26,7 @@ export function CashFlowChart({ result }: CashFlowChartProps) {
         <CardHeader>
           <CardTitle>収支グラフ（5年単位）</CardTitle>
         </CardHeader>
-        <CardContent className="flex h-[300px] items-center justify-center">
+        <CardContent className="flex h-[240px] sm:h-[280px] lg:h-[300px] items-center justify-center">
           <p className="text-muted-foreground">データがありません</p>
         </CardContent>
       </Card>
@@ -42,9 +42,9 @@ export function CashFlowChart({ result }: CashFlowChartProps) {
         <CardDescription>5年ごとの収入・支出・純キャッシュフローの合計</CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="h-[300px]">
+        <div className="h-[240px] sm:h-[280px] lg:h-[300px]">
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={chartData} margin={{ top: 20, right: 20, bottom: 40, left: 20 }}>
+            <ComposedChart data={chartData} margin={{ top: 20, right: 8, bottom: 40, left: 20 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" opacity={0.5} />
               <XAxis
                 dataKey="label"
@@ -58,7 +58,7 @@ export function CashFlowChart({ result }: CashFlowChartProps) {
                 tick={{ fontSize: 12 }}
                 tickFormatter={(value) => formatCurrency(value, true)}
                 stroke="var(--color-muted-foreground)"
-                width={80}
+                width={60}
               />
               <Tooltip
                 content={({ active, payload, label }) => {

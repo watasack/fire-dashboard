@@ -32,7 +32,7 @@ export function AssetsChart({ result, monteCarloResult, showPercentiles = true }
         <CardHeader>
           <CardTitle>資産推移</CardTitle>
         </CardHeader>
-        <CardContent className="flex h-[400px] items-center justify-center">
+        <CardContent className="flex h-[260px] sm:h-[360px] lg:h-[400px] items-center justify-center">
           <p className="text-muted-foreground">データがありません</p>
         </CardContent>
       </Card>
@@ -70,9 +70,9 @@ export function AssetsChart({ result, monteCarloResult, showPercentiles = true }
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="h-[400px]">
+        <div className="h-[260px] sm:h-[360px] lg:h-[400px]">
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={chartData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+            <ComposedChart data={chartData} margin={{ top: 20, right: 8, bottom: 20, left: 20 }}>
               <defs>
                 <linearGradient id="percentileGradient" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="var(--chart-primary)" stopOpacity={0.3} />
@@ -94,7 +94,7 @@ export function AssetsChart({ result, monteCarloResult, showPercentiles = true }
                 tick={{ fontSize: 12 }}
                 tickFormatter={(value) => formatCurrency(value, true)}
                 stroke="var(--color-muted-foreground)"
-                width={80}
+                width={60}
               />
               <Tooltip
                 content={({ active, payload, label }) => {
@@ -111,7 +111,7 @@ export function AssetsChart({ result, monteCarloResult, showPercentiles = true }
                   )
                 }}
               />
-              
+
               {/* Percentile bands — stacked difference approach (no masking needed).
                   Each Area must be a direct child of ComposedChart (no fragment wrapper)
                   due to React 19 / Recharts 2.x incompatibility with react-is@16. */}
@@ -232,7 +232,7 @@ export function IncomeExpenseChart({ result }: IncomeExpenseChartProps) {
         <CardHeader>
           <CardTitle>収支推移</CardTitle>
         </CardHeader>
-        <CardContent className="flex h-[300px] items-center justify-center">
+        <CardContent className="flex h-[240px] sm:h-[280px] lg:h-[300px] items-center justify-center">
           <p className="text-muted-foreground">データがありません</p>
         </CardContent>
       </Card>
@@ -254,9 +254,9 @@ export function IncomeExpenseChart({ result }: IncomeExpenseChartProps) {
         <CardDescription>年間の収入・支出・貯蓄の推移</CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="h-[300px]">
+        <div className="h-[240px] sm:h-[280px] lg:h-[300px]">
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={chartData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+            <ComposedChart data={chartData} margin={{ top: 20, right: 8, bottom: 20, left: 20 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" opacity={0.5} />
               <XAxis
                 dataKey="age"
@@ -268,7 +268,7 @@ export function IncomeExpenseChart({ result }: IncomeExpenseChartProps) {
                 tick={{ fontSize: 12 }}
                 tickFormatter={(value) => formatCurrency(value, true)}
                 stroke="var(--color-muted-foreground)"
-                width={80}
+                width={60}
               />
               <Tooltip
                 content={({ active, payload, label }) => {
