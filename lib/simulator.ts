@@ -74,6 +74,11 @@ export interface LifecycleExpenseConfig {
     emptyNestElderly?: number       // 80歳〜: デフォルト 1,931,000
 }
 
+export interface PostFireIncomeConfig {
+    monthlyAmount: number    // 月次収入（円）
+    untilAge: number         // セミFIRE終了年齢（この年齢になったら収入ゼロ）
+}
+
 export interface SimulationConfig {
     // Basic settings
     /** @deprecated cashAssets / stocks を使うこと（後方互換のみ） */
@@ -109,6 +114,9 @@ export interface SimulationConfig {
     // Lifecycle expense mode
     expenseMode: 'fixed' | 'lifecycle'
     lifecycleExpenses?: LifecycleExpenseConfig
+
+    // Semi-FIRE / Post-FIRE income
+    postFireIncome?: PostFireIncomeConfig | null   // デフォルト: null
 }
 
 export interface TaxBreakdown {
@@ -144,6 +152,8 @@ export interface YearlyData {
     lifecycleStage: string
     capitalGains: number        // 当年の実現益
     capitalGainsTax: number     // 当年の売却税額
+    isSemiFire: boolean         // 当年がセミFIRE期間かどうか
+    semiFireIncome: number      // セミFIRE収入（税引き前年額）
 }
 
 export interface SimulationResult {
@@ -253,6 +263,9 @@ export const DEFAULT_CONFIG: SimulationConfig = {
 
     // Lifecycle expense mode
     expenseMode: 'fixed',
+
+    // Semi-FIRE / Post-FIRE income
+    postFireIncome: null,
 }
 
 // ----------------------------------------------------------------------------
@@ -710,6 +723,21 @@ export function withdrawFromTaxableAccount(
 }
 
 // ----------------------------------------------------------------------------
+// Post-FIRE / Semi-FIRE Income
+// ----------------------------------------------------------------------------
+
+export function calculatePostFireIncome(
+    postFireIncome: PostFireIncomeConfig | null,
+    personAge: number,
+    isPostFire: boolean
+): number {
+    if (!postFireIncome) return 0
+    if (!isPostFire) return 0
+    if (personAge >= postFireIncome.untilAge) return 0
+    return postFireIncome.monthlyAmount * 12
+}
+
+// ----------------------------------------------------------------------------
 // Single Simulation
 // ----------------------------------------------------------------------------
 
@@ -777,9 +805,32 @@ export function runSingleSimulation(
         let totalIncome: number
         let totalNetIncome: number
         let totalTaxAmount: number
+        let isSemiFire: boolean
+        let semiFIREGross: number
 
         if (isPostFire) {
-            // FIRE後: 年金収入のみ（各人個別に計算）
+            // FIRE後: セミFIRE収入 + 年金収入（各人個別に計算）
+
+            // セミFIRE収入（就労収入扱い → 税計算を通す）
+            semiFIREGross = calculatePostFireIncome(
+                config.postFireIncome ?? null,
+                person1Age,
+                true
+            )
+            isSemiFire = semiFIREGross > 0
+            let semiFireNetIncome = 0
+
+            let semiFIRETax = 0
+            if (semiFIREGross > 0) {
+                const empType = config.person1.employmentType ?? 'employee'
+                const breakdown = calculateTaxBreakdown(semiFIREGross, empType, person1Age)
+                semiFireNetIncome = breakdown.netIncome
+                semiFIRETax = breakdown.totalTax
+            }
+
+            totalIncome = semiFIREGross
+
+            // 年金収入（既存の処理は維持）
             let p1Income = 0
             let p1Tax = 0
             if (person1Age >= config.person1.pensionStartAge) {
@@ -792,9 +843,7 @@ export function runSingleSimulation(
                 const p1Breakdown = calculateTaxBreakdown(p1Gross, config.person1.employmentType ?? 'employee', person1Age)
                 p1Income = p1Breakdown.netIncome
                 p1Tax = p1Breakdown.totalTax
-                totalIncome = p1Gross
-            } else {
-                totalIncome = 0
+                totalIncome += p1Gross
             }
 
             let p2Income = 0
@@ -812,9 +861,11 @@ export function runSingleSimulation(
                 totalIncome += p2Gross
             }
 
-            totalNetIncome = p1Income + p2Income
-            totalTaxAmount = p1Tax + p2Tax
+            totalNetIncome = semiFireNetIncome + p1Income + p2Income
+            totalTaxAmount = semiFIRETax + p1Tax + p2Tax
         } else {
+            isSemiFire = false
+            semiFIREGross = 0
             // FIRE前: 就労収入（産休育休・時短勤務を考慮）
             // person1 の収入計算
             const p1LeaveStatus = isMaternityLeaveYear(config.person1, currentSimYear)
@@ -1033,6 +1084,8 @@ export function runSingleSimulation(
             lifecycleStage,
             capitalGains: capitalGainsThisYear,
             capitalGainsTax: capitalGainsThisYear * 0.20315,
+            isSemiFire,
+            semiFireIncome: semiFIREGross,
         })
     }
 

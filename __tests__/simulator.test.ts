@@ -8,7 +8,7 @@
  */
 
 import { describe, test, expect } from 'vitest'
-import { runSingleSimulation, SimulationConfig, calculatePensionAmount, applyMacroEconomicSlide, Person, withdrawFromTaxableAccount } from '../lib/simulator'
+import { runSingleSimulation, SimulationConfig, calculatePensionAmount, applyMacroEconomicSlide, Person, withdrawFromTaxableAccount, calculatePostFireIncome, PostFireIncomeConfig } from '../lib/simulator'
 
 const CURRENT_YEAR = new Date().getFullYear() // 2026
 
@@ -1876,5 +1876,106 @@ describe('株式売却税（20.315%）', () => {
     }))
     // year1: surplus = -600K → 課税口座から取り崩し → realizedGains > 0
     expect(result.yearlyData[1].capitalGains).toBeGreaterThan(0)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 11. セミFIRE（FIRE後収入）
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('セミFIRE（FIRE後収入）', () => {
+  test('FIRE後 untilAge まで毎年収入がある', () => {
+    const result = runSingleSimulation(cfg({
+      currentAssets: 500_000_000,
+      monthlyExpenses: 100_000,
+      postFireIncome: { monthlyAmount: 100_000, untilAge: 50 },
+      person1: { currentAge: 35, retirementAge: 65, grossIncome: 7_000_000,
+        incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0, employmentType: 'employee' },
+      investmentReturn: 0, inflationRate: 0, simulationYears: 20,
+    }))
+    // year0 (age35): FIRE達成年（就労収入あり）→ isSemiFire=false（まだisPostFire=false）
+    expect(result.yearlyData[0].isSemiFire).toBe(false)
+    // year1 (age36): isPostFire=true かつ age36 < untilAge50 → セミFIRE収入あり
+    expect(result.yearlyData[1].isSemiFire).toBe(true)
+    expect(result.yearlyData[1].income).toBeGreaterThan(0)
+    // year15 (age50): untilAge到達 → セミFIRE終了
+    expect(result.yearlyData[15].isSemiFire).toBe(false)
+    expect(result.yearlyData[15].income).toBe(0)
+  })
+
+  test('postFireIncome = null: FIRE後は収入ゼロ（年金前）', () => {
+    const result = runSingleSimulation(cfg({
+      currentAssets: 500_000_000, monthlyExpenses: 100_000, postFireIncome: null,
+      person1: { currentAge: 35, retirementAge: 65, grossIncome: 7_000_000,
+        incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0, employmentType: 'employee' },
+      investmentReturn: 0, simulationYears: 10,
+    }))
+    // FIRE後、年金前なので income = 0
+    expect(result.yearlyData[1].income).toBe(0)
+  })
+
+  test('untilAge を超えたら収入ゼロに戻る', () => {
+    const result = runSingleSimulation(cfg({
+      currentAssets: 500_000_000, monthlyExpenses: 50_000,
+      postFireIncome: { monthlyAmount: 100_000, untilAge: 40 },
+      person1: { currentAge: 35, retirementAge: 65, grossIncome: 0,
+        incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0, employmentType: 'employee' },
+      investmentReturn: 0, simulationYears: 10,
+    }))
+    expect(result.yearlyData[4].isSemiFire).toBe(true)
+    expect(result.yearlyData[5].isSemiFire).toBe(false)
+    expect(result.yearlyData[5].income).toBe(0)
+  })
+
+  test('セミFIRE収入は税計算後の手取りが income に反映される', () => {
+    const result = runSingleSimulation(cfg({
+      currentAssets: 500_000_000,
+      postFireIncome: { monthlyAmount: 200_000, untilAge: 60 },
+      person1: { currentAge: 35, retirementAge: 65, grossIncome: 0,
+        incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0, employmentType: 'employee' },
+      investmentReturn: 0, simulationYears: 5,
+    }))
+    // year1: isPostFire=true, age36 < untilAge60 → セミFIRE収入あり
+    // income < 2_400_000 (税引き後)
+    expect(result.yearlyData[1].income).toBeGreaterThan(0)
+    expect(result.yearlyData[1].income).toBeLessThan(2_400_000)
+    expect(result.yearlyData[1].semiFireIncome).toBe(2_400_000)
+  })
+
+  test('FIRE未達成時はセミFIRE収入が加算されない', () => {
+    const result = runSingleSimulation(cfg({
+      currentAssets: 0, monthlyExpenses: 300_000,
+      postFireIncome: { monthlyAmount: 100_000, untilAge: 50 },
+      person1: { currentAge: 35, retirementAge: 90, grossIncome: 0,
+        incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0, employmentType: 'employee' },
+      investmentReturn: 0, simulationYears: 5,
+    }))
+    expect(result.yearlyData[0].isSemiFire).toBe(false)
+  })
+
+  test('セミFIRE収入があると資産の減少が遅くなる', () => {
+    const withSemiFire = runSingleSimulation(cfg({
+      currentAssets: 500_000_000, monthlyExpenses: 200_000,
+      postFireIncome: { monthlyAmount: 100_000, untilAge: 45 },
+      person1: { currentAge: 35, retirementAge: 65, grossIncome: 0,
+        incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0, employmentType: 'employee' },
+      investmentReturn: 0, simulationYears: 10,
+    }))
+    const withoutSemiFire = runSingleSimulation(cfg({
+      currentAssets: 500_000_000, monthlyExpenses: 200_000, postFireIncome: null,
+      person1: { currentAge: 35, retirementAge: 65, grossIncome: 0,
+        incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0, employmentType: 'employee' },
+      investmentReturn: 0, simulationYears: 10,
+    }))
+    expect(withSemiFire.finalAssets).toBeGreaterThan(withoutSemiFire.finalAssets)
+  })
+
+  test('calculatePostFireIncome: FIRE未達成は0を返す', () => {
+    expect(calculatePostFireIncome({ monthlyAmount: 100_000, untilAge: 50 }, 40, false)).toBe(0)
+  })
+
+  test('calculatePostFireIncome: untilAge 以上は0を返す', () => {
+    expect(calculatePostFireIncome({ monthlyAmount: 100_000, untilAge: 50 }, 50, true)).toBe(0)
+    expect(calculatePostFireIncome({ monthlyAmount: 100_000, untilAge: 50 }, 51, true)).toBe(0)
   })
 })
