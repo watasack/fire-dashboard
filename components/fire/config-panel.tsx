@@ -225,6 +225,13 @@ function PersonConfig({
 export function ConfigPanel({ config, onConfigChange }: ConfigPanelProps) {
   const [showAssetDetail, setShowAssetDetail] = useState(false)
 
+  const defaultGuardrail = {
+    threshold1: -0.10, reduction1: 0.40,
+    threshold2: -0.20, reduction2: 0.80,
+    threshold3: -0.35, reduction3: 0.95,
+    discretionaryRatio: 0.30,
+  }
+
   const updatePerson1 = (person: Person) => {
     onConfigChange({ ...config, person1: person })
   }
@@ -642,6 +649,23 @@ export function ConfigPanel({ config, onConfigChange }: ConfigPanelProps) {
                   step={1000}
                 />
               </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium">受取開始年齢</Label>
+                  <span className="text-sm font-mono text-muted-foreground">
+                    {config.ideco.withdrawalStartAge ?? 60}歳
+                  </span>
+                </div>
+                <Slider
+                  value={[config.ideco.withdrawalStartAge ?? 60]}
+                  onValueChange={([value]) =>
+                    onConfigChange({ ...config, ideco: { ...config.ideco, withdrawalStartAge: value } })
+                  }
+                  min={60}
+                  max={75}
+                  step={1}
+                />
+              </div>
             </CardContent>
           )}
         </Card>
@@ -919,29 +943,134 @@ export function ConfigPanel({ config, onConfigChange }: ConfigPanelProps) {
             </div>
 
             {(config.withdrawalStrategy ?? 'fixed') === 'guardrail' && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm font-medium">裁量支出比率</Label>
-                  <span className="text-sm font-mono text-muted-foreground">{((config.guardrailConfig?.discretionaryRatio ?? 0.3) * 100).toFixed(0)}%</span>
+              <div className="space-y-4">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">裁量支出比率</Label>
+                    <span className="text-sm font-mono text-muted-foreground">{((config.guardrailConfig?.discretionaryRatio ?? 0.3) * 100).toFixed(0)}%</span>
+                  </div>
+                  <Slider
+                    value={[(config.guardrailConfig?.discretionaryRatio ?? 0.3) * 100]}
+                    onValueChange={([value]) => onConfigChange({
+                      ...config,
+                      guardrailConfig: {
+                        threshold1: config.guardrailConfig?.threshold1 ?? -0.10,
+                        reduction1: config.guardrailConfig?.reduction1 ?? 0.40,
+                        threshold2: config.guardrailConfig?.threshold2 ?? -0.20,
+                        reduction2: config.guardrailConfig?.reduction2 ?? 0.80,
+                        threshold3: config.guardrailConfig?.threshold3 ?? -0.35,
+                        reduction3: config.guardrailConfig?.reduction3 ?? 0.95,
+                        discretionaryRatio: value / 100,
+                      },
+                    })}
+                    min={10}
+                    max={50}
+                    step={5}
+                  />
                 </div>
-                <Slider
-                  value={[(config.guardrailConfig?.discretionaryRatio ?? 0.3) * 100]}
-                  onValueChange={([value]) => onConfigChange({
-                    ...config,
-                    guardrailConfig: {
-                      threshold1: config.guardrailConfig?.threshold1 ?? -0.10,
-                      reduction1: config.guardrailConfig?.reduction1 ?? 0.40,
-                      threshold2: config.guardrailConfig?.threshold2 ?? -0.20,
-                      reduction2: config.guardrailConfig?.reduction2 ?? 0.80,
-                      threshold3: config.guardrailConfig?.threshold3 ?? -0.35,
-                      reduction3: config.guardrailConfig?.reduction3 ?? 0.95,
-                      discretionaryRatio: value / 100,
-                    },
-                  })}
-                  min={10}
-                  max={50}
-                  step={5}
-                />
+
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground pt-1">下落閾値と裁量支出削減率</p>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">閾値1（軽微な下落）</Label>
+                    <span className="text-xs font-mono text-muted-foreground">
+                      {((config.guardrailConfig?.threshold1 ?? -0.10) * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                  <Slider
+                    value={[(config.guardrailConfig?.threshold1 ?? -0.10) * 100]}
+                    onValueChange={([value]) => onConfigChange({
+                      ...config,
+                      guardrailConfig: { ...defaultGuardrail, ...config.guardrailConfig, threshold1: value / 100 }
+                    })}
+                    min={-30} max={-5} step={1}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">削減率1</Label>
+                    <span className="text-xs font-mono text-muted-foreground">
+                      {((config.guardrailConfig?.reduction1 ?? 0.40) * 100).toFixed(0)}%削減
+                    </span>
+                  </div>
+                  <Slider
+                    value={[(config.guardrailConfig?.reduction1 ?? 0.40) * 100]}
+                    onValueChange={([value]) => onConfigChange({
+                      ...config,
+                      guardrailConfig: { ...defaultGuardrail, ...config.guardrailConfig, reduction1: value / 100 }
+                    })}
+                    min={10} max={70} step={5}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">閾値2（中程度の下落）</Label>
+                    <span className="text-xs font-mono text-muted-foreground">
+                      {((config.guardrailConfig?.threshold2 ?? -0.20) * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                  <Slider
+                    value={[(config.guardrailConfig?.threshold2 ?? -0.20) * 100]}
+                    onValueChange={([value]) => onConfigChange({
+                      ...config,
+                      guardrailConfig: { ...defaultGuardrail, ...config.guardrailConfig, threshold2: value / 100 }
+                    })}
+                    min={-40} max={-10} step={1}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">削減率2</Label>
+                    <span className="text-xs font-mono text-muted-foreground">
+                      {((config.guardrailConfig?.reduction2 ?? 0.80) * 100).toFixed(0)}%削減
+                    </span>
+                  </div>
+                  <Slider
+                    value={[(config.guardrailConfig?.reduction2 ?? 0.80) * 100]}
+                    onValueChange={([value]) => onConfigChange({
+                      ...config,
+                      guardrailConfig: { ...defaultGuardrail, ...config.guardrailConfig, reduction2: value / 100 }
+                    })}
+                    min={40} max={95} step={5}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">閾値3（深刻な下落）</Label>
+                    <span className="text-xs font-mono text-muted-foreground">
+                      {((config.guardrailConfig?.threshold3 ?? -0.35) * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                  <Slider
+                    value={[(config.guardrailConfig?.threshold3 ?? -0.35) * 100]}
+                    onValueChange={([value]) => onConfigChange({
+                      ...config,
+                      guardrailConfig: { ...defaultGuardrail, ...config.guardrailConfig, threshold3: value / 100 }
+                    })}
+                    min={-60} max={-20} step={1}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">削減率3</Label>
+                    <span className="text-xs font-mono text-muted-foreground">
+                      {((config.guardrailConfig?.reduction3 ?? 0.95) * 100).toFixed(0)}%削減
+                    </span>
+                  </div>
+                  <Slider
+                    value={[(config.guardrailConfig?.reduction3 ?? 0.95) * 100]}
+                    onValueChange={([value]) => onConfigChange({
+                      ...config,
+                      guardrailConfig: { ...defaultGuardrail, ...config.guardrailConfig, reduction3: value / 100 }
+                    })}
+                    min={60} max={100} step={5}
+                  />
+                </div>
               </div>
             )}
           </CardContent>
@@ -971,6 +1100,177 @@ export function ConfigPanel({ config, onConfigChange }: ConfigPanelProps) {
                 </button>
               ))}
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">FIRE後の社会保険料</CardTitle>
+            <CardDescription>国保・国民年金の計算パラメータ（通常は変更不要）</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <details className="group">
+              <summary className="cursor-pointer text-sm text-muted-foreground hover:text-foreground list-none flex items-center gap-1">
+                <span className="group-open:rotate-90 transition-transform inline-block">▶</span>
+                詳細設定を表示
+              </summary>
+              <div className="mt-4 space-y-4">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">医療分所得割率</Label>
+                    <span className="text-xs font-mono text-muted-foreground">
+                      {(config.postFireSocialInsurance.nhisoIncomeRate * 100).toFixed(2)}%
+                    </span>
+                  </div>
+                  <Slider
+                    value={[config.postFireSocialInsurance.nhisoIncomeRate * 100]}
+                    onValueChange={([value]) => onConfigChange({
+                      ...config,
+                      postFireSocialInsurance: { ...config.postFireSocialInsurance, nhisoIncomeRate: value / 100 }
+                    })}
+                    min={5} max={15} step={0.01}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">後期高齢者支援金分所得割率</Label>
+                    <span className="text-xs font-mono text-muted-foreground">
+                      {(config.postFireSocialInsurance.nhisoSupportIncomeRate * 100).toFixed(2)}%
+                    </span>
+                  </div>
+                  <Slider
+                    value={[config.postFireSocialInsurance.nhisoSupportIncomeRate * 100]}
+                    onValueChange={([value]) => onConfigChange({
+                      ...config,
+                      postFireSocialInsurance: { ...config.postFireSocialInsurance, nhisoSupportIncomeRate: value / 100 }
+                    })}
+                    min={1} max={5} step={0.01}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">均等割（1人あたり）</Label>
+                    <span className="text-xs font-mono text-muted-foreground">
+                      {formatCurrency(config.postFireSocialInsurance.nhisoFixedAmountPerPerson)}
+                    </span>
+                  </div>
+                  <Slider
+                    value={[config.postFireSocialInsurance.nhisoFixedAmountPerPerson]}
+                    onValueChange={([value]) => onConfigChange({
+                      ...config,
+                      postFireSocialInsurance: { ...config.postFireSocialInsurance, nhisoFixedAmountPerPerson: value }
+                    })}
+                    min={10000} max={100000} step={1000}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">平等割（世帯）</Label>
+                    <span className="text-xs font-mono text-muted-foreground">
+                      {formatCurrency(config.postFireSocialInsurance.nhisoHouseholdFixed)}
+                    </span>
+                  </div>
+                  <Slider
+                    value={[config.postFireSocialInsurance.nhisoHouseholdFixed]}
+                    onValueChange={([value]) => onConfigChange({
+                      ...config,
+                      postFireSocialInsurance: { ...config.postFireSocialInsurance, nhisoHouseholdFixed: value }
+                    })}
+                    min={0} max={100000} step={1000}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">国保年間上限額</Label>
+                    <span className="text-xs font-mono text-muted-foreground">
+                      {formatCurrency(config.postFireSocialInsurance.nhisoMaxAnnual, true)}
+                    </span>
+                  </div>
+                  <Slider
+                    value={[config.postFireSocialInsurance.nhisoMaxAnnual]}
+                    onValueChange={([value]) => onConfigChange({
+                      ...config,
+                      postFireSocialInsurance: { ...config.postFireSocialInsurance, nhisoMaxAnnual: value }
+                    })}
+                    min={500000} max={2000000} step={10000}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">国民年金月額保険料</Label>
+                    <span className="text-xs font-mono text-muted-foreground">
+                      {formatCurrency(config.postFireSocialInsurance.nationalPensionMonthlyPremium)}/月
+                    </span>
+                  </div>
+                  <Slider
+                    value={[config.postFireSocialInsurance.nationalPensionMonthlyPremium]}
+                    onValueChange={([value]) => onConfigChange({
+                      ...config,
+                      postFireSocialInsurance: { ...config.postFireSocialInsurance, nationalPensionMonthlyPremium: value }
+                    })}
+                    min={10000} max={25000} step={100}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">介護分所得割率</Label>
+                    <span className="text-xs font-mono text-muted-foreground">
+                      {(config.postFireSocialInsurance.longTermCareRate * 100).toFixed(2)}%
+                    </span>
+                  </div>
+                  <Slider
+                    value={[config.postFireSocialInsurance.longTermCareRate * 100]}
+                    onValueChange={([value]) => onConfigChange({
+                      ...config,
+                      postFireSocialInsurance: { ...config.postFireSocialInsurance, longTermCareRate: value / 100 }
+                    })}
+                    min={0.5} max={5} step={0.01}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">介護分上限額</Label>
+                    <span className="text-xs font-mono text-muted-foreground">
+                      {formatCurrency(config.postFireSocialInsurance.longTermCareMax, true)}
+                    </span>
+                  </div>
+                  <Slider
+                    value={[config.postFireSocialInsurance.longTermCareMax]}
+                    onValueChange={([value]) => onConfigChange({
+                      ...config,
+                      postFireSocialInsurance: { ...config.postFireSocialInsurance, longTermCareMax: value }
+                    })}
+                    min={50000} max={400000} step={10000}
+                  />
+                </div>
+
+                <button
+                  onClick={() => onConfigChange({
+                    ...config,
+                    postFireSocialInsurance: {
+                      nhisoIncomeRate: 0.1100,
+                      nhisoSupportIncomeRate: 0.0259,
+                      nhisoFixedAmountPerPerson: 50000,
+                      nhisoHouseholdFixed: 30000,
+                      nhisoMaxAnnual: 1060000,
+                      nationalPensionMonthlyPremium: 16980,
+                      longTermCareRate: 0.0200,
+                      longTermCareMax: 170000,
+                    }
+                  })}
+                  className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted transition-colors"
+                >
+                  デフォルト値にリセット
+                </button>
+              </div>
+            </details>
           </CardContent>
         </Card>
       </TabsContent>
