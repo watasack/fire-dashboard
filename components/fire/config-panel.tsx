@@ -1352,7 +1352,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
       </div>
 
       {/* PC (lg以上): 既存のタブ */}
-      <div className="hidden lg:block">
+      <div className="not-lg:hidden">
         <Tabs defaultValue="basic" className="w-full">
           <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="basic" className="flex items-center gap-1.5 text-xs">
