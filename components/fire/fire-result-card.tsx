@@ -14,20 +14,11 @@ interface FireResultCardProps {
 }
 
 export function FireResultCard({ result, monteCarloResult, currentAge, isCalculating }: FireResultCardProps) {
-  if (!result || isCalculating) {
+  if (!result) {
     return (
       <Card className="border-2 border-dashed border-muted-foreground/20">
         <CardContent className="flex items-center justify-center h-48">
-          <div className="text-center text-muted-foreground">
-            {isCalculating ? (
-              <div className="flex flex-col items-center gap-2">
-                <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-                <p className="text-sm">シミュレーション実行中...</p>
-              </div>
-            ) : (
-              <p>パラメータを入力してください</p>
-            )}
-          </div>
+          <p className="text-sm text-muted-foreground">パラメータを入力してください</p>
         </CardContent>
       </Card>
     )
@@ -37,11 +28,16 @@ export function FireResultCard({ result, monteCarloResult, currentAge, isCalcula
   const fireProbability = monteCarloResult?.successRate ?? (result.fireAge ? 1 : 0)
   const yearsToFire = fireAge ? fireAge - currentAge : null
   const isFireAchievable = fireProbability >= 0.5
+  const endAge = currentAge + result.totalYears
+  const firePosition = fireAge && result.totalYears > 0
+    ? Math.min(100, Math.max(0, ((fireAge - currentAge) / result.totalYears) * 100))
+    : null
 
   return (
     <TooltipProvider>
       <Card className={cn(
         "border-2 transition-all duration-500",
+        isCalculating ? "opacity-70" : "",
         isFireAchievable ? "border-success/50 bg-success/5" : "border-accent/50 bg-accent/5"
       )}>
         <CardHeader className="pb-2">
@@ -149,6 +145,47 @@ export function FireResultCard({ result, monteCarloResult, currentAge, isCalcula
               </p>
             </div>
           </div>
+
+          {/* FIRE Timeline */}
+          {firePosition !== null && (
+            <div className="mt-4 pt-4 border-t">
+              <p className="text-xs text-muted-foreground mb-3">FIREまでの道のり</p>
+              <div className="relative">
+                {/* Track */}
+                <div className="h-1.5 bg-muted rounded-full overflow-visible">
+                  {/* Pre-FIRE fill */}
+                  <div
+                    className={cn(
+                      "h-full rounded-full transition-all duration-500",
+                      isFireAchievable ? "bg-success/50" : "bg-accent/50"
+                    )}
+                    style={{ width: `${firePosition}%` }}
+                  />
+                </div>
+                {/* FIRE marker dot */}
+                <div
+                  className={cn(
+                    "absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full border-2 border-card shadow-sm transition-all duration-500",
+                    isFireAchievable ? "bg-success" : "bg-accent"
+                  )}
+                  style={{ left: `${firePosition}%` }}
+                />
+                {/* Labels */}
+                <div className="flex justify-between text-xs text-muted-foreground mt-3">
+                  <span>{currentAge}歳（現在）</span>
+                  {fireAge && (
+                    <span
+                      className={cn("font-medium transition-colors", isFireAchievable ? "text-success" : "text-accent")}
+                      style={{ marginLeft: `${Math.max(0, firePosition - 15)}%` }}
+                    >
+                      FIRE {fireAge}歳
+                    </span>
+                  )}
+                  <span>{endAge}歳</span>
+                </div>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </TooltipProvider>

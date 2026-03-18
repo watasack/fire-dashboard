@@ -86,11 +86,11 @@ export function FireDashboard() {
         </header>
 
         {/* KPI Banner */}
-        <div className="sticky top-16 z-40 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
+        <div className="sticky top-16 z-40 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60 relative overflow-hidden">
           <div className="container mx-auto px-4 h-12 flex items-center justify-center gap-6">
             <div className="flex items-center gap-1.5">
               <span className="text-xs text-muted-foreground">FIRE達成</span>
-              <span className={`text-sm font-semibold tabular-nums transition-opacity ${isCalculating ? 'opacity-50' : ''}`}>
+              <span className={`text-sm font-semibold tabular-nums transition-opacity duration-200 ${isCalculating ? 'opacity-40' : ''}`}>
                 {(() => { const age = monteCarloResult?.medianFireAge ?? result?.fireAge; return age != null ? `${age}歳` : '—' })()}
               </span>
             </div>
@@ -99,12 +99,28 @@ export function FireDashboard() {
               <span className="text-xs text-muted-foreground">
                 {monteCarloResult ? '成功率' : '達成率'}
               </span>
-              <span className={`text-sm font-semibold tabular-nums transition-opacity ${isCalculating ? 'opacity-50' : ''}`}>
-                {monteCarloResult
-                  ? `${Math.round(monteCarloResult.successRate * 100)}%`
-                  : `${Math.round((result?.fireAchievementRate ?? 0) * 100)}%`}
-              </span>
+              {(() => {
+                const rate = monteCarloResult ? monteCarloResult.successRate : (result?.fireAchievementRate ?? 0)
+                const colorClass = rate >= 0.8
+                  ? 'text-success bg-success/10'
+                  : rate >= 0.5
+                  ? 'text-accent bg-accent/10'
+                  : result ? 'text-destructive bg-destructive/10' : 'text-muted-foreground'
+                return (
+                  <span className={`text-sm font-semibold tabular-nums px-2 py-0.5 rounded-full transition-all duration-200 ${isCalculating ? 'opacity-40' : ''} ${colorClass}`}>
+                    {monteCarloResult
+                      ? `${Math.round(monteCarloResult.successRate * 100)}%`
+                      : `${Math.round((result?.fireAchievementRate ?? 0) * 100)}%`}
+                  </span>
+                )
+              })()}
             </div>
+          </div>
+          {/* Calculating progress indicator */}
+          <div className="absolute bottom-0 left-0 right-0 h-0.5">
+            {isCalculating && (
+              <div className="absolute h-full w-1/4 bg-primary/60 rounded-full animate-slide-right" />
+            )}
           </div>
         </div>
 
@@ -131,7 +147,7 @@ export function FireDashboard() {
             {/* Right Panel - Results */}
             <div className="space-y-6 order-1 lg:order-2 min-w-0">
               {/* Key Metrics Summary */}
-              <MetricsSummary config={config} result={result} mcResult={monteCarloResult} />
+              <MetricsSummary config={config} result={result} mcResult={monteCarloResult} isCalculating={isCalculating} />
               
               {/* FIRE Result Card */}
               <FireResultCard

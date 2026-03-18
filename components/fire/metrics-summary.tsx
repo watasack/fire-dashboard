@@ -9,6 +9,7 @@ interface MetricsSummaryProps {
   config: SimulationConfig
   result: SimulationResult | null
   mcResult?: MonteCarloResult | null
+  isCalculating?: boolean
 }
 
 interface MetricCardProps {
@@ -41,7 +42,7 @@ function MetricCard({ icon, label, value, subValue, trend }: MetricCardProps) {
   )
 }
 
-export function MetricsSummary({ config, result, mcResult }: MetricsSummaryProps) {
+export function MetricsSummary({ config, result, mcResult, isCalculating }: MetricsSummaryProps) {
   const totalIncome = config.person1.grossIncome + (config.person2?.grossIncome ?? 0)
   const annualExpenses = config.monthlyExpenses * 12
   const savingsRate = (totalIncome - annualExpenses) / totalIncome
@@ -55,7 +56,7 @@ export function MetricsSummary({ config, result, mcResult }: MetricsSummaryProps
   const achievementColor = achievementPercent >= 100 ? "text-green-600" : "text-blue-600"
 
   return (
-    <Card>
+    <Card className={`transition-opacity duration-200 ${isCalculating ? 'opacity-60' : ''}`}>
       <CardContent className="p-4">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <MetricCard
