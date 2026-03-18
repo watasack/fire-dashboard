@@ -8,6 +8,18 @@
 
 export type EmploymentType = 'employee' | 'selfEmployed' | 'homemaker'
 
+export type WithdrawalStrategy = 'fixed' | 'percentage' | 'guardrail'
+
+export interface GuardrailConfig {
+    threshold1: number       // デフォルト: -0.10
+    reduction1: number       // デフォルト: 0.40
+    threshold2: number       // デフォルト: -0.20
+    reduction2: number       // デフォルト: 0.80
+    threshold3: number       // デフォルト: -0.35
+    reduction3: number       // デフォルト: 0.95
+    discretionaryRatio: number  // デフォルト: 0.30
+}
+
 export interface PensionConfig {
     pastEmployeeMonths: number
     pastAverageMonthlyRemuneration: number
@@ -131,6 +143,10 @@ export interface SimulationConfig {
 
     // Post-FIRE social insurance
     postFireSocialInsurance: PostFireSocialInsuranceConfig
+
+    // Withdrawal strategy (Phase 7)
+    withdrawalStrategy?: WithdrawalStrategy   // デフォルト: 'fixed'
+    guardrailConfig?: GuardrailConfig         // guardrail 選択時に使用
 }
 
 export interface TaxBreakdown {
@@ -171,6 +187,8 @@ export interface YearlyData {
     nhInsurancePremium: number        // 国保保険料（FIRE後のみ、就労中は0）
     nationalPensionPremium: number    // 国民年金保険料（FIRE後60歳未満のみ）
     postFireSocialInsurance: number   // 国保 + 国民年金の合計
+    drawdownFromPeak: number           // ピークからの下落率（-0.1 = -10%）
+    discretionaryReductionRate: number // 当年の裁量支出削減率（0〜1）
 }
 
 export interface SimulationResult {
@@ -184,6 +202,8 @@ export interface SimulationResult {
         person1: PensionBreakdown
         person2: PensionBreakdown | null
     }
+    depletionAge: number | null    // 資産枯渇年齢（全期間持つ場合は null）
+    peakAssets: number             // シミュレーション期間中の資産ピーク
 }
 
 export interface YearlyPercentiles {
@@ -283,6 +303,18 @@ export const DEFAULT_CONFIG: SimulationConfig = {
 
     // Semi-FIRE / Post-FIRE income
     postFireIncome: null,
+
+    // Withdrawal strategy (Phase 7)
+    withdrawalStrategy: 'fixed',
+    guardrailConfig: {
+        threshold1: -0.10,
+        reduction1: 0.40,
+        threshold2: -0.20,
+        reduction2: 0.80,
+        threshold3: -0.35,
+        reduction3: 0.95,
+        discretionaryRatio: 0.30,
+    },
 
     // Post-FIRE social insurance
     postFireSocialInsurance: {
@@ -821,6 +853,49 @@ export function calculatePostFireSocialInsurance(
 }
 
 // ----------------------------------------------------------------------------
+// Withdrawal Strategy Calculator (Phase 7)
+// ----------------------------------------------------------------------------
+
+export function calculateWithdrawalAmount(
+    strategy: WithdrawalStrategy,
+    baseExpenses: number,
+    totalAssets: number,
+    peakAssets: number,
+    safeWithdrawalRate: number,
+    guardrailConfig?: GuardrailConfig
+): { actualExpenses: number; drawdownFromPeak: number; discretionaryReductionRate: number } {
+    if (strategy === 'percentage') {
+        const targetWithdrawal = totalAssets * safeWithdrawalRate
+        const actualExpenses = Math.max(baseExpenses, targetWithdrawal)
+        return { actualExpenses, drawdownFromPeak: 0, discretionaryReductionRate: 0 }
+    }
+
+    if (strategy === 'guardrail' && guardrailConfig) {
+        const drawdownFromPeak = peakAssets > 0
+            ? (totalAssets - peakAssets) / peakAssets
+            : 0
+
+        let discretionaryReductionRate = 0
+        if (drawdownFromPeak < guardrailConfig.threshold3) {
+            discretionaryReductionRate = guardrailConfig.reduction3
+        } else if (drawdownFromPeak < guardrailConfig.threshold2) {
+            discretionaryReductionRate = guardrailConfig.reduction2
+        } else if (drawdownFromPeak < guardrailConfig.threshold1) {
+            discretionaryReductionRate = guardrailConfig.reduction1
+        }
+
+        const essentialExpenses = baseExpenses * (1 - guardrailConfig.discretionaryRatio)
+        const discretionaryExpenses = baseExpenses * guardrailConfig.discretionaryRatio
+        const actualExpenses = essentialExpenses + discretionaryExpenses * (1 - discretionaryReductionRate)
+
+        return { actualExpenses, drawdownFromPeak, discretionaryReductionRate }
+    }
+
+    // 'fixed' (default)
+    return { actualExpenses: baseExpenses, drawdownFromPeak: 0, discretionaryReductionRate: 0 }
+}
+
+// ----------------------------------------------------------------------------
 // Single Simulation
 // ----------------------------------------------------------------------------
 
@@ -846,6 +921,7 @@ export function runSingleSimulation(
     let fireYear: number | null = null
     let capitalGainsLastYear = 0    // 前年の売却益
     let lastYearFireIncome = 0      // 前年の就労収入（FIRE後: セミFIRE収入, FIRE前: 給与収入）
+    let peakAssets = initialCashAssets + initialStocks  // ピーク資産（NISA/iDeCo は除く）
 
     // Calculate FIRE number based on current expenses
     const annualExpenses = config.monthlyExpenses * 12
@@ -1032,6 +1108,28 @@ export function runSingleSimulation(
             postFireSI = nhip + npp
         }
 
+        // 取り崩し戦略（FIRE後のみ適用）
+        let drawdownFromPeak = 0
+        let discretionaryReductionRate = 0
+        const effectiveTotalAssets = cashAssets + stockAssets + nisaAssets + idecoAssets
+
+        if (isPostFire) {
+            // ピーク資産を更新
+            peakAssets = Math.max(peakAssets, effectiveTotalAssets)
+
+            const withdrawalResult = calculateWithdrawalAmount(
+                config.withdrawalStrategy ?? 'fixed',
+                baseExpenses,
+                effectiveTotalAssets,
+                peakAssets,
+                config.safeWithdrawalRate,
+                config.guardrailConfig
+            )
+            baseExpenses = withdrawalResult.actualExpenses
+            drawdownFromPeak = withdrawalResult.drawdownFromPeak
+            discretionaryReductionRate = withdrawalResult.discretionaryReductionRate
+        }
+
         // Total expenses（FIRE後は社会保険料を上乗せ）
         const totalExpenses = baseExpenses + childCosts + mortgageCost + postFireSI
 
@@ -1190,6 +1288,8 @@ export function runSingleSimulation(
             nhInsurancePremium: isPostFire ? nhip : 0,
             nationalPensionPremium: isPostFire ? npp : 0,
             postFireSocialInsurance: isPostFire ? postFireSI : 0,
+            drawdownFromPeak,
+            discretionaryReductionRate,
         })
 
         // 次の年のために前年値を更新
@@ -1198,6 +1298,15 @@ export function runSingleSimulation(
     }
 
     const finalData = yearlyData[yearlyData.length - 1]
+
+    // 資産枯渇年齢の計算
+    let depletionAge: number | null = null
+    for (const data of yearlyData) {
+        if (data.assets + data.nisaAssets + data.idecoAssets <= 0) {
+            depletionAge = data.age
+            break
+        }
+    }
 
     return {
         yearlyData,
@@ -1210,6 +1319,8 @@ export function runSingleSimulation(
             person1: p1PensionBreakdown,
             person2: p2PensionBreakdown,
         },
+        depletionAge,
+        peakAssets,
     }
 }
 

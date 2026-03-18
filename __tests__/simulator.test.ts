@@ -8,7 +8,7 @@
  */
 
 import { describe, test, expect } from 'vitest'
-import { runSingleSimulation, SimulationConfig, calculatePensionAmount, applyMacroEconomicSlide, Person, withdrawFromTaxableAccount, calculatePostFireIncome, PostFireIncomeConfig, calculateNHIPremium, calculateNationalPensionPremium, PostFireSocialInsuranceConfig } from '../lib/simulator'
+import { runSingleSimulation, SimulationConfig, calculatePensionAmount, applyMacroEconomicSlide, Person, withdrawFromTaxableAccount, calculatePostFireIncome, PostFireIncomeConfig, calculateNHIPremium, calculateNationalPensionPremium, PostFireSocialInsuranceConfig, calculateWithdrawalAmount, WithdrawalStrategy, GuardrailConfig } from '../lib/simulator'
 
 const CURRENT_YEAR = new Date().getFullYear() // 2026
 
@@ -2053,5 +2053,97 @@ describe('FIRE後税金・社会保険', () => {
     expect(result.yearlyData[1].postFireSocialInsurance).toBeGreaterThan(0)
     expect(result.yearlyData[1].nhInsurancePremium).toBeGreaterThan(0)
     expect(result.yearlyData[1].nationalPensionPremium).toBe(16_980 * 12)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 取り崩し戦略 (Phase 7)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('取り崩し戦略', () => {
+  const gc: GuardrailConfig = {
+    threshold1: -0.10,
+    reduction1: 0.40,
+    threshold2: -0.20,
+    reduction2: 0.80,
+    threshold3: -0.35,
+    reduction3: 0.95,
+    discretionaryRatio: 0.30,
+  }
+
+  test('fixed: baseExpenses がそのまま返る', () => {
+    const result = calculateWithdrawalAmount('fixed', 2_400_000, 30_000_000, 30_000_000, 0.04)
+    expect(result.actualExpenses).toBe(2_400_000)
+    expect(result.discretionaryReductionRate).toBe(0)
+  })
+
+  test('percentage: totalAssets * SWR が actualExpenses になる（baseExpenses より大きい場合）', () => {
+    // 100M * 0.04 = 4_000_000 > baseExpenses 2_400_000 → 4_000_000
+    const result = calculateWithdrawalAmount('percentage', 2_400_000, 100_000_000, 100_000_000, 0.04)
+    expect(result.actualExpenses).toBe(4_000_000)
+  })
+
+  test('percentage: totalAssets * SWR < baseExpenses → baseExpenses が返る', () => {
+    // 30M * 0.04 = 1_200_000 < baseExpenses 2_400_000 → max = 2_400_000
+    const result = calculateWithdrawalAmount('percentage', 2_400_000, 30_000_000, 30_000_000, 0.04)
+    expect(result.actualExpenses).toBe(2_400_000)
+  })
+
+  test('guardrail: ドローダウン 0% → 削減なし', () => {
+    const result = calculateWithdrawalAmount('guardrail', 2_400_000, 10_000_000, 10_000_000, 0.04, gc)
+    expect(result.discretionaryReductionRate).toBe(0)
+    expect(result.actualExpenses).toBe(2_400_000)
+  })
+
+  test('guardrail: ドローダウン -15% → 裁量支出40%削減', () => {
+    // peakAssets = 10_000_000, totalAssets = 8_500_000 → drawdown = -0.15
+    // essential = 2_400_000 * 0.70 = 1_680_000
+    // discretionary = 2_400_000 * 0.30 * (1 - 0.40) = 432_000
+    // actual = 2_112_000
+    const result = calculateWithdrawalAmount('guardrail', 2_400_000, 8_500_000, 10_000_000, 0.04, gc)
+    expect(result.discretionaryReductionRate).toBe(0.40)
+    expect(result.actualExpenses).toBe(2_112_000)
+  })
+
+  test('guardrail: ドローダウン -25% → 裁量支出80%削減', () => {
+    // totalAssets = 7_500_000 → drawdown = -0.25
+    // actual = 1_680_000 + 720_000 * 0.20 = 1_824_000
+    const result = calculateWithdrawalAmount('guardrail', 2_400_000, 7_500_000, 10_000_000, 0.04, gc)
+    expect(result.discretionaryReductionRate).toBe(0.80)
+    expect(result.actualExpenses).toBe(1_824_000)
+  })
+
+  test('guardrail: ドローダウン -40% → 裁量支出95%削減', () => {
+    // totalAssets = 6_000_000 → drawdown = -0.40
+    // actual = 1_680_000 + 720_000 * 0.05 = 1_716_000
+    const result = calculateWithdrawalAmount('guardrail', 2_400_000, 6_000_000, 10_000_000, 0.04, gc)
+    expect(result.discretionaryReductionRate).toBe(0.95)
+    expect(result.actualExpenses).toBe(1_716_000)
+  })
+
+  test('depletionAge: 資産が途中でゼロになる → 枯渇年齢を返す', () => {
+    const result = runSingleSimulation(cfg({
+      currentAssets: 1_000_000,
+      monthlyExpenses: 300_000,  // 年360万 > SWR4%での取り崩し許容額
+      investmentReturn: 0,
+      person1: { currentAge: 35, retirementAge: 35, grossIncome: 0,
+        incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0, employmentType: 'employee' },
+      simulationYears: 10,
+      safeWithdrawalRate: 0.04,
+    }))
+    expect(result.depletionAge).not.toBeNull()
+    expect(result.depletionAge).toBeGreaterThanOrEqual(35)
+  })
+
+  test('depletionAge: 全期間資産が持つ → null', () => {
+    const result = runSingleSimulation(cfg({
+      currentAssets: 500_000_000,
+      monthlyExpenses: 100_000,
+      investmentReturn: 0.05,
+      person1: { currentAge: 35, retirementAge: 90, grossIncome: 0,
+        incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0, employmentType: 'employee' },
+      simulationYears: 10,
+    }))
+    expect(result.depletionAge).toBeNull()
   })
 })
