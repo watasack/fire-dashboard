@@ -31,7 +31,7 @@ export function AnnualCashFlowTable({ result }: AnnualCashFlowTableProps) {
         <CardDescription>年齢別の資産・収入・支出・純キャッシュフロー一覧</CardDescription>
       </CardHeader>
       <CardContent className="p-0">
-        <div className="max-h-96 overflow-y-auto">
+        <div className="max-h-96 overflow-x-auto overflow-y-auto">
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-card border-b z-10">
               <tr>
