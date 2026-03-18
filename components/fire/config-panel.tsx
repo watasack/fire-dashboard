@@ -1,13 +1,14 @@
 "use client"
 
+import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Slider } from "@/components/ui/slider"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { SimulationConfig, Person } from "@/lib/simulator"
+import { SimulationConfig, Person, EmploymentType, WithdrawalStrategy, MCReturnModel, PostFireIncomeConfig } from "@/lib/simulator"
 import { formatCurrency } from "@/lib/utils"
-import { User, Users, Wallet, TrendingUp, Baby, PiggyBank } from "lucide-react"
+import { User, Users, Wallet, TrendingUp, Baby, PiggyBank, Settings2 } from "lucide-react"
 
 interface ConfigPanelProps {
   config: SimulationConfig
@@ -18,11 +19,15 @@ function PersonConfig({
   person,
   label,
   onChange,
+  childBirthYears,
 }: {
   person: Person
   label: string
   onChange: (person: Person) => void
+  childBirthYears?: number[]
 }) {
+  const isHomemaker = person.employmentType === 'homemaker'
+
   return (
     <div className="space-y-6">
       <div className="space-y-3">
@@ -39,33 +44,41 @@ function PersonConfig({
         />
       </div>
 
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <Label className="text-sm font-medium">年収</Label>
-          <span className="text-sm font-mono text-muted-foreground">{formatCurrency(person.grossIncome, true)}</span>
+      {!isHomemaker && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <Label className="text-sm font-medium">年収</Label>
+            <span className="text-sm font-mono text-muted-foreground">{formatCurrency(person.grossIncome, true)}</span>
+          </div>
+          <Slider
+            value={[person.grossIncome]}
+            onValueChange={([value]) => onChange({ ...person, grossIncome: value })}
+            min={2000000}
+            max={20000000}
+            step={100000}
+          />
         </div>
-        <Slider
-          value={[person.grossIncome]}
-          onValueChange={([value]) => onChange({ ...person, grossIncome: value })}
-          min={2000000}
-          max={20000000}
-          step={100000}
-        />
-      </div>
+      )}
 
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <Label className="text-sm font-medium">年収上昇率</Label>
-          <span className="text-sm font-mono text-muted-foreground">{(person.incomeGrowthRate * 100).toFixed(1)}%</span>
+      {!isHomemaker && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <Label className="text-sm font-medium">年収上昇率</Label>
+            <span className="text-sm font-mono text-muted-foreground">{(person.incomeGrowthRate * 100).toFixed(1)}%</span>
+          </div>
+          <Slider
+            value={[person.incomeGrowthRate * 100]}
+            onValueChange={([value]) => onChange({ ...person, incomeGrowthRate: value / 100 })}
+            min={0}
+            max={5}
+            step={0.1}
+          />
         </div>
-        <Slider
-          value={[person.incomeGrowthRate * 100]}
-          onValueChange={([value]) => onChange({ ...person, incomeGrowthRate: value / 100 })}
-          min={0}
-          max={5}
-          step={0.1}
-        />
-      </div>
+      )}
+
+      {isHomemaker && (
+        <p className="text-xs text-muted-foreground">専業主婦/夫は年収・社会保険料なし（国民年金第3号）</p>
+      )}
 
       <div className="space-y-3">
         <div className="flex items-center justify-between">
@@ -94,11 +107,40 @@ function PersonConfig({
           step={50000}
         />
       </div>
+
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <Label className="text-sm font-medium">年金受給開始年齢</Label>
+          <span className="text-sm font-mono text-muted-foreground">{person.pensionStartAge}歳</span>
+        </div>
+        <Slider
+          value={[person.pensionStartAge]}
+          onValueChange={([value]) => onChange({ ...person, pensionStartAge: value })}
+          min={60}
+          max={75}
+          step={1}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label className="text-sm font-medium">雇用形態</Label>
+        <select
+          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
+          value={person.employmentType ?? 'employee'}
+          onChange={e => onChange({ ...person, employmentType: e.target.value as EmploymentType })}
+        >
+          <option value="employee">会社員</option>
+          <option value="selfEmployed">自営業・フリーランス</option>
+          <option value="homemaker">専業主婦/夫</option>
+        </select>
+      </div>
     </div>
   )
 }
 
 export function ConfigPanel({ config, onConfigChange }: ConfigPanelProps) {
+  const [showAssetDetail, setShowAssetDetail] = useState(false)
+
   const updatePerson1 = (person: Person) => {
     onConfigChange({ ...config, person1: person })
   }
@@ -128,7 +170,7 @@ export function ConfigPanel({ config, onConfigChange }: ConfigPanelProps) {
 
   return (
     <Tabs defaultValue="basic" className="w-full">
-      <TabsList className="grid w-full grid-cols-4">
+      <TabsList className="grid w-full grid-cols-5">
         <TabsTrigger value="basic" className="flex items-center gap-1.5 text-xs">
           <Wallet className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">基本</span>
@@ -145,6 +187,10 @@ export function ConfigPanel({ config, onConfigChange }: ConfigPanelProps) {
           <Baby className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">ライフ</span>
         </TabsTrigger>
+        <TabsTrigger value="advanced" className="flex items-center gap-1.5 text-xs">
+          <Settings2 className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">詳細</span>
+        </TabsTrigger>
       </TabsList>
 
       <TabsContent value="basic" className="mt-4 space-y-4">
@@ -154,19 +200,91 @@ export function ConfigPanel({ config, onConfigChange }: ConfigPanelProps) {
             <CardDescription>現在の資産状況と生活費を設定</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <Label className="text-sm font-medium">現在の資産（現金＋株式）</Label>
-                <span className="text-sm font-mono text-muted-foreground">{formatCurrency((config.cashAssets ?? 0) + (config.stocks ?? config.currentAssets ?? 0), true)}</span>
+            {!showAssetDetail ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium">現在の資産（現金＋株式）</Label>
+                  <span className="text-sm font-mono text-muted-foreground">{formatCurrency((config.cashAssets ?? 0) + (config.stocks ?? config.currentAssets ?? 0), true)}</span>
+                </div>
+                <Slider
+                  value={[(config.cashAssets ?? 0) + (config.stocks ?? config.currentAssets ?? 0)]}
+                  onValueChange={([value]) => onConfigChange({ ...config, cashAssets: 0, stocks: value, stocksCostBasis: value })}
+                  min={0}
+                  max={100000000}
+                  step={1000000}
+                />
+                <button
+                  onClick={() => setShowAssetDetail(true)}
+                  className="text-xs text-muted-foreground underline underline-offset-2"
+                >
+                  詳細入力（現金/株式を分けて入力）
+                </button>
               </div>
-              <Slider
-                value={[(config.cashAssets ?? 0) + (config.stocks ?? config.currentAssets ?? 0)]}
-                onValueChange={([value]) => onConfigChange({ ...config, cashAssets: 0, stocks: value, stocksCostBasis: value })}
-                min={0}
-                max={100000000}
-                step={1000000}
-              />
-            </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">現金・預金</Label>
+                    <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.cashAssets ?? 0, true)}</span>
+                  </div>
+                  <Slider
+                    value={[config.cashAssets ?? 0]}
+                    onValueChange={([value]) => onConfigChange({ ...config, cashAssets: value })}
+                    min={0}
+                    max={50000000}
+                    step={500000}
+                  />
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">株式評価額（課税口座）</Label>
+                    <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.stocks ?? 0, true)}</span>
+                  </div>
+                  <Slider
+                    value={[config.stocks ?? 0]}
+                    onValueChange={([newStocksValue]) => onConfigChange({
+                      ...config,
+                      stocks: newStocksValue,
+                      stocksCostBasis: Math.min(config.stocksCostBasis ?? 0, newStocksValue),
+                    })}
+                    min={0}
+                    max={100000000}
+                    step={1000000}
+                  />
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">株式取得原価</Label>
+                    <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.stocksCostBasis ?? 0, true)}</span>
+                  </div>
+                  <Slider
+                    value={[config.stocksCostBasis ?? 0]}
+                    onValueChange={([value]) => onConfigChange({ ...config, stocksCostBasis: value })}
+                    min={0}
+                    max={(config.stocks ?? 0) > 0 ? (config.stocks ?? 0) : 100000000}
+                    step={500000}
+                  />
+                </div>
+
+                {(() => {
+                  const unrealizedGain = (config.stocks ?? 0) - (config.stocksCostBasis ?? 0)
+                  return (
+                    <p className={`text-xs ${unrealizedGain >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                      含み益: {unrealizedGain >= 0 ? '+' : ''}{formatCurrency(unrealizedGain, true)}
+                    </p>
+                  )
+                })()}
+
+                <button
+                  onClick={() => setShowAssetDetail(false)}
+                  className="text-xs text-muted-foreground underline underline-offset-2"
+                >
+                  ← 合算表示に戻す
+                </button>
+              </div>
+            )}
 
             <div className="space-y-3">
               <div className="flex items-center justify-between">
@@ -458,6 +576,242 @@ export function ConfigPanel({ config, onConfigChange }: ConfigPanelProps) {
                 </div>
               </div>
             ))}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-base">セミFIRE</CardTitle>
+                <CardDescription>FIRE後も一定期間、収入を得る場合に設定</CardDescription>
+              </div>
+              <Switch
+                id="semi-fire-toggle"
+                checked={config.postFireIncome !== null && config.postFireIncome !== undefined}
+                onCheckedChange={(checked) => {
+                  if (checked) {
+                    onConfigChange({ ...config, postFireIncome: { monthlyAmount: 100000, untilAge: 55 } })
+                  } else {
+                    onConfigChange({ ...config, postFireIncome: null })
+                  }
+                }}
+              />
+            </div>
+          </CardHeader>
+          {config.postFireIncome !== null && config.postFireIncome !== undefined && (
+            <CardContent className="space-y-6">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium">月収（税引き前）</Label>
+                  <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.postFireIncome.monthlyAmount)}/月</span>
+                </div>
+                <Slider
+                  value={[config.postFireIncome.monthlyAmount]}
+                  onValueChange={([value]) => onConfigChange({
+                    ...config,
+                    postFireIncome: { ...(config.postFireIncome as PostFireIncomeConfig), monthlyAmount: value },
+                  })}
+                  min={0}
+                  max={500000}
+                  step={10000}
+                />
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium">終了年齢</Label>
+                  <span className="text-sm font-mono text-muted-foreground">{config.postFireIncome.untilAge}歳まで</span>
+                </div>
+                <Slider
+                  value={[config.postFireIncome.untilAge]}
+                  onValueChange={([value]) => onConfigChange({
+                    ...config,
+                    postFireIncome: { ...(config.postFireIncome as PostFireIncomeConfig), untilAge: value },
+                  })}
+                  min={40}
+                  max={80}
+                  step={1}
+                />
+              </div>
+            </CardContent>
+          )}
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-base">住宅ローン</CardTitle>
+                <CardDescription>月額返済額をキャッシュフローに反映します</CardDescription>
+              </div>
+              <Switch
+                id="mortgage-toggle"
+                checked={config.mortgage !== null && config.mortgage !== undefined}
+                onCheckedChange={(checked) => {
+                  if (checked) {
+                    onConfigChange({ ...config, mortgage: { monthlyPayment: 100000, endYear: 2040 } })
+                  } else {
+                    onConfigChange({ ...config, mortgage: null })
+                  }
+                }}
+              />
+            </div>
+          </CardHeader>
+          {config.mortgage !== null && config.mortgage !== undefined && (
+            <CardContent className="space-y-6">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium">月額返済額</Label>
+                  <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.mortgage.monthlyPayment)}/月</span>
+                </div>
+                <Slider
+                  value={[config.mortgage.monthlyPayment]}
+                  onValueChange={([value]) => onConfigChange({
+                    ...config,
+                    mortgage: { ...(config.mortgage!), monthlyPayment: value },
+                  })}
+                  min={30000}
+                  max={300000}
+                  step={5000}
+                />
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium">完済年</Label>
+                  <span className="text-sm font-mono text-muted-foreground">{config.mortgage.endYear}年</span>
+                </div>
+                <Slider
+                  value={[config.mortgage.endYear]}
+                  onValueChange={([value]) => onConfigChange({
+                    ...config,
+                    mortgage: { ...(config.mortgage!), endYear: value },
+                  })}
+                  min={2025}
+                  max={2060}
+                  step={1}
+                />
+              </div>
+            </CardContent>
+          )}
+        </Card>
+      </TabsContent>
+
+      <TabsContent value="advanced" className="mt-4 space-y-4">
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">シミュレーション設定</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium">シミュレーション期間</Label>
+                <span className="text-sm font-mono text-muted-foreground">{config.simulationYears}年</span>
+              </div>
+              <Slider
+                value={[config.simulationYears]}
+                onValueChange={([value]) => onConfigChange({ ...config, simulationYears: value })}
+                min={20}
+                max={60}
+                step={1}
+              />
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium">インフレ率</Label>
+                <span className="text-sm font-mono text-muted-foreground">{(config.inflationRate * 100).toFixed(1)}%</span>
+              </div>
+              <Slider
+                value={[config.inflationRate * 100]}
+                onValueChange={([value]) => onConfigChange({ ...config, inflationRate: value / 100 })}
+                min={0}
+                max={3}
+                step={0.1}
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">取り崩し戦略</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="flex gap-2">
+              {([
+                { value: 'fixed', label: '固定額' },
+                { value: 'percentage', label: '定率' },
+                { value: 'guardrail', label: 'ガードレール' },
+              ] as { value: WithdrawalStrategy; label: string }[]).map(({ value, label }) => (
+                <button
+                  key={value}
+                  onClick={() => onConfigChange({ ...config, withdrawalStrategy: value })}
+                  className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                    (config.withdrawalStrategy ?? 'fixed') === value
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted hover:bg-muted-foreground/10"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {(config.withdrawalStrategy ?? 'fixed') === 'guardrail' && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium">裁量支出比率</Label>
+                  <span className="text-sm font-mono text-muted-foreground">{((config.guardrailConfig?.discretionaryRatio ?? 0.3) * 100).toFixed(0)}%</span>
+                </div>
+                <Slider
+                  value={[(config.guardrailConfig?.discretionaryRatio ?? 0.3) * 100]}
+                  onValueChange={([value]) => onConfigChange({
+                    ...config,
+                    guardrailConfig: {
+                      threshold1: config.guardrailConfig?.threshold1 ?? -0.10,
+                      reduction1: config.guardrailConfig?.reduction1 ?? 0.40,
+                      threshold2: config.guardrailConfig?.threshold2 ?? -0.20,
+                      reduction2: config.guardrailConfig?.reduction2 ?? 0.80,
+                      threshold3: config.guardrailConfig?.threshold3 ?? -0.35,
+                      reduction3: config.guardrailConfig?.reduction3 ?? 0.95,
+                      discretionaryRatio: value / 100,
+                    },
+                  })}
+                  min={10}
+                  max={50}
+                  step={5}
+                />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">MCリターンモデル</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex gap-2">
+              {([
+                { value: 'normal', label: '正規分布' },
+                { value: 'meanReversion', label: '平均回帰' },
+                { value: 'bootstrap', label: 'ブートストラップ' },
+              ] as { value: MCReturnModel; label: string }[]).map(({ value, label }) => (
+                <button
+                  key={value}
+                  onClick={() => onConfigChange({ ...config, mcReturnModel: value })}
+                  className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                    (config.mcReturnModel ?? 'normal') === value
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted hover:bg-muted-foreground/10"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </CardContent>
         </Card>
       </TabsContent>
