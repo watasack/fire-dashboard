@@ -91,7 +91,7 @@ export function FireDashboard() {
             <div className="flex items-center gap-1.5">
               <span className="text-xs text-muted-foreground">FIRE達成</span>
               <span className={`text-sm font-semibold tabular-nums transition-opacity ${isCalculating ? 'opacity-50' : ''}`}>
-                {result?.fireAge != null ? `${result.fireAge}歳` : '—'}
+                {(() => { const age = monteCarloResult?.medianFireAge ?? result?.fireAge; return age != null ? `${age}歳` : '—' })()}
               </span>
             </div>
             <div className="w-px h-4 bg-border" />
