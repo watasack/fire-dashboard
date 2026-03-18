@@ -84,10 +84,10 @@ function PersonConfig({
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <Label className="text-sm font-medium">年金受給額（年間）</Label>
-          <span className="text-sm font-mono text-muted-foreground">{formatCurrency(person.pensionAmount, true)}</span>
+          <span className="text-sm font-mono text-muted-foreground">{formatCurrency(person.pensionAmount ?? 0, true)}</span>
         </div>
         <Slider
-          value={[person.pensionAmount]}
+          value={[person.pensionAmount ?? 0]}
           onValueChange={([value]) => onChange({ ...person, pensionAmount: value })}
           min={0}
           max={3000000}

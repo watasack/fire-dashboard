@@ -8,13 +8,28 @@
 
 export type EmploymentType = 'employee' | 'selfEmployed' | 'homemaker'
 
+export interface PensionConfig {
+    pastEmployeeMonths: number
+    pastAverageMonthlyRemuneration: number
+    pastNationalPensionMonths: number
+    pensionGrowthRate: number
+}
+
+export interface PensionBreakdown {
+    employeePension: number
+    nationalPension: number
+    totalAnnualPension: number
+    source: 'calculated' | 'fixed'
+}
+
 export interface Person {
     currentAge: number
     retirementAge: number
     grossIncome: number          // 税引き前年収（円）
     incomeGrowthRate: number
     pensionStartAge: number
-    pensionAmount: number
+    pensionAmount?: number
+    pensionConfig?: PensionConfig
     employmentType?: EmploymentType  // 雇用形態（省略時は 'employee'）
     /** @deprecated grossIncome を使うこと */
     currentIncome?: number
@@ -126,6 +141,10 @@ export interface SimulationResult {
     fireNumber: number
     finalAssets: number
     totalYears: number
+    pensionBreakdown?: {
+        person1: PensionBreakdown
+        person2: PensionBreakdown | null
+    }
 }
 
 export interface YearlyPercentiles {
@@ -326,7 +345,7 @@ function calculateIncome(
     // Pension income
     if (age >= person.pensionStartAge) {
         const inflationMultiplier = Math.pow(1 + inflationRate, yearsFromStart)
-        return person.pensionAmount * inflationMultiplier
+        return (person.pensionAmount ?? 0) * inflationMultiplier
     }
 
     // Working income with growth
@@ -574,6 +593,64 @@ export function getLifecycleStageExpenses(
 }
 
 // ----------------------------------------------------------------------------
+// Pension Calculation
+// ----------------------------------------------------------------------------
+
+export function calculatePensionAmount(
+    person: Person,
+    yearsWorkedFromNow: number,
+    averageFutureMonthlyRemuneration: number
+): PensionBreakdown {
+    // 固定値優先（後方互換）
+    if (person.pensionAmount !== undefined) {
+        return {
+            employeePension: person.pensionAmount,
+            nationalPension: 0,
+            totalAnnualPension: person.pensionAmount,
+            source: 'fixed',
+        }
+    }
+    if (!person.pensionConfig) {
+        return { employeePension: 0, nationalPension: 0, totalAnnualPension: 0, source: 'calculated' }
+    }
+    const cfg = person.pensionConfig
+    const futureMonths = yearsWorkedFromNow * 12
+
+    if (person.employmentType === 'employee') {
+        const pastEmployeePension = cfg.pastAverageMonthlyRemuneration * cfg.pastEmployeeMonths * 0.005481
+        const futureEmployeePension = averageFutureMonthlyRemuneration * futureMonths * 0.005481
+        const totalEmployeePension = pastEmployeePension + futureEmployeePension
+        const totalPensionMonths = cfg.pastNationalPensionMonths + cfg.pastEmployeeMonths + futureMonths
+        const cappedMonths = Math.min(totalPensionMonths, 480)
+        const nationalPension = Math.round(816_000 * cappedMonths / 480)
+        return {
+            employeePension: Math.round(totalEmployeePension),
+            nationalPension,
+            totalAnnualPension: Math.round(totalEmployeePension) + nationalPension,
+            source: 'calculated',
+        }
+    } else if (person.employmentType === 'selfEmployed') {
+        const totalPensionMonths = cfg.pastNationalPensionMonths + futureMonths
+        const cappedMonths = Math.min(totalPensionMonths, 480)
+        const nationalPension = Math.round(816_000 * cappedMonths / 480)
+        return { employeePension: 0, nationalPension, totalAnnualPension: nationalPension, source: 'calculated' }
+    } else {
+        // homemaker
+        const cappedMonths = Math.min(cfg.pastNationalPensionMonths, 480)
+        const nationalPension = Math.round(816_000 * cappedMonths / 480)
+        return { employeePension: 0, nationalPension, totalAnnualPension: nationalPension, source: 'calculated' }
+    }
+}
+
+export function applyMacroEconomicSlide(
+    basePension: number,
+    yearsFromRetirement: number,
+    growthRate: number = 0.01
+): number {
+    return basePension * Math.pow(1 + growthRate, yearsFromRetirement)
+}
+
+// ----------------------------------------------------------------------------
 // Single Simulation
 // ----------------------------------------------------------------------------
 
@@ -594,6 +671,33 @@ export function runSingleSimulation(
     const annualExpenses = config.monthlyExpenses * 12
     const fireNumber = annualExpenses / config.safeWithdrawalRate
 
+    // 年金を事前計算（等比数列の期待値で平均標準報酬月額を算出）
+    const calcAvgMonthlyRemuneration = (grossIncome: number, growthRate: number, years: number): number => {
+        if (years <= 0) return 0
+        const avgGross = growthRate > 0
+            ? grossIncome * (Math.pow(1 + growthRate, years) - 1) / (growthRate * years)
+            : grossIncome
+        return Math.min(avgGross / 12, 635_000)
+    }
+
+    const p1YearsToRetirement = Math.max(0, config.person1.retirementAge - config.person1.currentAge)
+    const p1AvgRemuneration = calcAvgMonthlyRemuneration(
+        config.person1.grossIncome, config.person1.incomeGrowthRate, p1YearsToRetirement
+    )
+    const p1PensionBreakdown = calculatePensionAmount(config.person1, p1YearsToRetirement, p1AvgRemuneration)
+    const p1BasePension = p1PensionBreakdown.totalAnnualPension
+
+    let p2BasePension = 0
+    let p2PensionBreakdown: PensionBreakdown | null = null
+    if (config.person2) {
+        const p2YearsToRetirement = Math.max(0, config.person2.retirementAge - config.person2.currentAge)
+        const p2AvgRemuneration = calcAvgMonthlyRemuneration(
+            config.person2.grossIncome, config.person2.incomeGrowthRate, p2YearsToRetirement
+        )
+        p2PensionBreakdown = calculatePensionAmount(config.person2, p2YearsToRetirement, p2AvgRemuneration)
+        p2BasePension = p2PensionBreakdown.totalAnnualPension
+    }
+
     for (let year = 0; year <= config.simulationYears; year++) {
         const currentSimYear = currentYear + year
         const person1Age = config.person1.currentAge + year
@@ -612,8 +716,12 @@ export function runSingleSimulation(
             let p1Income = 0
             let p1Tax = 0
             if (person1Age >= config.person1.pensionStartAge) {
-                const inflationMultiplier = Math.pow(1 + config.inflationRate, year)
-                const p1Gross = config.person1.pensionAmount * inflationMultiplier
+                const p1YearsFromPensionStart = person1Age - config.person1.pensionStartAge
+                const p1Gross = applyMacroEconomicSlide(
+                    p1BasePension,
+                    p1YearsFromPensionStart,
+                    config.person1.pensionConfig?.pensionGrowthRate ?? config.inflationRate
+                )
                 const p1Breakdown = calculateTaxBreakdown(p1Gross, config.person1.employmentType ?? 'employee', person1Age)
                 p1Income = p1Breakdown.netIncome
                 p1Tax = p1Breakdown.totalTax
@@ -625,8 +733,12 @@ export function runSingleSimulation(
             let p2Income = 0
             let p2Tax = 0
             if (config.person2 && person2Age >= config.person2.pensionStartAge) {
-                const inflationMultiplier = Math.pow(1 + config.inflationRate, year)
-                const p2Gross = config.person2.pensionAmount * inflationMultiplier
+                const p2YearsFromPensionStart = person2Age - config.person2.pensionStartAge
+                const p2Gross = applyMacroEconomicSlide(
+                    p2BasePension,
+                    p2YearsFromPensionStart,
+                    config.person2.pensionConfig?.pensionGrowthRate ?? config.inflationRate
+                )
                 const p2Breakdown = calculateTaxBreakdown(p2Gross, config.person2.employmentType ?? 'employee', person2Age)
                 p2Income = p2Breakdown.netIncome
                 p2Tax = p2Breakdown.totalTax
@@ -780,6 +892,10 @@ export function runSingleSimulation(
         fireNumber,
         finalAssets: finalData.assets + finalData.nisaAssets + finalData.idecoAssets,
         totalYears: config.simulationYears,
+        pensionBreakdown: {
+            person1: p1PensionBreakdown,
+            person2: p2PensionBreakdown,
+        },
     }
 }
 

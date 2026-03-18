@@ -8,7 +8,7 @@
  */
 
 import { describe, test, expect } from 'vitest'
-import { runSingleSimulation, SimulationConfig } from '../lib/simulator'
+import { runSingleSimulation, SimulationConfig, calculatePensionAmount, applyMacroEconomicSlide, Person } from '../lib/simulator'
 
 const CURRENT_YEAR = new Date().getFullYear() // 2026
 
@@ -1567,5 +1567,140 @@ describe('ライフステージ別生活費', () => {
       simulationYears: 0,
     }))
     expect(result.yearlyData[0].expenses).toBeCloseTo(3_000_000, -1)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 3: 年金詳細計算
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('年金詳細計算', () => {
+  const basePerson = (): Person => ({
+    currentAge: 35,
+    retirementAge: 65,
+    grossIncome: 6_000_000,
+    employmentType: 'employee',
+    incomeGrowthRate: 0.02,
+    pensionStartAge: 65,
+    // pensionAmount は undefined（計算値を使う）
+  })
+
+  test('会社員: 厚生年金 + 国民年金が計算される', () => {
+    const person: Person = {
+      ...basePerson(),
+      pensionConfig: {
+        pastEmployeeMonths: 120,
+        pastAverageMonthlyRemuneration: 300_000,
+        pastNationalPensionMonths: 120,
+        pensionGrowthRate: 0.01,
+      },
+    }
+    // futureMonths=360, avgRemuneration=500_000
+    // pastEmployeePension = 300_000 * 120 * 0.005481 = 197_316
+    // futureEmployeePension = 500_000 * 360 * 0.005481 = 986_580
+    // totalEmployeePension ≈ 1_183_896
+    // totalPensionMonths = 120 + 120 + 360 = 600 → cap 480
+    // nationalPension = 816_000
+    const result = calculatePensionAmount(person, 30, 500_000)
+    expect(result.employeePension).toBe(1_183_896)
+    expect(result.nationalPension).toBe(816_000)
+    expect(result.totalAnnualPension).toBe(1_999_896)
+    expect(result.source).toBe('calculated')
+  })
+
+  test('個人事業主: 国民年金のみ（厚生年金ゼロ）', () => {
+    const person: Person = {
+      ...basePerson(),
+      employmentType: 'selfEmployed',
+      pensionConfig: {
+        pastEmployeeMonths: 0,
+        pastAverageMonthlyRemuneration: 0,
+        pastNationalPensionMonths: 240,
+        pensionGrowthRate: 0.01,
+      },
+    }
+    // futureMonths=240(20年), totalPensionMonths=240+240=480 → cap 480
+    const result = calculatePensionAmount(person, 20, 0)
+    expect(result.employeePension).toBe(0)
+    expect(result.nationalPension).toBe(816_000)
+    expect(result.totalAnnualPension).toBe(816_000)
+  })
+
+  test('専業主婦: 過去の国民年金のみ', () => {
+    const person: Person = {
+      ...basePerson(),
+      employmentType: 'homemaker',
+      pensionConfig: {
+        pastEmployeeMonths: 0,
+        pastAverageMonthlyRemuneration: 0,
+        pastNationalPensionMonths: 120,
+        pensionGrowthRate: 0.01,
+      },
+    }
+    // nationalPension = 816_000 * 120/480 = 204_000
+    const result = calculatePensionAmount(person, 30, 0)
+    expect(result.employeePension).toBe(0)
+    expect(result.nationalPension).toBe(204_000)
+    expect(result.totalAnnualPension).toBe(204_000)
+  })
+
+  test('加入月数480未満: 年金が満額より少ない', () => {
+    const person: Person = {
+      ...basePerson(),
+      pensionConfig: {
+        pastEmployeeMonths: 120,
+        pastAverageMonthlyRemuneration: 300_000,
+        pastNationalPensionMonths: 120,
+        pensionGrowthRate: 0.01,
+      },
+    }
+    // futureMonths=120(10年)
+    // totalPensionMonths = 120 + 120 + 120 = 360 < 480
+    // nationalPension = 816_000 * 360/480 = 612_000
+    const result = calculatePensionAmount(person, 10, 300_000)
+    expect(result.nationalPension).toBe(612_000)
+  })
+
+  test('pensionAmount 固定値が指定されている場合は計算値を無視する', () => {
+    const person: Person = {
+      ...basePerson(),
+      pensionAmount: 1_500_000,
+      pensionConfig: {
+        pastEmployeeMonths: 240,
+        pastAverageMonthlyRemuneration: 400_000,
+        pastNationalPensionMonths: 240,
+        pensionGrowthRate: 0.01,
+      },
+    }
+    const result = calculatePensionAmount(person, 30, 500_000)
+    expect(result.totalAnnualPension).toBe(1_500_000)
+    expect(result.source).toBe('fixed')
+  })
+
+  test('マクロ経済スライド: 10年後に約10.5%増加', () => {
+    const after10 = applyMacroEconomicSlide(1_000_000, 10, 0.01)
+    expect(after10).toBeCloseTo(1_104_622, -2)
+  })
+
+  test('pensionConfig を使ったシミュレーション: pensionStartAge から年金が income に反映される', () => {
+    const result = calculatePensionAmount(basePerson(), 15, 400_000)
+    // pensionConfig なし → totalAnnualPension = 0, source = 'calculated'
+    expect(result.totalAnnualPension).toBe(0)
+    expect(result.source).toBe('calculated')
+  })
+
+  test('pensionConfig を指定した場合: calculatePensionAmount が正の年金を返す', () => {
+    const person: Person = {
+      ...basePerson(),
+      pensionConfig: {
+        pastEmployeeMonths: 120,
+        pastAverageMonthlyRemuneration: 300_000,
+        pastNationalPensionMonths: 120,
+        pensionGrowthRate: 0.01,
+      },
+    }
+    const result = calculatePensionAmount(person, 15, 400_000)
+    expect(result.totalAnnualPension).toBeGreaterThan(0)
+    expect(result.source).toBe('calculated')
   })
 })
