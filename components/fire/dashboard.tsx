@@ -144,21 +144,21 @@ export function FireDashboard() {
               {/* Charts and Analysis Tabs */}
               <Tabs defaultValue="assets" className="w-full">
                 <TabsList className="grid w-full grid-cols-4">
-                  <TabsTrigger value="assets" className="flex items-center gap-1.5">
-                    <BarChart3 className="h-4 w-4" />
-                    <span>資産推移</span>
+                  <TabsTrigger value="assets" className="flex items-center gap-1 text-xs sm:gap-1.5">
+                    <BarChart3 className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">資産推移</span>
                   </TabsTrigger>
-                  <TabsTrigger value="cashflow" className="flex items-center gap-1.5">
-                    <TrendingUp className="h-4 w-4" />
-                    <span>収支</span>
+                  <TabsTrigger value="cashflow" className="flex items-center gap-1 text-xs sm:gap-1.5">
+                    <TrendingUp className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">収支</span>
                   </TabsTrigger>
-                  <TabsTrigger value="annual" className="flex items-center gap-1.5">
-                    <Table2 className="h-4 w-4" />
-                    <span>年次表</span>
+                  <TabsTrigger value="annual" className="flex items-center gap-1 text-xs sm:gap-1.5">
+                    <Table2 className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">年次表</span>
                   </TabsTrigger>
-                  <TabsTrigger value="scenarios" className="flex items-center gap-1.5">
-                    <Lightbulb className="h-4 w-4" />
-                    <span>次の一手</span>
+                  <TabsTrigger value="scenarios" className="flex items-center gap-1 text-xs sm:gap-1.5">
+                    <Lightbulb className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">次の一手</span>
                   </TabsTrigger>
                 </TabsList>
 
