@@ -274,20 +274,28 @@ describe('教育費（子ども）', () => {
     expect(result.yearlyData[0].childCosts).toBe(0)
   })
 
-  test('2歳 → まだ費用発生せず (年齢 < 3)', () => {
+  test('2歳 → 保育園費用 360,000 円（0〜2歳デフォルト）', () => {
     const result = runSingleSimulation(cfg({
       children: [{ birthYear: CURRENT_YEAR - 2, educationPath: 'public' }],
+      simulationYears: 0,
+    }))
+    expect(result.yearlyData[0].childCosts).toBe(360_000)
+  })
+
+  test('2歳・daycareAnnualCost=0 → 費用発生せず', () => {
+    const result = runSingleSimulation(cfg({
+      children: [{ birthYear: CURRENT_YEAR - 2, educationPath: 'public', daycareAnnualCost: 0 }],
       simulationYears: 0,
     }))
     expect(result.yearlyData[0].childCosts).toBe(0)
   })
 
-  test('3歳(幼稚園開始) → 公立: 230,000 円', () => {
+  test('3歳(幼稚園開始) → 公立: 220,000 円（文科省令和3年度）', () => {
     const result = runSingleSimulation(cfg({
       children: [{ birthYear: CURRENT_YEAR - 3, educationPath: 'public' }],
       simulationYears: 0,
     }))
-    expect(result.yearlyData[0].childCosts).toBeCloseTo(230_000, -1)
+    expect(result.yearlyData[0].childCosts).toBeCloseTo(220_000, -1)
   })
 
   test('6歳(小学校) → 公立: 320,000 円', () => {
@@ -298,38 +306,38 @@ describe('教育費（子ども）', () => {
     expect(result.yearlyData[0].childCosts).toBeCloseTo(320_000, -1)
   })
 
-  test('12歳(中学校) → 公立: 480,000 円', () => {
+  test('12歳(中学校) → 公立: 490,000 円（文科省令和3年度）', () => {
     const result = runSingleSimulation(cfg({
       children: [{ birthYear: CURRENT_YEAR - 12, educationPath: 'public' }],
       simulationYears: 0,
     }))
-    expect(result.yearlyData[0].childCosts).toBeCloseTo(480_000, -1)
+    expect(result.yearlyData[0].childCosts).toBeCloseTo(490_000, -1)
   })
 
-  test('15歳(高校) → 公立: 510,000 円', () => {
+  test('15歳(高校) → 公立: 460,000 円（文科省令和3年度）', () => {
     const result = runSingleSimulation(cfg({
       children: [{ birthYear: CURRENT_YEAR - 15, educationPath: 'public' }],
       simulationYears: 0,
     }))
-    expect(result.yearlyData[0].childCosts).toBeCloseTo(510_000, -1)
+    expect(result.yearlyData[0].childCosts).toBeCloseTo(460_000, -1)
   })
 
-  test('18歳(大学) → 公立: 1,200,000 円', () => {
+  test('18歳(大学) → 公立: 540,000 円（国公立授業料+入学金÷4年）', () => {
     const result = runSingleSimulation(cfg({
       children: [{ birthYear: CURRENT_YEAR - 18, educationPath: 'public' }],
       simulationYears: 0,
     }))
-    expect(result.yearlyData[0].childCosts).toBeCloseTo(1_200_000, -1)
+    expect(result.yearlyData[0].childCosts).toBeCloseTo(540_000, -1)
   })
 
-  test('21歳(大学最終年) → 公立: 1,200,000 円（最後の費用）', () => {
+  test('21歳(大学最終年) → 公立: 540,000 円（最後の費用）', () => {
     // EDUCATION_COSTS.public は ages 3–21 の 19 要素（index 0–18）
     // age 22: costIndex=19 は配列外 → 0 になる（後続テストで確認）
     const result = runSingleSimulation(cfg({
       children: [{ birthYear: CURRENT_YEAR - 21, educationPath: 'public' }],
       simulationYears: 0,
     }))
-    expect(result.yearlyData[0].childCosts).toBeCloseTo(1_200_000, -1)
+    expect(result.yearlyData[0].childCosts).toBeCloseTo(540_000, -1)
   })
 
   test('22歳 → 大学卒業後のため費用ゼロ（仕様通り）', () => {
@@ -364,13 +372,13 @@ describe('教育費（子ども）', () => {
     }
   })
 
-  test('mixed: 高校は私立(1,050,000)・小学校は公立(320,000)', () => {
-    // 高校(15歳): mixed → 私立 1,050,000
+  test('mixed: 高校は私立(1,000,000)・小学校は公立(320,000)', () => {
+    // 高校(15歳): mixed → 私立 1,000,000（文科省令和3年度）
     const highSchool = runSingleSimulation(cfg({
       children: [{ birthYear: CURRENT_YEAR - 15, educationPath: 'mixed' }],
       simulationYears: 0,
     })).yearlyData[0].childCosts
-    expect(highSchool).toBeCloseTo(1_050_000, -1)
+    expect(highSchool).toBeCloseTo(1_000_000, -1)
 
     // 小学校(6歳): mixed → 公立 320,000
     const primary = runSingleSimulation(cfg({
