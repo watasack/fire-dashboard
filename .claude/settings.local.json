@@ -74,7 +74,28 @@
       "Bash(powershell -command 'Get-Process -Id 17072')",
       "Bash(mkdir -p tools)",
       "Bash(mv take_screenshot.py tools/take_screenshot.py)",
-      "Bash(mv DEVELOPMENT.md docs/DEVELOPMENT.md)"
+      "Bash(mv DEVELOPMENT.md docs/DEVELOPMENT.md)",
+      "Bash(pnpm add:*)",
+      "Bash(pnpm test:*)",
+      "Bash(npx vitest:*)",
+      "Bash(node -e \":*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx jest:*)",
+      "Bash(npm test:*)",
+      "Bash(sed -i 's/year0: 前年収入=0 → 国保は均等割のみ + 国民年金/year0 で即FIRE達成 → year1 \\(isPostFire=true\\) から社保計算開始/' __tests__/simulator.test.ts)",
+      "Bash(sed -i 's/expect\\(result.yearlyData\\\\[0\\\\].postFireSocialInsurance\\).toBeGreaterThan\\(0\\)/expect\\(result.yearlyData[1].postFireSocialInsurance\\).toBeGreaterThan\\(0\\)/' __tests__/simulator.test.ts)",
+      "Bash(sed -i 's/expect\\(result.yearlyData\\\\[0\\\\].nhInsurancePremium\\).toBeGreaterThan\\(0\\)/expect\\(result.yearlyData[1].nhInsurancePremium\\).toBeGreaterThan\\(0\\)/' __tests__/simulator.test.ts)",
+      "Bash(sed -i 's/expect\\(result.yearlyData\\\\[0\\\\].nationalPensionPremium\\).toBe\\(16_980 \\\\* 12\\)/expect\\(result.yearlyData[1].nationalPensionPremium\\).toBe\\(16_980 * 12\\)/' __tests__/simulator.test.ts)",
+      "Bash(set PYTHONIOENCODING=utf-8)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000)",
+      "Bash(curl -s http://localhost:3000)",
+      "Bash(taskkill /F /PID 13784)",
+      "Bash(taskkill /F /IM node.exe)",
+      "Bash(cmd /c \"taskkill /F /PID 13784\")",
+      "Bash(cmd /c \"taskkill /F /IM node.exe\")",
+      "Bash(netstat -ano)",
+      "Bash(wmic process:*)",
+      "Bash(powershell -Command \"Get-Process -Id 13784 | Select-Object Name, CommandLine\")"
     ]
   }
 }
