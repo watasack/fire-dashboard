@@ -28,7 +28,24 @@ export interface GuardrailConfig {
     reduction2: number       // デフォルト: 0.80
     threshold3: number       // デフォルト: -0.35
     reduction3: number       // デフォルト: 0.95
-    discretionaryRatio: number  // デフォルト: 0.30
+    discretionaryRatio: number           // 後方互換: useLifecycleDiscretionary が false の時のみ使用
+    useLifecycleDiscretionary?: boolean  // true=ライフステージ別（家計調査ベース）, false=discretionaryRatio固定
+}
+
+/** 産休・育休設定（子ごと・週数・月数を詳細指定） */
+export interface MaternityLeaveEntry {
+    childBirthDate: string    // 'YYYY-MM' 形式（例: '2027-04'）
+    prenatalWeeks?: number    // 産前休暇週数（デフォルト: 6）
+    postnatalWeeks?: number   // 産後休暇週数（デフォルト: 8、法定最低）
+    childcareMonths?: number  // 産後休暇終了後の育休月数（デフォルト: 10）
+}
+
+/** 住宅メンテナンス費用（周期型） */
+export interface MaintenanceCost {
+    amount: number            // 1回あたりの費用（円）
+    intervalYears: number     // 周期（年）
+    firstYear: number         // 初回発生年（西暦）
+    label?: string            // 表示名（例: '外壁補修'）
 }
 
 export interface PensionConfig {
@@ -56,15 +73,18 @@ export interface Person {
     employmentType?: EmploymentType  // 雇用形態（省略時は 'employee'）
     /** @deprecated grossIncome を使うこと */
     currentIncome?: number
-    maternityLeaveChildBirthYears?: number[]  // 産休・育休を取る子の出生年（年単位近似）
+    /** @deprecated maternityLeaveConfig を使うこと */
+    maternityLeaveChildBirthYears?: number[]  // 産休・育休を取る子の出生年（年単位近似・後方互換）
+    maternityLeaveConfig?: MaternityLeaveEntry[]  // 産休・育休の詳細設定（月単位精度）
     partTimeUntilAge?: number | null          // 時短勤務終了年齢（この年齢になるまで時短）
     partTimeIncomeRatio?: number              // 時短中の収入比率（例: 0.7 = フル収入の70%）
 }
 
 export interface Child {
     birthYear: number
-    birthDate?: string          // 追加: 'YYYY-MM-DD' 形式（optional）
+    birthDate?: string              // 'YYYY-MM-DD' 形式（optional）
     educationPath: "public" | "private" | "mixed"
+    daycareAnnualCost?: number      // 0〜2歳の保育園年額（デフォルト: 360,000円）
 }
 
 export interface MortgageConfig {
@@ -155,6 +175,9 @@ export interface SimulationConfig {
     // Post-FIRE social insurance
     postFireSocialInsurance: PostFireSocialInsuranceConfig
 
+    // 住宅メンテナンス費用（周期型）
+    maintenanceCosts?: MaintenanceCost[]
+
     // Withdrawal strategy (Phase 7)
     withdrawalStrategy?: WithdrawalStrategy   // デフォルト: 'fixed'
     guardrailConfig?: GuardrailConfig         // guardrail 選択時に使用
@@ -203,6 +226,7 @@ export interface YearlyData {
     nhInsurancePremium: number        // 国保保険料（FIRE後のみ、就労中は0）
     nationalPensionPremium: number    // 国民年金保険料（FIRE後60歳未満のみ）
     postFireSocialInsurance: number   // 国保 + 国民年金の合計
+    maintenanceCost: number            // 住宅メンテナンス費用（周期的大型出費）
     drawdownFromPeak: number           // ピークからの下落率（-0.1 = -10%）
     discretionaryReductionRate: number // 当年の裁量支出削減率（0〜1）
 }
@@ -375,7 +399,14 @@ export const DEFAULT_CONFIG: SimulationConfig = {
         pensionStartAge: 65,
         pensionAmount: 1200000, // 120万円/年
         employmentType: 'employee',
-        maternityLeaveChildBirthYears: [2022],
+        maternityLeaveConfig: [
+            {
+                childBirthDate: '2022-07',  // 産休・育休を取る子の出生年月
+                prenatalWeeks: 6,
+                postnatalWeeks: 8,
+                childcareMonths: 10,
+            }
+        ],
         partTimeUntilAge: 38,
         partTimeIncomeRatio: 0.7,
     },
@@ -424,7 +455,11 @@ export const DEFAULT_CONFIG: SimulationConfig = {
         threshold3: -0.35,
         reduction3: 0.95,
         discretionaryRatio: 0.30,
+        useLifecycleDiscretionary: true,  // ライフステージ別裁量支出比率（家計調査ベース）
     },
+
+    // 住宅メンテナンス費用（周期型・任意）
+    maintenanceCosts: [],
 
     // Post-FIRE social insurance
     postFireSocialInsurance: {
@@ -443,44 +478,62 @@ export const DEFAULT_CONFIG: SimulationConfig = {
 // Education Cost Calculator
 // ----------------------------------------------------------------------------
 
+// 文部科学省「子供の学習費調査」令和3年度データ準拠
+// 大学は国公立・私立の学納金（授業料等）のみ。生活費は基本生活費に含まれる。
 const EDUCATION_COSTS: Record<"public" | "private" | "mixed", number[]> = {
-    // Annual costs by age (3-21歳), based on 文部科学省 data
+    // Annual costs by age (3-21歳)
     public: [
-        // 幼稚園 (3-5)
-        230000, 230000, 230000,
-        // 小学校 (6-11)
+        // 幼稚園 (3-5): 222,264円/年→無償化後実費 約220,000円
+        220000, 220000, 220000,
+        // 小学校 (6-11): 321,281円/年
         320000, 320000, 320000, 320000, 320000, 320000,
-        // 中学校 (12-14)
-        480000, 480000, 480000,
-        // 高校 (15-17)
-        510000, 510000, 510000,
-        // 大学 (18-21)
-        1200000, 1200000, 1200000, 1200000,
+        // 中学校 (12-14): 488,397円/年
+        490000, 490000, 490000,
+        // 高校 (15-17): 457,380円/年
+        460000, 460000, 460000,
+        // 大学 国公立 (18-21): 授業料535,800円+入学金282,000円÷4年≒606,300→年約540,000円
+        540000, 540000, 540000, 540000,
     ],
     private: [
-        // 幼稚園 (3-5)
+        // 幼稚園 (3-5): 527,916円/年
         530000, 530000, 530000,
-        // 小学校 (6-11)
+        // 小学校 (6-11): 1,592,985円/年
         1600000, 1600000, 1600000, 1600000, 1600000, 1600000,
-        // 中学校 (12-14)
+        // 中学校 (12-14): 1,406,433円/年
         1400000, 1400000, 1400000,
-        // 高校 (15-17)
-        1050000, 1050000, 1050000,
-        // 大学 (18-21)
-        2500000, 2500000, 2500000, 2500000,
+        // 高校 (15-17): 969,911円/年→100万
+        1000000, 1000000, 1000000,
+        // 大学 私立文系 (18-21): 授業料約800,000円+入学金250,000円÷4年≒1,062,500→年約1,300,000円
+        1300000, 1300000, 1300000, 1300000,
     ],
     mixed: [
         // 幼稚園: 公立 (3-5)
-        230000, 230000, 230000,
+        220000, 220000, 220000,
         // 小学校: 公立 (6-11)
         320000, 320000, 320000, 320000, 320000, 320000,
         // 中学校: 公立 (12-14)
-        480000, 480000, 480000,
+        490000, 490000, 490000,
         // 高校: 私立 (15-17)
-        1050000, 1050000, 1050000,
+        1000000, 1000000, 1000000,
         // 大学: 私立 (18-21)
-        2500000, 2500000, 2500000, 2500000,
+        1300000, 1300000, 1300000, 1300000,
     ],
+}
+
+function calculateMaintenanceCost(
+    costs: MaintenanceCost[] | undefined,
+    currentSimYear: number
+): number {
+    if (!costs || costs.length === 0) return 0
+    let total = 0
+    for (const cost of costs) {
+        if (currentSimYear < cost.firstYear) continue
+        const yearsSinceFirst = currentSimYear - cost.firstYear
+        if (yearsSinceFirst % cost.intervalYears === 0) {
+            total += cost.amount
+        }
+    }
+    return total
 }
 
 function calculateMortgageCost(
@@ -519,7 +572,12 @@ function calculateChildCosts(children: Child[], year: number, inflationRate: num
     for (const child of children) {
         const childAge = year - child.birthYear
 
-        // Only calculate costs for ages 3-21 (大学4年間: 18-21歳)
+        // 0〜2歳: 保育園費用（認可保育園は所得連動のためインフレ調整なし）
+        if (childAge >= 0 && childAge <= 2) {
+            totalCost += child.daycareAnnualCost ?? 360_000
+        }
+
+        // 3〜21歳: 学校教育費（文科省データ準拠）
         if (childAge >= 3 && childAge <= 21) {
             const costIndex = childAge - 3
             const baseCost = EDUCATION_COSTS[child.educationPath][costIndex] || 0
@@ -562,47 +620,140 @@ function calculateIncome(
 // Maternity / Parental Leave Income Calculator
 // ----------------------------------------------------------------------------
 
+// ----------------------------------------------------------------------------
+// Maternity / Parental Leave - Month-precision calculation
+// ----------------------------------------------------------------------------
+
 /**
- * 産休・育休取得年の給付金を計算する（年単位近似）
- * @param person 対象の人
- * @param isYear1 true=産休育休1年目(birthYear)、false=育休継続(birthYear+1)
- * @returns 非課税の年間給付金額（円）
+ * 指定した暦年の中で、特定の期間に含まれる月数を数える
+ * @param simYear 対象年（西暦）
+ * @param birthYear 出生年
+ * @param birthMonth 出生月（1-12）
+ * @param startMonthOffset 期間開始（出生月を0とした月オフセット、産前は負値）
+ * @param endMonthOffset 期間終了（出生月を0とした月オフセット、以上未満）
  */
-function calculateMaternityLeaveIncome(
-    person: Person,
-    isYear1: boolean
+function countLeaveMonthsInYear(
+    simYear: number,
+    birthYear: number,
+    birthMonth: number,
+    startMonthOffset: number,
+    endMonthOffset: number
 ): number {
-    if (person.employmentType === 'selfEmployed' || person.employmentType === 'homemaker') {
-        return 0  // 個人事業主・専業主婦は給付金なし
+    let count = 0
+    for (let m = 1; m <= 12; m++) {
+        // 各月の中旬（0.5）を基準に判定
+        const monthsFromBirth = (simYear - birthYear) * 12 + (m - birthMonth) + 0.5
+        if (monthsFromBirth >= startMonthOffset && monthsFromBirth < endMonthOffset) {
+            count++
+        }
     }
-    const monthlyStandard = Math.min((person.grossIncome ?? 0) / 12, 635_000)
-    if (isYear1) {
-        // 産休(2ヶ月) + 育休前半180日(約6ヶ月): 月額×2/3 × 8ヶ月 + 育休後半(約4ヶ月): 月額×0.5 × 4ヶ月
-        return monthlyStandard * (2 / 3) * 8 + monthlyStandard * 0.5 * 4
-    } else {
-        // 育休継続（残り期間: 約8ヶ月を月額×0.5として近似）
-        return monthlyStandard * 0.5 * 8
-    }
+    return count
 }
 
 /**
- * 産休育休対象年かどうかを判定する
- * @param person 対象の人
- * @param currentSimYear シミュレーション対象年（西暦）
- * @returns 'year1' | 'year2' | null
+ * 産休・育休対象年かどうか判定する（後方互換用 + maternityLeaveConfig 両対応）
+ * maternityLeaveConfig が設定されていれば true/false を返す（詳細計算は別関数）
  */
-function isMaternityLeaveYear(
+function getMaternityLeaveStatus(
     person: Person,
     currentSimYear: number
-): 'year1' | 'year2' | null {
-    if (!person.maternityLeaveChildBirthYears || person.maternityLeaveChildBirthYears.length === 0) {
-        return null
+): boolean {
+    // 新設定（月単位精度）
+    if (person.maternityLeaveConfig && person.maternityLeaveConfig.length > 0) {
+        for (const entry of person.maternityLeaveConfig) {
+            const [birthYear, birthMonth] = entry.childBirthDate.split('-').map(Number)
+            const prenatalWeeks = entry.prenatalWeeks ?? 6
+            const postnatalWeeks = entry.postnatalWeeks ?? 8
+            const childcareMonths = entry.childcareMonths ?? 10
+            const prenatalMonths = prenatalWeeks * 7 / 30.44
+            const postnatalMonths = postnatalWeeks * 7 / 30.44
+            const leaveEnd = postnatalMonths + childcareMonths
+
+            // 産前〜育休終了の期間に currentSimYear の月が1つでも含まれれば対象年
+            const months = countLeaveMonthsInYear(currentSimYear, birthYear, birthMonth, -prenatalMonths, leaveEnd)
+            if (months > 0) return true
+        }
+        return false
     }
-    for (const birthYear of person.maternityLeaveChildBirthYears) {
-        if (currentSimYear === birthYear) return 'year1'
-        if (currentSimYear === birthYear + 1) return 'year2'
+    // 後方互換（年単位近似）
+    if (person.maternityLeaveChildBirthYears && person.maternityLeaveChildBirthYears.length > 0) {
+        for (const by of person.maternityLeaveChildBirthYears) {
+            if (currentSimYear === by || currentSimYear === by + 1) return true
+        }
     }
-    return null
+    return false
+}
+
+/**
+ * 産休・育休期間の年間収入を計算する（月単位精度）
+ * 給付金月は非課税、就労月は課税対象として分離して返す。
+ * @returns { leaveIncome: 給付金合計（非課税）, workGross: 就労月の総支給（課税対象） }
+ */
+function calculateMaternityLeaveIncomeForYear(
+    person: Person,
+    currentSimYear: number
+): { leaveIncome: number; workGross: number } {
+    const hasInsurance = person.employmentType === 'employee'
+    const monthlyStandard = Math.min((person.grossIncome ?? 0) / 12, 635_000)
+    const regularMonthlyGross = (person.grossIncome ?? 0) / 12
+
+    type Phase = 'prenatalPostnatal' | 'half1' | 'half2' | 'work'
+    const monthPhases = new Array(12).fill('work') as Phase[]
+
+    // 後方互換: maternityLeaveChildBirthYears は年単位近似（月単位変換しない）
+    if (!person.maternityLeaveConfig || person.maternityLeaveConfig.length === 0) {
+        for (const by of (person.maternityLeaveChildBirthYears ?? [])) {
+            if (currentSimYear === by) {
+                // 出生年: 産前産後8週+育休前半(6ヶ月) = 8ヶ月 @ 2/3, 育休後半(4ヶ月) @ 50%
+                const leaveIncomeLegacy = hasInsurance
+                    ? monthlyStandard * (2 / 3) * 8 + monthlyStandard * 0.5 * 4
+                    : 0
+                return { leaveIncome: leaveIncomeLegacy, workGross: 0 }
+            } else if (currentSimYear === by + 1) {
+                // 翌年: 育休後半(8ヶ月) @ 50%, 残り4ヶ月は就労ゼロ（年単位近似）
+                const leaveIncomeLegacy = hasInsurance ? monthlyStandard * 0.5 * 8 : 0
+                return { leaveIncome: leaveIncomeLegacy, workGross: 0 }
+            }
+        }
+        return { leaveIncome: 0, workGross: 0 }
+    }
+
+    const entries = person.maternityLeaveConfig
+
+    for (const entry of entries) {
+        const [birthYear, birthMonth] = entry.childBirthDate.split('-').map(Number)
+        const prenatalMonths = (entry.prenatalWeeks ?? 6) * 7 / 30.44
+        const postnatalMonths = (entry.postnatalWeeks ?? 8) * 7 / 30.44
+        const half1End = postnatalMonths + 6
+        const half2End = postnatalMonths + (entry.childcareMonths ?? 10)
+
+        for (let m = 1; m <= 12; m++) {
+            const mfb = (currentSimYear - birthYear) * 12 + (m - birthMonth) + 0.5
+            if (mfb >= -prenatalMonths && mfb < postnatalMonths) {
+                monthPhases[m - 1] = 'prenatalPostnatal'
+            } else if (mfb >= postnatalMonths && mfb < half1End) {
+                monthPhases[m - 1] = 'half1'
+            } else if (mfb >= half1End && mfb < half2End) {
+                monthPhases[m - 1] = 'half2'
+            }
+        }
+    }
+
+    let leaveIncome = 0
+    let workGross = 0
+    for (const phase of monthPhases) {
+        if (phase === 'prenatalPostnatal') {
+            leaveIncome += hasInsurance ? monthlyStandard * (2 / 3) : 0
+        } else if (phase === 'half1') {
+            leaveIncome += hasInsurance ? monthlyStandard * 0.67 : 0
+        } else if (phase === 'half2') {
+            leaveIncome += hasInsurance ? monthlyStandard * 0.50 : 0
+        } else {
+            workGross += regularMonthlyGross
+        }
+    }
+
+    return { leaveIncome, workGross }
 }
 
 /**
@@ -623,33 +774,69 @@ function getPartTimeRatio(person: Person, age: number): number {
 // Tax Calculator
 // ----------------------------------------------------------------------------
 
+/**
+ * 給与所得（給与所得控除後）を計算する
+ * calculateTaxBreakdown と配偶者控除の両方から利用する共通ロジック
+ */
+function calculateEmploymentIncome(grossIncome: number, employmentType: EmploymentType): number {
+    if (employmentType !== 'employee') return grossIncome  // 個人事業主・専業主婦はそのまま
+    if (grossIncome <= 1_625_000) return Math.max(0, grossIncome - 550_000)
+    if (grossIncome <= 1_800_000) return Math.max(0, grossIncome - Math.max(550_000, grossIncome * 0.4 - 100_000))
+    if (grossIncome <= 3_600_000) return grossIncome - (grossIncome * 0.3 + 80_000)
+    if (grossIncome <= 6_600_000) return grossIncome - (grossIncome * 0.2 + 440_000)
+    if (grossIncome <= 8_500_000) return grossIncome - (grossIncome * 0.1 + 1_100_000)
+    return grossIncome - 1_950_000
+}
+
+/**
+ * 配偶者控除・配偶者特別控除額を計算する（2024年度）
+ * @param ownEmploymentIncome 申告者の給与所得（給与所得控除後）
+ * @param spouseEmploymentIncome 配偶者の給与所得（給与所得控除後）
+ * @returns 控除額（円）
+ */
+function calculateSpouseDeduction(
+    ownEmploymentIncome: number,
+    spouseEmploymentIncome: number
+): number {
+    // 申告者の合計所得が1,000万超 → 控除なし
+    if (ownEmploymentIncome > 10_000_000) return 0
+    // 配偶者の合計所得が133万超 → 控除なし
+    if (spouseEmploymentIncome > 1_330_000) return 0
+
+    // 申告者の所得階層で控除逓減率を決定
+    const ownTierMultiplier =
+        ownEmploymentIncome <= 9_000_000 ? 1.0 :
+        ownEmploymentIncome <= 9_500_000 ? 2/3 :
+        1/3
+
+    // 配偶者の合計所得 ≤ 480,000 → 配偶者控除（満額38万）
+    if (spouseEmploymentIncome <= 480_000) {
+        return Math.round(380_000 * ownTierMultiplier)
+    }
+
+    // 配偶者特別控除（48万超〜133万以下）: 国税庁テーブル準拠
+    const baseDeduction =
+        spouseEmploymentIncome <= 950_000  ? 380_000 :
+        spouseEmploymentIncome <= 1_000_000 ? 360_000 :
+        spouseEmploymentIncome <= 1_050_000 ? 310_000 :
+        spouseEmploymentIncome <= 1_100_000 ? 260_000 :
+        spouseEmploymentIncome <= 1_150_000 ? 210_000 :
+        spouseEmploymentIncome <= 1_200_000 ? 160_000 :
+        spouseEmploymentIncome <= 1_250_000 ? 110_000 :
+        spouseEmploymentIncome <= 1_300_000 ?  60_000 :
+        spouseEmploymentIncome <= 1_330_000 ?  30_000 :
+        0
+    return Math.round(baseDeduction * ownTierMultiplier)
+}
+
 export function calculateTaxBreakdown(
     grossIncome: number,
     employmentType: EmploymentType,
-    age: number
+    age: number,
+    spouseEmploymentIncome?: number   // 配偶者控除計算用（配偶者の給与所得）
 ): TaxBreakdown {
     // --- 給与所得（給与所得控除後）---
-    let employmentIncome: number
-    if (employmentType === 'employee') {
-        let deduction: number
-        if (grossIncome <= 1_625_000) {
-            deduction = 550_000
-        } else if (grossIncome <= 1_800_000) {
-            deduction = Math.max(550_000, grossIncome * 0.4 - 100_000)
-        } else if (grossIncome <= 3_600_000) {
-            deduction = grossIncome * 0.3 + 80_000
-        } else if (grossIncome <= 6_600_000) {
-            deduction = grossIncome * 0.2 + 440_000
-        } else if (grossIncome <= 8_500_000) {
-            deduction = grossIncome * 0.1 + 1_100_000
-        } else {
-            deduction = 1_950_000
-        }
-        employmentIncome = Math.max(0, grossIncome - deduction)
-    } else {
-        // 個人事業主・専業主婦: 給与所得控除なし
-        employmentIncome = grossIncome
-    }
+    const employmentIncome = Math.max(0, calculateEmploymentIncome(grossIncome, employmentType))
 
     // --- 社会保険料 ---
     let socialInsurance: number
@@ -685,7 +872,10 @@ export function calculateTaxBreakdown(
 
     // --- 課税所得 ---
     const basicDeduction = 480_000
-    const taxableIncome = Math.max(0, employmentIncome - socialInsurance - basicDeduction)
+    const spouseDeduction = spouseEmploymentIncome !== undefined
+        ? calculateSpouseDeduction(employmentIncome, spouseEmploymentIncome)
+        : 0
+    const taxableIncome = Math.max(0, employmentIncome - socialInsurance - basicDeduction - spouseDeduction)
 
     // --- 所得税（累進課税）+ 復興特別所得税 2.1% ---
     let baseIncomeTax: number
@@ -966,13 +1156,35 @@ export function calculatePostFireSocialInsurance(
 // Withdrawal Strategy Calculator (Phase 7)
 // ----------------------------------------------------------------------------
 
+/**
+ * ライフステージ別の裁量支出比率（総務省家計調査2023年ベース）
+ * 裁量支出 = 外食・被服・教養娯楽・旅行・美容・趣味等、暴落時に削減可能な支出
+ */
+const LIFECYCLE_DISCRETIONARY_RATIOS: Record<string, number> = {
+    withPreschooler:      0.30,  // 未就学: 子育て期は外食・旅行が制限される
+    withElementaryChild:  0.34,  // 小学生: 習い事・レジャーが増える
+    withJuniorHighChild:  0.37,  // 中学生: 部活・塾が増えるが旅行も増加
+    withHighSchoolChild:  0.39,  // 高校生: 旅行・外食が増える
+    withCollegeChild:     0.40,  // 大学生: 旅行・趣味に充てやすくなる
+    emptyNestActive:      0.42,  // 独立後〜69歳: 旅行・趣味が最大化
+    emptyNestSenior:      0.35,  // 70〜79歳: 医療費増加で裁量比率が低下
+    emptyNestElderly:     0.28,  // 80歳〜: 介護・医療費が大半を占める
+    fixed:                0.32,  // 固定支出モード時のフォールバック
+}
+
+function getLifecycleDiscretionaryRatio(lifecycleStage: string | undefined): number {
+    if (!lifecycleStage) return 0.32
+    return LIFECYCLE_DISCRETIONARY_RATIOS[lifecycleStage] ?? 0.32
+}
+
 export function calculateWithdrawalAmount(
     strategy: WithdrawalStrategy,
     baseExpenses: number,
     totalAssets: number,
     peakAssets: number,
     safeWithdrawalRate: number,
-    guardrailConfig?: GuardrailConfig
+    guardrailConfig?: GuardrailConfig,
+    lifecycleStage?: string   // ライフステージ別裁量比率の算出に使用
 ): { actualExpenses: number; drawdownFromPeak: number; discretionaryReductionRate: number } {
     if (strategy === 'percentage') {
         const targetWithdrawal = totalAssets * safeWithdrawalRate
@@ -994,8 +1206,11 @@ export function calculateWithdrawalAmount(
             discretionaryReductionRate = guardrailConfig.reduction1
         }
 
-        const essentialExpenses = baseExpenses * (1 - guardrailConfig.discretionaryRatio)
-        const discretionaryExpenses = baseExpenses * guardrailConfig.discretionaryRatio
+        const effectiveDiscretionaryRatio = (guardrailConfig.useLifecycleDiscretionary ?? false)
+            ? getLifecycleDiscretionaryRatio(lifecycleStage)
+            : guardrailConfig.discretionaryRatio
+        const essentialExpenses = baseExpenses * (1 - effectiveDiscretionaryRatio)
+        const discretionaryExpenses = baseExpenses * effectiveDiscretionaryRatio
         const actualExpenses = essentialExpenses + discretionaryExpenses * (1 - discretionaryReductionRate)
 
         return { actualExpenses, drawdownFromPeak, discretionaryReductionRate }
@@ -1138,38 +1353,92 @@ export function runSingleSimulation(
             isSemiFire = false
             semiFIREGross = 0
             // FIRE前: 就労収入（産休育休・時短勤務を考慮）
-            // person1 の収入計算
-            const p1LeaveStatus = isMaternityLeaveYear(config.person1, currentSimYear)
+
+            // --- Step1: 各人の総支給額と「給与所得（控除後）」を先算出（配偶者控除の相互参照に使う）---
+            const p1LeaveStatus = getMaternityLeaveStatus(config.person1, currentSimYear)
+            const p1Ratio = getPartTimeRatio(config.person1, person1Age)
+            // 産休育休中でも就労月の給与は課税対象 → 配偶者控除の判定に使う就労月分を取得
+            const p1RawGross = p1LeaveStatus
+                ? calculateMaternityLeaveIncomeForYear(config.person1, currentSimYear).workGross
+                : calculateIncome(config.person1, person1Age, config.inflationRate, year) * p1Ratio
+            const p1EmpIncome = calculateEmploymentIncome(p1RawGross, config.person1.employmentType ?? 'employee')
+
+            let p2RawGross = 0
+            let p2EmpIncome = 0
+            if (config.person2) {
+                const p2LeaveStatus = getMaternityLeaveStatus(config.person2, currentSimYear)
+                const p2Ratio = getPartTimeRatio(config.person2, person2Age)
+                p2RawGross = p2LeaveStatus
+                    ? calculateMaternityLeaveIncomeForYear(config.person2, currentSimYear).workGross
+                    : calculateIncome(config.person2, person2Age, config.inflationRate, year) * p2Ratio
+                p2EmpIncome = calculateEmploymentIncome(p2RawGross, config.person2.employmentType ?? 'employee')
+            }
+
+            // --- Step2: 配偶者控除を反映してそれぞれ税計算 ---
             let p1Income: number
             let p1Tax: number
             if (p1LeaveStatus) {
-                p1Income = calculateMaternityLeaveIncome(config.person1, p1LeaveStatus === 'year1')
-                p1Tax = 0  // 給付金は非課税
-                totalIncome = 0  // 産休中は給与収入ゼロ
+                // 産休育休年: 就労月（課税）+ 給付金月（非課税）を分離して計算
+                const { leaveIncome: p1Leave, workGross: p1WorkGross } =
+                    calculateMaternityLeaveIncomeForYear(config.person1, currentSimYear)
+                const p1WorkEmpIncome = calculateEmploymentIncome(p1WorkGross, config.person1.employmentType ?? 'employee')
+                let p1WorkNet = p1WorkGross
+                p1Tax = 0
+                if (p1WorkGross > 0) {
+                    const p1Bd = calculateTaxBreakdown(
+                        p1WorkGross,
+                        config.person1.employmentType ?? 'employee',
+                        person1Age,
+                        config.person2 ? p2EmpIncome : undefined
+                    )
+                    p1WorkNet = p1Bd.netIncome
+                    p1Tax = p1Bd.totalTax
+                }
+                p1Income = p1WorkNet + p1Leave  // 手取り就労収入 + 非課税給付金
+                totalIncome = p1WorkGross        // gross は課税分のみ記録
             } else {
-                const p1Ratio = getPartTimeRatio(config.person1, person1Age)
-                const p1Gross = calculateIncome(config.person1, person1Age, config.inflationRate, year) * p1Ratio
-                const p1Breakdown = calculateTaxBreakdown(p1Gross, config.person1.employmentType ?? 'employee', person1Age)
+                const p1Breakdown = calculateTaxBreakdown(
+                    p1RawGross,
+                    config.person1.employmentType ?? 'employee',
+                    person1Age,
+                    config.person2 ? p2EmpIncome : undefined  // 配偶者控除
+                )
                 p1Income = p1Breakdown.netIncome
                 p1Tax = p1Breakdown.totalTax
-                totalIncome = p1Gross
+                totalIncome = p1RawGross
             }
 
-            // person2 の収入計算
             let p2Income = 0
             let p2Tax = 0
             if (config.person2) {
-                const p2LeaveStatus = isMaternityLeaveYear(config.person2, currentSimYear)
+                const p2LeaveStatus = getMaternityLeaveStatus(config.person2, currentSimYear)
                 if (p2LeaveStatus) {
-                    p2Income = calculateMaternityLeaveIncome(config.person2, p2LeaveStatus === 'year1')
-                    p2Tax = 0  // 給付金は非課税
+                    const { leaveIncome: p2Leave, workGross: p2WorkGross } =
+                        calculateMaternityLeaveIncomeForYear(config.person2, currentSimYear)
+                    let p2WorkNet = p2WorkGross
+                    p2Tax = 0
+                    if (p2WorkGross > 0) {
+                        const p2Bd = calculateTaxBreakdown(
+                            p2WorkGross,
+                            config.person2.employmentType ?? 'employee',
+                            person2Age,
+                            p1EmpIncome
+                        )
+                        p2WorkNet = p2Bd.netIncome
+                        p2Tax = p2Bd.totalTax
+                    }
+                    p2Income = p2WorkNet + p2Leave
+                    totalIncome += p2WorkGross
                 } else {
-                    const p2Ratio = getPartTimeRatio(config.person2, person2Age)
-                    const p2Gross = calculateIncome(config.person2, person2Age, config.inflationRate, year) * p2Ratio
-                    const p2Breakdown = calculateTaxBreakdown(p2Gross, config.person2.employmentType ?? 'employee', person2Age)
+                    const p2Breakdown = calculateTaxBreakdown(
+                        p2RawGross,
+                        config.person2.employmentType ?? 'employee',
+                        person2Age,
+                        p1EmpIncome  // 配偶者控除
+                    )
                     p2Income = p2Breakdown.netIncome
                     p2Tax = p2Breakdown.totalTax
-                    totalIncome += p2Gross
+                    totalIncome += p2RawGross
                 }
             }
 
@@ -1202,6 +1471,9 @@ export function runSingleSimulation(
         // Calculate mortgage cost
         const mortgageCost = calculateMortgageCost(config.mortgage, currentSimYear)
 
+        // Calculate maintenance cost (周期的大型出費)
+        const maintenanceCost = calculateMaintenanceCost(config.maintenanceCosts, currentSimYear)
+
         // FIRE後社会保険料（国保 + 国民年金）
         const householdSize = config.person2 ? 2 : 1
         let nhip = 0
@@ -1233,7 +1505,8 @@ export function runSingleSimulation(
                 effectiveTotalAssets,
                 peakAssets,
                 config.safeWithdrawalRate,
-                config.guardrailConfig
+                config.guardrailConfig,
+                lifecycleStage
             )
             baseExpenses = withdrawalResult.actualExpenses
             drawdownFromPeak = withdrawalResult.drawdownFromPeak
@@ -1241,7 +1514,7 @@ export function runSingleSimulation(
         }
 
         // Total expenses（FIRE後は社会保険料を上乗せ）
-        const totalExpenses = baseExpenses + childCosts + mortgageCost + postFireSI
+        const totalExpenses = baseExpenses + childCosts + mortgageCost + maintenanceCost + postFireSI
 
         // Calculate child allowance (non-taxable, added directly to net income)
         const childAllowance = (config.childAllowanceEnabled !== false)
@@ -1387,6 +1660,7 @@ export function runSingleSimulation(
             savings,
             childCosts,
             mortgageCost,
+            maintenanceCost,
             childAllowance,
             fireNumber: currentFireNumber,
             isFireAchieved,
