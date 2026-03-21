@@ -444,7 +444,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
                       max={1000}
                       value={Math.round((config.lifecycleExpenses?.[key as keyof LifecycleExpenseConfig] ?? defaultVal * 10000) / 10000)}
                       onChange={(e) => {
-                        const val = Number(e.target.value) * 10000
+                        const val = Math.max(0, Number(e.target.value)) * 10000
                         onConfigChange({
                           ...config,
                           lifecycleExpenses: {
