@@ -112,7 +112,7 @@ export function MetricsSummary({ config, result, mcResult, isCalculating }: Metr
                   </div>
                   <p className="text-xs text-muted-foreground">FIRE成功確率（1000通り）</p>
                 </div>
-                <p className="font-semibold text-sm leading-snug">{mcResult.successCountFormatted}</p>
+                <p className="font-semibold text-lg">{formatPercent(mcResult.successRate)}</p>
                 {mcResult.depletionAgeP10 !== null && (
                   <p className="text-xs text-muted-foreground mt-1">
                     最悪シナリオ（下位10%）: {mcResult.depletionAgeP10}歳まで資産が持ちます

@@ -609,7 +609,8 @@ function calculateIncome(
         return (person.pensionAmount ?? 0) * inflationMultiplier
     }
 
-    // Working income with growth
+    // Working income with growth (homemaker has no earned income)
+    if ((person.employmentType ?? 'employee') === 'homemaker') return 0
     const yearsWorked = age - person.currentAge
     const growthMultiplier = Math.pow(1 + person.incomeGrowthRate, yearsWorked)
     const gross = person.grossIncome ?? person.currentIncome ?? 0

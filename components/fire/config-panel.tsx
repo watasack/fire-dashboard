@@ -160,6 +160,7 @@ function PersonConfig({
             const employmentType = e.target.value as EmploymentType
             const updates: Partial<typeof person> = { employmentType }
             if (employmentType === 'selfEmployed') updates.incomeGrowthRate = 0
+            if (employmentType === 'homemaker') { updates.grossIncome = 0; updates.incomeGrowthRate = 0 }
             onChange({ ...person, ...updates })
           }}
         >
