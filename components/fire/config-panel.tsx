@@ -7,7 +7,7 @@ import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion"
-import { SimulationConfig, Person, EmploymentType, WithdrawalStrategy, MCReturnModel, PostFireIncomeConfig, LifecycleExpenseConfig, ChildEducationPaths, EDUCATION_PATHS_PRESETS } from "@/lib/simulator"
+import { SimulationConfig, Person, EmploymentType, WithdrawalStrategy, MCReturnModel, PostFireIncomeConfig, LifecycleExpenseConfig, ChildEducationPaths, EDUCATION_PATHS_PRESETS, calcMortgageMonthlyPayment } from "@/lib/simulator"
 import { formatCurrency, cn } from "@/lib/utils"
 import { User, Users, Wallet, TrendingUp, Baby, PiggyBank, Settings2, Info } from "lucide-react"
 
@@ -1022,43 +1022,173 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
             />
           </div>
         </CardHeader>
-        {config.mortgage !== null && config.mortgage !== undefined && (
-          <CardContent className="space-y-6">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <FieldLabel label="月額返済額" tooltip="毎月の住宅ローン返済額です。完済年まで支出として計算されます" />
-                <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.mortgage.monthlyPayment)}/月</span>
-              </div>
-              <Slider
-                value={[config.mortgage.monthlyPayment]}
-                onValueChange={([value]) => onConfigChange({
-                  ...config,
-                  mortgage: { ...(config.mortgage!), monthlyPayment: value },
-                })}
-                min={30000}
-                max={300000}
-                step={5000}
-              />
-            </div>
+        {config.mortgage !== null && config.mortgage !== undefined && (() => {
+          const m = config.mortgage!
+          const isDetail = m.loanAmount !== undefined
+          const currentYear = new Date().getFullYear()
+          const loanAmount    = m.loanAmount    ?? 30_000_000
+          const interestRate  = m.interestRate  ?? 0.005
+          const loanTermYears = m.loanTermYears ?? 35
+          const loanStartYear = m.loanStartYear ?? currentYear
+          const loanType      = m.loanType      ?? "variable"
+          const variableRateForecast = m.variableRateForecast ?? 0.02
 
-            <div className="space-y-3">
+          function applyDetail(updates: Partial<typeof m>) {
+            const next = { ...m, ...updates }
+            // 詳細入力時は月額・完済年を自動計算
+            if (next.loanAmount !== undefined && next.interestRate !== undefined && next.loanTermYears !== undefined && next.loanStartYear !== undefined) {
+              next.monthlyPayment = Math.round(calcMortgageMonthlyPayment(next.loanAmount, next.interestRate, next.loanTermYears))
+              next.endYear = next.loanStartYear + next.loanTermYears
+            }
+            onConfigChange({ ...config, mortgage: next })
+          }
+
+          return (
+            <CardContent className="space-y-5">
+              {/* モード切替 */}
               <div className="flex items-center justify-between">
-                <FieldLabel label="完済年" tooltip="ローンが終わる予定の西暦年。完済後は月々の支出が減るので、FIREが近づきます" />
-                <span className="text-sm font-mono text-muted-foreground">{config.mortgage.endYear}年</span>
+                <span className="text-sm text-muted-foreground">借入条件から計算</span>
+                <Switch
+                  checked={isDetail}
+                  onCheckedChange={(checked) => {
+                    if (checked) {
+                      applyDetail({ loanAmount, interestRate, loanTermYears, loanStartYear, loanType })
+                    } else {
+                      const { loanAmount: _a, interestRate: _r, loanTermYears: _t, loanStartYear: _s, loanType: _l, variableRateForecast: _v, ...simple } = m
+                      onConfigChange({ ...config, mortgage: simple })
+                    }
+                  }}
+                />
               </div>
-              <Slider
-                value={[config.mortgage.endYear]}
-                onValueChange={([value]) => onConfigChange({
-                  ...config,
-                  mortgage: { ...(config.mortgage!), endYear: value },
-                })}
-                min={2025}
-                max={2060}
-                step={1}
-              />
-            </div>
-          </CardContent>
-        )}
+
+              {!isDetail ? (
+                <>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <FieldLabel label="月額返済額" tooltip="毎月の住宅ローン返済額です。完済年まで支出として計算されます" />
+                      <span className="text-sm font-mono text-muted-foreground">{formatCurrency(m.monthlyPayment)}/月</span>
+                    </div>
+                    <Slider
+                      value={[m.monthlyPayment]}
+                      onValueChange={([value]) => onConfigChange({ ...config, mortgage: { ...m, monthlyPayment: value } })}
+                      min={30000} max={300000} step={5000}
+                    />
+                  </div>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <FieldLabel label="完済年" tooltip="ローンが終わる予定の西暦年。完済後は月々の支出が減るので、FIREが近づきます" />
+                      <span className="text-sm font-mono text-muted-foreground">{m.endYear}年</span>
+                    </div>
+                    <Slider
+                      value={[m.endYear]}
+                      onValueChange={([value]) => onConfigChange({ ...config, mortgage: { ...m, endYear: value } })}
+                      min={2025} max={2060} step={1}
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* 借入額 */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <FieldLabel label="借入額" tooltip="銀行から借りる金額です。物件価格から頭金を引いた額を入力します" />
+                      <span className="text-sm font-mono text-muted-foreground">{(loanAmount / 10_000).toFixed(0)}万円</span>
+                    </div>
+                    <Slider
+                      value={[loanAmount]}
+                      onValueChange={([value]) => applyDetail({ loanAmount: value })}
+                      min={1_000_000} max={80_000_000} step={500_000}
+                    />
+                  </div>
+                  {/* 借入開始年 */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <FieldLabel label="借入開始年" tooltip="ローン開始の年です。変動金利の場合、5年後の金利見直しタイミングを計算するために使います" />
+                      <span className="text-sm font-mono text-muted-foreground">{loanStartYear}年</span>
+                    </div>
+                    <Slider
+                      value={[loanStartYear]}
+                      onValueChange={([value]) => applyDetail({ loanStartYear: value })}
+                      min={2020} max={2035} step={1}
+                    />
+                  </div>
+                  {/* 返済期間 */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <FieldLabel label="返済期間" tooltip="ローンの借入期間です。一般的には35年が最長です" />
+                      <span className="text-sm font-mono text-muted-foreground">{loanTermYears}年（{loanStartYear + loanTermYears}年完済）</span>
+                    </div>
+                    <Slider
+                      value={[loanTermYears]}
+                      onValueChange={([value]) => applyDetail({ loanTermYears: value })}
+                      min={5} max={35} step={1}
+                    />
+                  </div>
+                  {/* 金利タイプ */}
+                  <div className="space-y-2">
+                    <FieldLabel label="金利タイプ" tooltip="固定金利は返済期間中ずっと同じ金利。変動金利は市場によって変わります。日本の住宅ローンの約7割は変動金利です" />
+                    <div className="flex gap-2">
+                      {(["variable", "fixed"] as const).map((t) => (
+                        <button
+                          key={t}
+                          onClick={() => applyDetail({ loanType: t })}
+                          className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                            loanType === t ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-muted-foreground/10"
+                          }`}
+                        >
+                          {t === "fixed" ? "固定金利" : "変動金利"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {/* 現在の金利 */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <FieldLabel
+                        label={loanType === "fixed" ? "適用金利" : "現在の金利（変動）"}
+                        tooltip={loanType === "fixed" ? "ローン期間中ずっと適用される金利です" : "現在の適用金利です。変動金利の目安は0.3〜1.0%程度（2024年時点）"}
+                      />
+                      <span className="text-sm font-mono text-muted-foreground">{(interestRate * 100).toFixed(2)}%</span>
+                    </div>
+                    <Slider
+                      value={[Math.round(interestRate * 10000)]}
+                      onValueChange={([value]) => applyDetail({ interestRate: value / 10000 })}
+                      min={10} max={400} step={5}
+                    />
+                  </div>
+                  {/* 変動金利: 将来想定金利 */}
+                  {loanType === "variable" && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <FieldLabel label="将来想定金利" tooltip="借入5年後の金利見直し時に、この金利に上昇したと仮定してシミュレーションします。最悪シナリオの確認に使えます" />
+                        <span className="text-sm font-mono text-muted-foreground">{(variableRateForecast * 100).toFixed(2)}%</span>
+                      </div>
+                      <Slider
+                        value={[Math.round(variableRateForecast * 10000)]}
+                        onValueChange={([value]) => applyDetail({ variableRateForecast: value / 10000 })}
+                        min={10} max={500} step={5}
+                      />
+                    </div>
+                  )}
+                  {/* 自動計算結果 */}
+                  <div className="rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground space-y-1">
+                    <p>月額返済: <span className="font-mono font-medium text-foreground">{formatCurrency(m.monthlyPayment)}/月</span></p>
+                    {loanType === "variable" && (
+                      <p>5年後（金利{(variableRateForecast * 100).toFixed(2)}%）の月額: <span className="font-mono font-medium text-foreground">
+                        {formatCurrency(Math.round((() => {
+                          const elapsed = 5 * 12
+                          const remaining = Math.max(0, loanAmount * Math.pow(1 + interestRate / 12, elapsed)
+                            - m.monthlyPayment * (Math.pow(1 + interestRate / 12, elapsed) - 1) / (interestRate / 12))
+                          return calcMortgageMonthlyPayment(remaining, variableRateForecast, loanTermYears - 5)
+                        })()))}/月
+                      </span></p>
+                    )}
+                  </div>
+                </>
+              )}
+            </CardContent>
+          )
+        })()}
       </Card>
 
       <Card>

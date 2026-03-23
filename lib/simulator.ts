@@ -106,6 +106,13 @@ export interface Child {
 export interface MortgageConfig {
     monthlyPayment: number   // 月次返済額（元利合計・円）
     endYear: number          // 完済年（西暦）
+    // 詳細入力モード（任意）
+    loanAmount?: number          // 借入額（円）
+    interestRate?: number        // 現在の年利率（例: 0.005 = 0.5%）
+    loanTermYears?: number       // 返済期間（年）
+    loanStartYear?: number       // 借入開始年
+    loanType?: "fixed" | "variable"
+    variableRateForecast?: number  // 変動金利の将来想定年利（例: 0.02）
 }
 
 export interface NISAConfig {
@@ -560,12 +567,52 @@ function calculateMaintenanceCost(
     return total
 }
 
+// 元利均等返済の月次返済額を計算
+export function calcMortgageMonthlyPayment(principal: number, annualRate: number, termYears: number): number {
+    if (termYears <= 0 || principal <= 0) return 0
+    if (annualRate === 0) return principal / (termYears * 12)
+    const r = annualRate / 12
+    const n = termYears * 12
+    return principal * r * Math.pow(1 + r, n) / (Math.pow(1 + r, n) - 1)
+}
+
+function calcRemainingBalance(principal: number, annualRate: number, termYears: number, elapsedMonths: number): number {
+    const monthly = calcMortgageMonthlyPayment(principal, annualRate, termYears)
+    if (annualRate === 0) return Math.max(0, principal - monthly * elapsedMonths)
+    const r = annualRate / 12
+    return Math.max(0, principal * Math.pow(1 + r, elapsedMonths) - monthly * (Math.pow(1 + r, elapsedMonths) - 1) / r)
+}
+
 function calculateMortgageCost(
     mortgage: MortgageConfig | null,
     currentSimYear: number
 ): number {
     if (mortgage === null) return 0
     if (currentSimYear > mortgage.endYear) return 0
+
+    // 変動金利: 借入5年後の金利見直し時点でもう一度計算
+    if (
+        mortgage.loanType === "variable" &&
+        mortgage.variableRateForecast !== undefined &&
+        mortgage.loanAmount !== undefined &&
+        mortgage.interestRate !== undefined &&
+        mortgage.loanStartYear !== undefined &&
+        mortgage.loanTermYears !== undefined
+    ) {
+        const reviewYear = mortgage.loanStartYear + 5
+        if (currentSimYear >= reviewYear) {
+            const elapsedMonths = (reviewYear - mortgage.loanStartYear) * 12
+            const remaining = calcRemainingBalance(
+                mortgage.loanAmount, mortgage.interestRate, mortgage.loanTermYears, elapsedMonths
+            )
+            const remainingTermYears = mortgage.loanTermYears - 5
+            if (remaining > 0 && remainingTermYears > 0) {
+                const newMonthly = calcMortgageMonthlyPayment(remaining, mortgage.variableRateForecast, remainingTermYears)
+                return newMonthly * 12
+            }
+        }
+    }
+
     return mortgage.monthlyPayment * 12
 }
 
