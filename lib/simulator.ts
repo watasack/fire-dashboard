@@ -545,18 +545,25 @@ function calculateMortgageCost(
     return mortgage.monthlyPayment * 12
 }
 
+// 2024年10月改正後の児童手当
+// 所得制限撤廃・高校生（18歳）まで延長・第3子以降30,000円/月に増額
 function calculateChildAllowance(children: Child[], currentSimYear: number): number {
     if (children.length === 0) return 0
     let total = 0
     for (let i = 0; i < children.length; i++) {
         const child = children[i]
         const childAge = currentSimYear - child.birthYear
-        const isSecondOrLater = i >= 1
+        const isThirdOrLater = i >= 2
         if (childAge < 0) continue
         if (childAge >= 18) continue
-        if (childAge < 3) {
-            total += isSecondOrLater ? 20_000 * 12 : 15_000 * 12
+        if (isThirdOrLater) {
+            // 第3子以降: 全年齢 30,000円/月
+            total += 30_000 * 12
+        } else if (childAge < 3) {
+            // 第1・2子, 0〜2歳: 15,000円/月
+            total += 15_000 * 12
         } else {
+            // 第1・2子, 3〜17歳: 10,000円/月
             total += 10_000 * 12
         }
     }
