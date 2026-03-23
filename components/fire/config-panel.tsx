@@ -950,6 +950,28 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
           </CardContent>
         )}
       </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">固定資産税</CardTitle>
+          <CardDescription>持ち家の場合に毎年かかる税金です。戸建ては年10〜20万円、マンションは5〜15万円が目安</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center justify-between">
+            <FieldLabel label="年額" tooltip="固定資産税＋都市計画税の合計額を入力してください。市区町村から毎年5月ごろに通知が届きます" />
+            <span className="text-sm font-mono text-muted-foreground">
+              {((config.propertyTaxAnnual ?? 0) / 10_000).toFixed(0)}万円/年
+            </span>
+          </div>
+          <Slider
+            value={[config.propertyTaxAnnual ?? 0]}
+            onValueChange={([value]) => onConfigChange({ ...config, propertyTaxAnnual: value })}
+            min={0}
+            max={500000}
+            step={10000}
+          />
+        </CardContent>
+      </Card>
     </div>
   )
 

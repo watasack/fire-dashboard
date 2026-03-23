@@ -179,6 +179,9 @@ export interface SimulationConfig {
     // 住宅メンテナンス費用（周期型）
     maintenanceCosts?: MaintenanceCost[]
 
+    // 固定資産税（年額）
+    propertyTaxAnnual?: number
+
     // Withdrawal strategy (Phase 7)
     withdrawalStrategy?: WithdrawalStrategy   // デフォルト: 'fixed'
     guardrailConfig?: GuardrailConfig         // guardrail 選択時に使用
@@ -1526,7 +1529,8 @@ export function runSingleSimulation(
         }
 
         // Total expenses（FIRE後は社会保険料を上乗せ）
-        const totalExpenses = baseExpenses + childCosts + mortgageCost + maintenanceCost + postFireSI
+        const propertyTax = config.propertyTaxAnnual ?? 0
+        const totalExpenses = baseExpenses + childCosts + mortgageCost + maintenanceCost + postFireSI + propertyTax
 
         // Calculate child allowance (non-taxable, added directly to net income)
         const childAllowance = (config.childAllowanceEnabled !== false)
