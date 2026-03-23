@@ -916,7 +916,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
           </div>
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <FieldLabel label="インフレ率" tooltip="毎年物価がどれくらい上がるかです。日銀目標の2%に設定しておくのが一般的です" />
+              <FieldLabel label="インフレ率" tooltip="年金・教育費・住宅ローンなどの計算に使う物価上昇率です。日銀目標の2%が一般的です" />
               <span className="text-sm font-mono text-muted-foreground">{(config.inflationRate * 100).toFixed(1)}%</span>
             </div>
             <Slider
@@ -929,7 +929,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
           </div>
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <FieldLabel label="生活費上昇率" tooltip="毎年どれくらい生活費が上がるかの設定。物価上昇（インフレ）に合わせて1〜2%が一般的です" />
+              <FieldLabel label="生活費上昇率" tooltip="食費・日用品など毎月の生活費が毎年どれくらい上がるかです。インフレ率と独立して設定でき、1〜2%が目安です" />
               <span className="text-sm font-mono text-muted-foreground">{(config.expenseGrowthRate * 100).toFixed(1)}%</span>
             </div>
             <Slider
