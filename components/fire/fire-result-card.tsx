@@ -84,6 +84,11 @@ export function FireResultCard({ result, monteCarloResult, currentAge, isCalcula
               {yearsToFire && (
                 <p className="text-sm text-muted-foreground">
                   あと{yearsToFire}年
+                  {result.fireYear && result.fireMonth
+                    ? `（${result.fireYear}年${result.fireMonth}月）`
+                    : result.fireYear
+                    ? `（${result.fireYear}年）`
+                    : ""}
                 </p>
               )}
             </div>

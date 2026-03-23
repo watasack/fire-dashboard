@@ -64,6 +64,7 @@ export interface PensionBreakdown {
 
 export interface Person {
     currentAge: number
+    birthMonth?: number          // 誕生月（1-12）。FIRE達成月の表示精度向上に使用
     retirementAge: number
     grossIncome: number          // 税引き前年収（円）
     incomeGrowthRate: number
@@ -239,6 +240,7 @@ export interface SimulationResult {
     yearlyData: YearlyData[]
     fireAge: number | null
     fireYear: number | null
+    fireMonth: number | null     // FIRE達成月（1-12）。person1.birthMonthが設定されている場合のみ有効
     fireNumber: number
     finalAssets: number
     totalYears: number
@@ -1714,6 +1716,7 @@ export function runSingleSimulation(
         yearlyData,
         fireAge,
         fireYear,
+        fireMonth: fireAge !== null ? (config.person1.birthMonth ?? null) : null,
         fireNumber,
         finalAssets: finalData.assets + finalData.nisaAssets + finalData.idecoAssets,
         totalYears: config.simulationYears,

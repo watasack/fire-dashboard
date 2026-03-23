@@ -71,6 +71,20 @@ function PersonConfig({
         />
       </div>
 
+      <div className="space-y-2">
+        <FieldLabel label="誕生月" tooltip="誕生月を設定するとFIRE達成時期を「2034年10月」のように月単位で表示できます" />
+        <select
+          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
+          value={person.birthMonth ?? ''}
+          onChange={e => onChange({ ...person, birthMonth: e.target.value ? Number(e.target.value) : undefined })}
+        >
+          <option value="">未設定</option>
+          {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => (
+            <option key={m} value={m}>{m}月</option>
+          ))}
+        </select>
+      </div>
+
       {!isHomemaker && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
