@@ -285,9 +285,9 @@ export function IncomeExpenseChart({ result }: IncomeExpenseChartProps) {
                   )
                 }}
               />
-              <Bar dataKey="income" fill="#3B82F6" name="収入" opacity={0.85} />
-              <Bar dataKey="expenses" fill="#EF4444" name="支出" opacity={0.85} />
-              <Bar dataKey="netCF" fill="#10B981" name="年間収支（黒字/赤字）" opacity={0.85} />
+              {true ? <Bar dataKey="income" fill="#3B82F6" name="収入" opacity={0.85} /> : null}
+              {true ? <Bar dataKey="expenses" fill="#EF4444" name="支出" opacity={0.85} /> : null}
+              {true ? <Line type="monotone" dataKey="netCF" stroke="#10B981" strokeWidth={3} dot={false} name="年間収支" /> : null}
               <Legend
                 wrapperStyle={{ paddingTop: "20px" }}
                 formatter={(value) => <span className="text-sm">{value}</span>}

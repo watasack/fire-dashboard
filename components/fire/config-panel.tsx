@@ -169,7 +169,7 @@ function PersonConfig({
           <div className="flex items-center justify-between">
             <FieldLabel label="時短勤務" tooltip="育休後に時短勤務するならONにしてください。年収が下がる期間をFIREの計算に反映します" />
             <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">
+              <span className="text-xs text-muted-foreground whitespace-nowrap">
                 {person.partTimeUntilAge != null ? '設定あり' : '設定なし'}
               </span>
               <Switch
