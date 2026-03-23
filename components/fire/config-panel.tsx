@@ -550,7 +550,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2 text-base">
               <PiggyBank className="h-4 w-4" />
-              NISA
+              新NISA
             </CardTitle>
             <div className="flex items-center gap-2">
               <Label htmlFor="nisa-toggle" className="text-sm">
@@ -565,12 +565,28 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
               />
             </div>
           </div>
+          <CardDescription>運用益・売却益が非課税・無期限。年最大360万円、生涯1800万円まで</CardDescription>
         </CardHeader>
         {config.nisa.enabled && (
           <CardContent className="space-y-6">
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <FieldLabel label="年間投資額" tooltip="NISAは運用益に税金がかかりません。毎年いくら入れているかを入力してください（上限は年360万円）" />
+                <FieldLabel label="現在のNISA評価額" tooltip="今すでにNISA口座にある資産の評価額を入力してください。証券会社のアプリで確認できます" />
+                <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.nisa.balance ?? 0, true)}</span>
+              </div>
+              <Slider
+                value={[config.nisa.balance ?? 0]}
+                onValueChange={([value]) =>
+                  onConfigChange({ ...config, nisa: { ...config.nisa, balance: value } })
+                }
+                min={0}
+                max={18000000}
+                step={100000}
+              />
+            </div>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <FieldLabel label="年間投資額" tooltip="つみたて投資枠（年120万円まで）と成長投資枠（年240万円まで）の合計。毎年いくら積み立てているか入力してください" />
                 <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.nisa.annualContribution, true)}</span>
               </div>
               <Slider

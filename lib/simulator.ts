@@ -95,6 +95,7 @@ export interface MortgageConfig {
 export interface NISAConfig {
     enabled: boolean
     annualContribution: number
+    balance?: number              // 現在のNISA評価額（デフォルト: 0）
     annualLimit?: number          // 年間上限（デフォルト: 3_600_000）
     lifetimeLimit?: number        // 生涯限度額（デフォルト: 18_000_000）
     totalContributed?: number     // シミュレーション開始時の累積拠出額（デフォルト: 0）
@@ -1250,7 +1251,7 @@ export function runSingleSimulation(
     let cashAssets = initialCashAssets       // 現金
     let stockAssets = initialStocks          // 課税口座
     let stocksCostBasis = initialCostBasis   // 取得原価
-    let nisaAssets = 0
+    let nisaAssets = config.nisa.balance ?? 0
     let idecoAssets = 0
     let nisaTotalContributed = config.nisa.totalContributed ?? 0  // NISA累積拠出額追跡
     let fireAge: number | null = null
