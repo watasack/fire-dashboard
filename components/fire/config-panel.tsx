@@ -443,9 +443,9 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
                   { key: 'withJuniorHighChild', label: '中学生(12-14歳)', defaultVal: 347 },
                   { key: 'withHighSchoolChild', label: '高校生(15-17歳)', defaultVal: 383 },
                   { key: 'withCollegeChild', label: '大学生(18-21歳)', defaultVal: 396 },
-                  { key: 'emptyNestActive', label: '独立後(-69歳)', defaultVal: 258 },
-                  { key: 'emptyNestSenior', label: 'シニア(70-79歳)', defaultVal: 224 },
-                  { key: 'emptyNestElderly', label: '高齢期(80歳-)', defaultVal: 193 },
+                  { key: 'emptyNestActive', label: '独立後(-64歳)', defaultVal: 258 },
+                  { key: 'emptyNestSenior', label: 'シニア(65-74歳)', defaultVal: 224 },
+                  { key: 'emptyNestElderly', label: '後期高齢(75歳-)', defaultVal: 193 },
                 ].map(({ key, label, defaultVal }) => (
                   <div key={key} className="space-y-1">
                     <Label className="text-xs text-muted-foreground">{label}</Label>

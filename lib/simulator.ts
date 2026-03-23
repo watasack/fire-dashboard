@@ -112,9 +112,9 @@ export interface LifecycleExpenseConfig {
     withJuniorHighChild?: number    // 12〜14歳: デフォルト 3,468,000
     withHighSchoolChild?: number    // 15〜17歳: デフォルト 3,830,000
     withCollegeChild?: number       // 18〜21歳: デフォルト 3,957,000
-    emptyNestActive?: number        // 子なし〜69歳: デフォルト 2,581,000
-    emptyNestSenior?: number        // 70〜79歳: デフォルト 2,243,000
-    emptyNestElderly?: number       // 80歳〜: デフォルト 1,931,000
+    emptyNestActive?: number        // 子なし〜64歳: デフォルト 2,581,000
+    emptyNestSenior?: number        // 65〜74歳: デフォルト 2,243,000
+    emptyNestElderly?: number       // 75歳〜: デフォルト 1,931,000
 }
 
 export interface PostFireIncomeConfig {
@@ -965,10 +965,10 @@ export function getLifecycleStageExpenses(
         }
     } else {
         // Empty nest
-        if (person1Age >= 80) {
+        if (person1Age >= 75) {
             stage = 'emptyNestElderly'
             baseExpenses = config?.emptyNestElderly ?? 1_931_000
-        } else if (person1Age >= 70) {
+        } else if (person1Age >= 65) {
             stage = 'emptyNestSenior'
             baseExpenses = config?.emptyNestSenior ?? 2_243_000
         } else {
@@ -1167,9 +1167,9 @@ const LIFECYCLE_DISCRETIONARY_RATIOS: Record<string, number> = {
     withJuniorHighChild:  0.37,  // 中学生: 部活・塾が増えるが旅行も増加
     withHighSchoolChild:  0.39,  // 高校生: 旅行・外食が増える
     withCollegeChild:     0.40,  // 大学生: 旅行・趣味に充てやすくなる
-    emptyNestActive:      0.42,  // 独立後〜69歳: 旅行・趣味が最大化
-    emptyNestSenior:      0.35,  // 70〜79歳: 医療費増加で裁量比率が低下
-    emptyNestElderly:     0.28,  // 80歳〜: 介護・医療費が大半を占める
+    emptyNestActive:      0.42,  // 独立後〜64歳: 旅行・趣味が最大化
+    emptyNestSenior:      0.35,  // 65〜74歳: 医療費増加で裁量比率が低下
+    emptyNestElderly:     0.28,  // 75歳〜: 介護・医療費が大半を占める
     fixed:                0.32,  // 固定支出モード時のフォールバック
 }
 

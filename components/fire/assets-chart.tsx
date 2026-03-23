@@ -152,7 +152,7 @@ export function AssetsChart({ result, monteCarloResult, showPercentiles = true }
                   stroke="none"
                   fill="#1a365d"
                   fillOpacity={0.3}
-                  name="25〜75%の範囲（想定内）"
+                  name="25〜75パーセンタイル（中央50%の確率範囲）"
                   legendType="square"
                   isAnimationActive={false}
                 />
