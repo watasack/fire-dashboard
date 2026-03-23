@@ -472,19 +472,6 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
             </div>
           )}
 
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <FieldLabel label="生活費上昇率" tooltip="毎年どれくらい生活費が上がるかの設定。物価上昇（インフレ）に合わせて1〜2%が一般的です" />
-              <span className="text-sm font-mono text-muted-foreground">{(config.expenseGrowthRate * 100).toFixed(1)}%</span>
-            </div>
-            <Slider
-              value={[config.expenseGrowthRate * 100]}
-              onValueChange={([value]) => onConfigChange({ ...config, expenseGrowthRate: value / 100 })}
-              min={0}
-              max={3}
-              step={0.1}
-            />
-          </div>
         </CardContent>
       </Card>
     </div>
@@ -935,6 +922,19 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
             <Slider
               value={[config.inflationRate * 100]}
               onValueChange={([value]) => onConfigChange({ ...config, inflationRate: value / 100 })}
+              min={0}
+              max={3}
+              step={0.1}
+            />
+          </div>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <FieldLabel label="生活費上昇率" tooltip="毎年どれくらい生活費が上がるかの設定。物価上昇（インフレ）に合わせて1〜2%が一般的です" />
+              <span className="text-sm font-mono text-muted-foreground">{(config.expenseGrowthRate * 100).toFixed(1)}%</span>
+            </div>
+            <Slider
+              value={[config.expenseGrowthRate * 100]}
+              onValueChange={([value]) => onConfigChange({ ...config, expenseGrowthRate: value / 100 })}
               min={0}
               max={3}
               step={0.1}
