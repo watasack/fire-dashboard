@@ -1,10 +1,10 @@
 "use client"
 
+import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { cn, formatCurrency, formatPercent } from "@/lib/utils"
 import { SimulationResult, MonteCarloResult } from "@/lib/simulator"
-import { TrendingUp, Target, Calendar, Wallet, AlertCircle, CheckCircle2 } from "lucide-react"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { TrendingUp, Target, Calendar, Wallet, AlertCircle, CheckCircle2, Info } from "lucide-react"
 
 interface FireResultCardProps {
   result: SimulationResult | null
@@ -15,6 +15,9 @@ interface FireResultCardProps {
 }
 
 export function FireResultCard({ result, monteCarloResult, currentAge, isCalculating, swr = 0.04 }: FireResultCardProps) {
+  const [fireAgeTooltipOpen, setFireAgeTooltipOpen] = useState(false)
+  const [fireNumberTooltipOpen, setFireNumberTooltipOpen] = useState(false)
+
   if (!result) {
     return (
       <Card className="border-2 border-dashed border-muted-foreground/20">
@@ -35,8 +38,7 @@ export function FireResultCard({ result, monteCarloResult, currentAge, isCalcula
     : null
 
   return (
-    <TooltipProvider>
-      <Card className={cn(
+    <Card className={cn(
         "border-2 transition-all duration-500",
         isCalculating ? "opacity-70" : "",
         isFireAchievable ? "border-success/50 bg-success/5" : "border-accent/50 bg-accent/5"
@@ -55,28 +57,24 @@ export function FireResultCard({ result, monteCarloResult, currentAge, isCalcula
           <div className="grid grid-cols-2 gap-4">
             {/* FIRE Age */}
             <div className="space-y-1">
-              <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                <Calendar className="h-4 w-4" />
-                <span>FIRE達成年齢</span>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button className="text-muted-foreground/60 hover:text-muted-foreground">
-                      <AlertCircle className="h-3 w-3" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p className="max-w-xs text-xs">
-                      1000通りのシナリオでの中央値（ちょうど真ん中のシナリオ）です。
-                      {monteCarloResult && (
-                        <>
-                          <br />10%ile: {monteCarloResult.percentile10}歳
-                          <br />90%ile: {monteCarloResult.percentile90}歳
-                        </>
-                      )}
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-              </div>
+              <span className="flex flex-col gap-0">
+                <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                  <Calendar className="h-4 w-4" />
+                  <span>FIRE達成年齢</span>
+                  <button
+                    type="button"
+                    onClick={() => setFireAgeTooltipOpen(p => !p)}
+                    className="inline-flex p-2.5 -m-2.5 text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+                  >
+                    <Info className="h-4 w-4 shrink-0" />
+                  </button>
+                </span>
+                {fireAgeTooltipOpen && (
+                  <span className="mt-1 text-xs text-muted-foreground leading-relaxed">
+                    1000通りのシナリオでの中央値（ちょうど真ん中のシナリオ）です。
+                  </span>
+                )}
+              </span>
               <p className={cn(
                 "text-3xl font-bold tracking-tight",
                 isFireAchievable ? "text-success" : "text-accent"
@@ -111,22 +109,24 @@ export function FireResultCard({ result, monteCarloResult, currentAge, isCalcula
 
             {/* FIRE Number */}
             <div className="space-y-1">
-              <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                <Wallet className="h-4 w-4" />
-                <span>必要資産額</span>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button className="text-muted-foreground/60 hover:text-muted-foreground">
-                      <AlertCircle className="h-3 w-3" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p className="max-w-xs text-xs">
-                      年間支出 ÷ 安全引き出し率（{(swr * 100).toFixed(1)}%）で計算されるFIRE達成に必要な資産額
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-              </div>
+              <span className="flex flex-col gap-0">
+                <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                  <Wallet className="h-4 w-4" />
+                  <span>必要資産額</span>
+                  <button
+                    type="button"
+                    onClick={() => setFireNumberTooltipOpen(p => !p)}
+                    className="inline-flex p-2.5 -m-2.5 text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+                  >
+                    <Info className="h-4 w-4 shrink-0" />
+                  </button>
+                </span>
+                {fireNumberTooltipOpen && (
+                  <span className="mt-1 text-xs text-muted-foreground leading-relaxed">
+                    年間支出 ÷ 安全引き出し率（{(swr * 100).toFixed(1)}%）で計算されるFIRE達成に必要な資産額
+                  </span>
+                )}
+              </span>
               <p className="text-2xl font-bold tracking-tight">
                 {formatCurrency(result.fireNumber, true)}
               </p>
@@ -207,6 +207,5 @@ export function FireResultCard({ result, monteCarloResult, currentAge, isCalcula
           )}
         </CardContent>
       </Card>
-    </TooltipProvider>
   )
 }
