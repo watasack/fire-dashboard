@@ -80,7 +80,7 @@ export function FireDashboard() {
   }, [debouncedConfig, useMonteCarlo])
 
   const handleConfigChange = useCallback((newConfig: SimulationConfig) => {
-    setConfig(newConfig)
+    setConfig({ ...newConfig, simulationYears: 100 - newConfig.person1.currentAge })
   }, [])
 
   const handleShare = useCallback(() => {
@@ -216,7 +216,7 @@ export function FireDashboard() {
                   <AssetsChart
                     result={result}
                     monteCarloResult={monteCarloResult}
-                    showPercentiles={useMonteCarlo}
+                    showPercentiles={false}
                   />
                 </TabsContent>
 

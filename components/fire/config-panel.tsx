@@ -76,7 +76,11 @@ function PersonConfig({
       {!isHomemaker && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <FieldLabel label="年収" tooltip="源泉徴収票の一番上の「支払金額」を入力してください。手取り計算は自動でやります" />
+            <FieldLabel label="年収" tooltip={
+              (person.employmentType ?? 'employee') === 'selfEmployed'
+                ? "売上から経費を引いた事業所得を入力してください。手取り計算は自動でやります"
+                : "源泉徴収票の一番上の「支払金額」を入力してください。手取り計算は自動でやります"
+            } />
             <span className="text-sm font-mono text-muted-foreground">{formatCurrency(person.grossIncome, true)}</span>
           </div>
           <Slider
@@ -414,6 +418,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
 
           {(config.expenseMode ?? 'fixed') === 'fixed' && (
             <div className="space-y-3">
+              <p className="text-xs text-muted-foreground">月間生活費を一定額として計算します。住宅ローン・教育費は別途ライフタブで入力します。</p>
               <div className="flex items-center justify-between">
                 <FieldLabel label="月間生活費" tooltip="食費・光熱費・通信費など毎月かかる生活費の合計。住宅ローンや教育費は後のライフタブで入力します" />
                 <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.monthlyExpenses)}/月</span>
@@ -438,7 +443,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
                   { key: 'withJuniorHighChild', label: '中学生(12-14歳)', defaultVal: 347 },
                   { key: 'withHighSchoolChild', label: '高校生(15-17歳)', defaultVal: 383 },
                   { key: 'withCollegeChild', label: '大学生(18-21歳)', defaultVal: 396 },
-                  { key: 'emptyNestActive', label: '子育て後(-69歳)', defaultVal: 258 },
+                  { key: 'emptyNestActive', label: '独立後(-69歳)', defaultVal: 258 },
                   { key: 'emptyNestSenior', label: 'シニア(70-79歳)', defaultVal: 224 },
                   { key: 'emptyNestElderly', label: '高齢期(80歳-)', defaultVal: 193 },
                 ].map(({ key, label, defaultVal }) => (
@@ -789,7 +794,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="text-base">セミFIRE</CardTitle>
-              <CardDescription>完全にやめるのではなく、副業・パートで少し働き続けるシナリオです</CardDescription>
+              <CardDescription>完全にやめるのではなく、パートや仕事を続けながらFIREするシナリオです</CardDescription>
             </div>
             <Switch
               id="semi-fire-toggle"
@@ -808,7 +813,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
           <CardContent className="space-y-6">
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <FieldLabel label="月収（税引き前）" tooltip="FIRE後に副業やパートで稼ぐ月収を入力します。月10万円でも計算が大きく変わります" />
+                <FieldLabel label="月収（税引き前）" tooltip="FIRE後も少し働いて得る月収を入力します。月10万円でも計算が大きく変わります" />
                 <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.postFireIncome.monthlyAmount)}/月</span>
               </div>
               <Slider
@@ -922,21 +927,6 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
               onCheckedChange={onMonteCarloChange}
             />
           </div>
-          <div className="h-px bg-border" />
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <FieldLabel label="シミュレーション期間" tooltip="退職後30〜40年分を見るのがおすすめです。例えば45歳でFIREを考えているなら、少なくとも40年（85歳まで）に設定してください" />
-              <span className="text-sm font-mono text-muted-foreground">{config.simulationYears}年</span>
-            </div>
-            <Slider
-              value={[config.simulationYears]}
-              onValueChange={([value]) => onConfigChange({ ...config, simulationYears: value })}
-              min={20}
-              max={60}
-              step={1}
-            />
-          </div>
-
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <FieldLabel label="インフレ率" tooltip="毎年物価がどれくらい上がるかです。日銀目標の2%に設定しておくのが一般的です" />

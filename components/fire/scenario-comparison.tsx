@@ -174,7 +174,7 @@ export function ScenarioComparison({ baseConfig, baseResult, onConfigChange }: S
                   className="w-full mt-3 text-xs"
                   onClick={() => onConfigChange?.(scenario.mergedConfig)}
                 >
-                  この設定を試す →
+                  この設定を試す →<span className="block text-[10px] opacity-60 font-normal">即時反映</span>
                 </Button>
               </div>
             )

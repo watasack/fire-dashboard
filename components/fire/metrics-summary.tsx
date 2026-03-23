@@ -59,25 +59,6 @@ export function MetricsSummary({ config, result, mcResult, isCalculating }: Metr
     <Card className={`transition-opacity duration-200 ${isCalculating ? 'opacity-60' : ''}`}>
       <CardContent className="p-4">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <MetricCard
-            icon={<Wallet className="h-5 w-5 text-primary" />}
-            label="世帯年収"
-            value={formatCurrency(totalIncome, true)}
-            subValue={config.person2 ? "共働き" : "単独"}
-          />
-          <MetricCard
-            icon={<PiggyBank className="h-5 w-5 text-success" />}
-            label="貯蓄率"
-            value={formatPercent(Math.max(0, savingsRate))}
-            subValue={`年間 ${formatCurrency(Math.max(0, totalIncome - annualExpenses), true)}`}
-            trend={savingsRate > 0.3 ? "up" : savingsRate > 0.15 ? "neutral" : "down"}
-          />
-          <MetricCard
-            icon={<Baby className="h-5 w-5 text-accent" />}
-            label="子育て費用（総額）"
-            value={formatCurrency(totalChildCosts, true)}
-            subValue={`${childCount}人`}
-          />
         </div>
 
         {/* FIRE達成率・枯渇年齢 */}
