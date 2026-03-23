@@ -972,6 +972,72 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
           />
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-base">大規模修繕費</CardTitle>
+              <CardDescription>
+                {(config.maintenanceCosts ?? []).length > 0
+                  ? `${((config.maintenanceCosts ?? [])[0].amount / 10_000).toFixed(0)}万円を${(config.maintenanceCosts ?? [])[0].intervalYears}年ごとに計上中`
+                  : "外壁・屋根などの大型修繕費を周期的に計上します"}
+              </CardDescription>
+            </div>
+            <Switch
+              id="maintenance-toggle"
+              checked={(config.maintenanceCosts ?? []).length > 0}
+              onCheckedChange={(checked) => {
+                if (checked) {
+                  onConfigChange({ ...config, maintenanceCosts: [{ amount: 1_500_000, intervalYears: 15, firstYear: new Date().getFullYear() + 10, label: '大規模修繕' }] })
+                } else {
+                  onConfigChange({ ...config, maintenanceCosts: [] })
+                }
+              }}
+            />
+          </div>
+        </CardHeader>
+        {(config.maintenanceCosts ?? []).length > 0 && (() => {
+          const mc = config.maintenanceCosts![0]
+          return (
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <FieldLabel label="1回あたりの費用" tooltip="外壁塗装・屋根補修・給湯器交換など大型修繕の合計費用。戸建ては100〜200万円が目安" />
+                  <span className="text-sm font-mono text-muted-foreground">{(mc.amount / 10_000).toFixed(0)}万円</span>
+                </div>
+                <Slider
+                  value={[mc.amount]}
+                  onValueChange={([value]) => onConfigChange({ ...config, maintenanceCosts: [{ ...mc, amount: value }] })}
+                  min={500_000} max={5_000_000} step={100_000}
+                />
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <FieldLabel label="修繕サイクル" tooltip="何年ごとに大規模修繕が必要か。外壁・屋根は15〜20年が一般的です" />
+                  <span className="text-sm font-mono text-muted-foreground">{mc.intervalYears}年ごと</span>
+                </div>
+                <Slider
+                  value={[mc.intervalYears]}
+                  onValueChange={([value]) => onConfigChange({ ...config, maintenanceCosts: [{ ...mc, intervalYears: value }] })}
+                  min={5} max={30} step={1}
+                />
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <FieldLabel label="初回発生年" tooltip="最初に大規模修繕が発生する予定の西暦年" />
+                  <span className="text-sm font-mono text-muted-foreground">{mc.firstYear}年</span>
+                </div>
+                <Slider
+                  value={[mc.firstYear]}
+                  onValueChange={([value]) => onConfigChange({ ...config, maintenanceCosts: [{ ...mc, firstYear: value }] })}
+                  min={new Date().getFullYear()} max={2060} step={1}
+                />
+              </div>
+            </CardContent>
+          )
+        })()}
+      </Card>
     </div>
   )
 
