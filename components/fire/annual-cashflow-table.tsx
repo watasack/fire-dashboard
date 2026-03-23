@@ -28,7 +28,7 @@ export function AnnualCashFlowTable({ result }: AnnualCashFlowTableProps) {
     <Card className="overflow-hidden">
       <CardHeader>
         <CardTitle>年次収支テーブル</CardTitle>
-        <CardDescription>年齢別の資産・収入・支出・純キャッシュフロー一覧</CardDescription>
+        <CardDescription>年齢別の資産・収入・支出・年間収支一覧</CardDescription>
       </CardHeader>
       <CardContent className="p-0">
         <div className="max-h-96 overflow-x-auto overflow-y-auto">
@@ -41,7 +41,7 @@ export function AnnualCashFlowTable({ result }: AnnualCashFlowTableProps) {
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">税前年収(万)</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">手取り(万)</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">支出(万)</th>
-                <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">純CF(万)</th>
+                <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">収支(万)</th>
                 <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground">FIRE</th>
               </tr>
             </thead>

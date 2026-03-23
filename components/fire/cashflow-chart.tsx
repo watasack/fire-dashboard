@@ -39,7 +39,7 @@ export function CashFlowChart({ result }: CashFlowChartProps) {
     <Card>
       <CardHeader>
         <CardTitle>収支グラフ（5年単位）</CardTitle>
-        <CardDescription>5年ごとの収入・支出・純キャッシュフローの合計</CardDescription>
+        <CardDescription>5年ごとの収入・支出・年間収支の合計</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="h-[240px] sm:h-[280px] lg:h-[300px]">
@@ -77,7 +77,7 @@ export function CashFlowChart({ result }: CashFlowChartProps) {
               />
               {true ? <Bar dataKey="income" fill="#3B82F6" name="収入" opacity={0.85} /> : null}
               {true ? <Bar dataKey="expenses" fill="#EF4444" name="支出" opacity={0.85} /> : null}
-              {true ? <Bar dataKey="netCF" fill="#10B981" name="純CF" opacity={0.85} /> : null}
+              {true ? <Bar dataKey="netCF" fill="#10B981" name="収支" opacity={0.85} /> : null}
               <ReferenceLine y={0} stroke="#888" strokeWidth={1} />
               <Legend
                 wrapperStyle={{ paddingTop: "8px" }}

@@ -98,7 +98,7 @@ export function ScenarioComparison({ baseConfig, baseResult, onConfigChange }: S
           次の一手 - シナリオ比較
         </CardTitle>
         <CardDescription>
-          各シナリオがFIRE達成年齢に与える影響を比較
+          少し設定を変えるだけでFIRE確率が大幅に変化します。試してみましょう
         </CardDescription>
       </CardHeader>
       <CardContent>

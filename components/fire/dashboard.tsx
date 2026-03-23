@@ -102,7 +102,7 @@ export function FireDashboard() {
                 <TrendingUp className="h-5 w-5 text-primary-foreground" />
               </div>
               <div>
-                <h1 className="text-lg font-semibold tracking-tight">FIRE シミュレーター</h1>
+                <h1 className="text-lg font-semibold tracking-tight hidden lg:block">FIRE シミュレーター</h1>
                 <p className="text-xs text-muted-foreground">育休や時短の影響も含めて、あなたのFIRE時期を計算します</p>
               </div>
             </div>

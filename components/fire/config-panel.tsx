@@ -223,8 +223,8 @@ function PersonConfig({
           <div className="flex items-center gap-1.5 mb-0.5">
             <span className="text-xs font-medium text-accent-foreground/80 bg-accent/20 px-1.5 py-0.5 rounded-full">このツールの強み</span>
           </div>
-          <FieldLabel label="産休・育休取得" tooltip="育休を取る年は、給与の代わりに「育児休業給付金」が出ます（最初の6ヶ月は手取りの約80%相当）。子どもごとにチェックしてください" />
-          <p className="text-xs text-muted-foreground">取得する子どもを選択</p>
+          <FieldLabel label="産休・育休取得" tooltip="育休を取る場合、給与の代わりに育児休業給付金が支給されます" />
+          <p className="text-xs text-muted-foreground">育休を取る子どもを全て選択</p>
           {childBirthYears.map((birthYear, index) => {
             const checked = (person.maternityLeaveChildBirthYears ?? []).includes(birthYear)
             return (
@@ -388,7 +388,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
           )}
 
           <div className="space-y-2">
-            <FieldLabel label="生活費モード" tooltip="「固定費」は手軽でシンプル。「ライフステージ」にすると子育て期は生活費が増え、老後は減る現実に近い計算になります" />
+            <FieldLabel label="生活費の算出方法" tooltip="「固定費」は手軽でシンプル。「ライフステージ」にすると子育て期は生活費が増え、老後は減る現実に近い計算になります" />
             <div className="flex gap-2">
               {(['fixed', 'lifecycle'] as const).map((mode) => (
                 <button
@@ -507,7 +507,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
             </CardTitle>
             <div className="flex items-center gap-2">
               <Label htmlFor="spouse-toggle" className="text-sm">
-                {config.person2 ? "有効" : "無効"}
+                {config.person2 ? "あり" : "なし"}
               </Label>
               <Switch
                 id="spouse-toggle"
@@ -541,7 +541,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
         <CardContent className="space-y-6">
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <FieldLabel label="期待リターン" tooltip="毎年平均何%増えると想定するかです。全世界株インデックスなら5〜7%が過去実績です（ただし将来保証はなし）" />
+              <FieldLabel label="期待リターン" tooltip="毎年平均何%増えると想定するかです。全世界株インデックスなら5〜7%が過去実績です" />
               <span className="text-sm font-mono text-muted-foreground">{(config.investmentReturn * 100).toFixed(1)}%</span>
             </div>
             <Slider
@@ -555,7 +555,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
 
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <FieldLabel label="リスク（標準偏差）" tooltip="「当たり年と外れ年の差」です。大きくするほどリーマンショック級の暴落も計算に含まれます。株式なら15〜20%が現実的" />
+              <FieldLabel label="リスク（標準偏差）" tooltip="「当たり年と外れ年の差」です。大きくするほどリーマンショック級の暴落も計算に含まれます。株式なら15〜20%が過去実績" />
               <span className="text-sm font-mono text-muted-foreground">{(config.investmentVolatility * 100).toFixed(1)}%</span>
             </div>
             <Slider

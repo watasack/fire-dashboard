@@ -104,7 +104,7 @@ export function FireResultCard({ result, monteCarloResult, currentAge, isCalcula
               </p>
               <p className="text-sm text-muted-foreground">
                 {fireProbability >= 0.8 ? "高い確率" :
-                 fireProbability >= 0.5 ? "現実的" : "改善の余地あり"}
+                 fireProbability >= 0.5 ? "達成圏内" : "改善の余地あり"}
               </p>
             </div>
 
