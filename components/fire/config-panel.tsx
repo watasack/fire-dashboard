@@ -722,6 +722,25 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
                   ))}
                 </div>
               </div>
+              <div className="space-y-2 pt-2">
+                <div className="flex items-center justify-between">
+                  <FieldLabel label="保育料（0〜2歳）" tooltip="認可保育園の年額費用です。認可外は高くなります。0歳児クラスは月5〜6万円が目安" />
+                  <span className="text-sm font-mono text-muted-foreground">
+                    {((child.daycareAnnualCost ?? 360_000) / 10_000).toFixed(0)}万円/年
+                  </span>
+                </div>
+                <Slider
+                  value={[child.daycareAnnualCost ?? 360_000]}
+                  onValueChange={([value]) => {
+                    const newChildren = [...config.children]
+                    newChildren[index] = { ...child, daycareAnnualCost: value }
+                    onConfigChange({ ...config, children: newChildren })
+                  }}
+                  min={0}
+                  max={1_200_000}
+                  step={10_000}
+                />
+              </div>
             </div>
           ))}
 
