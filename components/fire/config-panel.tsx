@@ -565,7 +565,11 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
               />
             </div>
           </div>
-          <CardDescription>運用益・売却益が非課税・無期限。年最大360万円、生涯1800万円まで</CardDescription>
+          <CardDescription>
+            {config.nisa.enabled
+              ? `年${formatCurrency(config.nisa.annualContribution, true)}を積み立て中。運用益・売却益は非課税・無期限`
+              : "運用益・売却益が非課税・無期限。年最大360万円、生涯1800万円まで"}
+          </CardDescription>
         </CardHeader>
         {config.nisa.enabled && (
           <CardContent className="space-y-6">
@@ -623,6 +627,11 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
               />
             </div>
           </div>
+          <CardDescription>
+            {config.ideco.enabled
+              ? `月${formatCurrency(config.ideco.monthlyContribution)}を拠出中。掛金は全額所得控除（${config.ideco.withdrawalStartAge ?? 60}歳から受取）`
+              : "掛金が全額所得控除になる老後専用の積立口座。60歳まで引き出し不可"}
+          </CardDescription>
         </CardHeader>
         {config.ideco.enabled && (
           <CardContent className="space-y-6">
@@ -821,7 +830,11 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="text-base">セミFIRE</CardTitle>
-              <CardDescription>完全にやめるのではなく、パートや仕事を続けながらFIREするシナリオです</CardDescription>
+              <CardDescription>
+                {config.postFireIncome
+                  ? `月${formatCurrency(config.postFireIncome.monthlyAmount)}を${config.postFireIncome.untilAge}歳まで稼ぐ設定でシミュレーション中`
+                  : "完全にやめるのではなく、パートや仕事を続けながらFIREするシナリオです"}
+              </CardDescription>
             </div>
             <Switch
               id="semi-fire-toggle"
@@ -880,7 +893,11 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="text-base">住宅ローン</CardTitle>
-              <CardDescription>ローン返済額をFIRE計算に含めます。完済後はキャッシュフローが改善します</CardDescription>
+              <CardDescription>
+                {config.mortgage
+                  ? `月${formatCurrency(config.mortgage.monthlyPayment)}を${config.mortgage.endYear}年まで返済する設定でシミュレーション中`
+                  : "ローン返済額をFIRE計算に含めます。完済後はキャッシュフローが改善します"}
+              </CardDescription>
             </div>
             <Switch
               id="mortgage-toggle"
