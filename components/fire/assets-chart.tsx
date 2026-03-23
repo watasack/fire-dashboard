@@ -182,17 +182,6 @@ export function AssetsChart({ result, monteCarloResult, showPercentiles = true }
                 name="中央値シナリオ"
               />
 
-              {/* FIRE number line */}
-              <Line
-                type="monotone"
-                dataKey="fireNumber"
-                stroke="var(--chart-secondary)"
-                strokeWidth={2}
-                strokeDasharray="5 5"
-                dot={false}
-                name="FIRE達成ライン"
-              />
-
               {/* FIRE age reference line */}
               {fireAge && (
                 <ReferenceLine

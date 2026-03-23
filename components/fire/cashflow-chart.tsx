@@ -1,7 +1,7 @@
 "use client"
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { SimulationResult, formatCashFlowChartData } from "@/lib/simulator"
+import { SimulationResult } from "@/lib/simulator"
 import { formatCurrency } from "@/lib/utils"
 import {
   ComposedChart,
@@ -24,7 +24,7 @@ export function CashFlowChart({ result }: CashFlowChartProps) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>収支グラフ（5年単位）</CardTitle>
+          <CardTitle>収支グラフ</CardTitle>
         </CardHeader>
         <CardContent className="flex h-[240px] sm:h-[280px] lg:h-[300px] items-center justify-center">
           <p className="text-muted-foreground">データがありません</p>
@@ -33,13 +33,18 @@ export function CashFlowChart({ result }: CashFlowChartProps) {
     )
   }
 
-  const chartData = formatCashFlowChartData(result.yearlyData, 5)
+  const chartData = result.yearlyData.map((d) => ({
+    label: `${d.age}歳`,
+    income: d.income,
+    expenses: d.expenses,
+    netCF: d.income - d.expenses,
+  }))
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>収支グラフ（5年単位）</CardTitle>
-        <CardDescription>5年ごとの収入・支出・年間収支の合計</CardDescription>
+        <CardTitle>収支グラフ</CardTitle>
+        <CardDescription>年齢別の収入・支出・年間収支</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="h-[240px] sm:h-[280px] lg:h-[300px]">
@@ -53,6 +58,7 @@ export function CashFlowChart({ result }: CashFlowChartProps) {
                 textAnchor="end"
                 height={50}
                 stroke="var(--color-muted-foreground)"
+                interval={4}
               />
               <YAxis
                 tick={{ fontSize: 12 }}

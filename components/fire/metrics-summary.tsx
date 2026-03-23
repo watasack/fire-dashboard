@@ -58,61 +58,25 @@ export function MetricsSummary({ config, result, mcResult, isCalculating }: Metr
   return (
     <Card className={`transition-opacity duration-200 ${isCalculating ? 'opacity-60' : ''}`}>
       <CardContent className="p-4">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        </div>
-
-        {/* FIRE達成率・枯渇年齢 */}
+        {/* FIRE達成率 */}
         {result && (
-          <div className="grid gap-3 sm:grid-cols-2 mt-3">
-            {/* FIRE達成率カード */}
-            <div className="rounded-lg bg-muted/50 p-3">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-background">
-                  <Target className="h-4 w-4 text-primary" />
-                </div>
-                <p className="text-xs text-muted-foreground">目標達成率（現在）</p>
+          <div className="rounded-lg bg-muted/50 p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-background">
+                <Target className="h-4 w-4 text-primary" />
               </div>
-              <p className={`font-semibold text-lg ${achievementColor}`}>{achievementPercent}%</p>
-              <div className="mt-2 h-2 rounded-full bg-muted overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all ${achievementPercent >= 100 ? "bg-green-500" : "bg-blue-500"}`}
-                  style={{ width: `${Math.min(achievementPercent, 100)}%` }}
-                />
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                必要資産: {formatCurrency(result.fireNumber, true)}
-              </p>
+              <p className="text-xs text-muted-foreground">目標達成率（現在）</p>
             </div>
-
-            {/* 枯渇年齢カード（モンテカルロ時のみ） */}
-            {mcResult ? (
-              <div className="rounded-lg bg-muted/50 p-3">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-background">
-                    <ShieldAlert className="h-4 w-4 text-primary" />
-                  </div>
-                  <p className="text-xs text-muted-foreground">FIRE成功確率（1000通り）</p>
-                </div>
-                <p className="font-semibold text-lg">{formatPercent(mcResult.successRate)}</p>
-                {mcResult.depletionAgeP10 !== null && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    最悪シナリオ（下位10%）: {mcResult.depletionAgeP10}歳まで資産が持ちます
-                  </p>
-                )}
-                {mcResult.depletionAgeP10 === null && (
-                  <p className="text-xs text-green-600 mt-1">
-                    1000通り全てで90歳まで資産が持続しました
-                  </p>
-                )}
-              </div>
-            ) : (
-              <MetricCard
-                icon={<Calendar className="h-5 w-5 text-primary" />}
-                label="シミュレーション期間"
-                value={`${config.simulationYears}年`}
-                subValue={`${config.person1.currentAge}〜${config.person1.currentAge + config.simulationYears}歳`}
+            <p className={`font-semibold text-lg ${achievementColor}`}>{achievementPercent}%</p>
+            <div className="mt-2 h-2 rounded-full bg-muted overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${achievementPercent >= 100 ? "bg-green-500" : "bg-blue-500"}`}
+                style={{ width: `${Math.min(achievementPercent, 100)}%` }}
               />
-            )}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              必要資産: {formatCurrency(result.fireNumber, true)}
+            </p>
           </div>
         )}
       </CardContent>

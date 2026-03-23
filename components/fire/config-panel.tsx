@@ -314,7 +314,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
           {!showAssetDetail ? (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <FieldLabel label="現在の資産（現金＋株式）" tooltip="証券口座・銀行口座の残高の合計を入力してください。NISAは投資タブで入力します" />
+                <FieldLabel label="現在の資産（現金＋株式）" tooltip="証券口座・銀行口座の残高の合計を入力してください。NISAは投資タブで入力します。保険の積立金・外貨預金・金（きん）は現金としてカウントしてください" />
                 <span className="text-sm font-mono text-muted-foreground">{formatCurrency((config.cashAssets ?? 0) + (config.stocks ?? config.currentAssets ?? 0), true)}</span>
               </div>
               <Slider
@@ -952,7 +952,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
             {([
               { value: 'fixed', label: '固定額' },
               { value: 'percentage', label: '定率' },
-              { value: 'guardrail', label: 'ガードレール' },
+              { value: 'guardrail', label: '暴落時支出抑制' },
             ] as { value: WithdrawalStrategy; label: string }[]).map(({ value, label }) => (
               <button
                 key={value}
@@ -967,6 +967,11 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
               </button>
             ))}
           </div>
+          <p className="text-xs text-muted-foreground">
+            {(config.withdrawalStrategy ?? 'fixed') === 'fixed' && '毎年一定額を取り崩します。生活水準が安定しますが、相場が悪い年も同額を引き出します。'}
+            {(config.withdrawalStrategy ?? 'fixed') === 'percentage' && '毎年資産残高の一定割合を取り崩します。資産が増えれば支出も増え、減れば自然に支出も減ります。'}
+            {(config.withdrawalStrategy ?? 'fixed') === 'guardrail' && '資産が大幅に下落した際に支出を自動削減します。暴落時のリスクを抑えつつ、好況時は支出を維持します。'}
+          </p>
 
           {(config.withdrawalStrategy ?? 'fixed') === 'guardrail' && (
             <div className="space-y-4">
@@ -1099,33 +1104,6 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
               </div>
             </div>
           )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">MCリターンモデル</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex gap-2">
-            {([
-              { value: 'normal', label: '正規分布' },
-              { value: 'meanReversion', label: '平均回帰' },
-              { value: 'bootstrap', label: 'ブートストラップ' },
-            ] as { value: MCReturnModel; label: string }[]).map(({ value, label }) => (
-              <button
-                key={value}
-                onClick={() => onConfigChange({ ...config, mcReturnModel: value })}
-                className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-                  (config.mcReturnModel ?? 'normal') === value
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted hover:bg-muted-foreground/10"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
         </CardContent>
       </Card>
 
