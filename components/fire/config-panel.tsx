@@ -7,7 +7,7 @@ import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion"
-import { SimulationConfig, Person, EmploymentType, WithdrawalStrategy, MCReturnModel, PostFireIncomeConfig, LifecycleExpenseConfig } from "@/lib/simulator"
+import { SimulationConfig, Person, EmploymentType, WithdrawalStrategy, MCReturnModel, PostFireIncomeConfig, LifecycleExpenseConfig, ChildEducationPaths, EDUCATION_PATHS_PRESETS } from "@/lib/simulator"
 import { formatCurrency, cn } from "@/lib/utils"
 import { User, Users, Wallet, TrendingUp, Baby, PiggyBank, Settings2, Info } from "lucide-react"
 
@@ -707,10 +707,15 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
               value={[config.children.length]}
               onValueChange={([value]) => {
                 const currentYear = new Date().getFullYear()
-                const children = Array.from({ length: value }, (_, i) => ({
-                  birthYear: config.children[i]?.birthYear ?? currentYear + i * 2,
-                  educationPath: config.children[i]?.educationPath ?? "mixed" as const,
-                }))
+                const children = Array.from({ length: value }, (_, i) => {
+                  const existing = config.children[i]
+                  const educationPath = existing?.educationPath ?? "mixed" as const
+                  return {
+                    birthYear: existing?.birthYear ?? currentYear + i * 2,
+                    educationPath,
+                    educationPaths: existing?.educationPaths ?? EDUCATION_PATHS_PRESETS[educationPath],
+                  }
+                })
                 onConfigChange({ ...config, children })
               }}
               min={0}
@@ -739,26 +744,74 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
                   step={1}
                 />
               </div>
-              <div className="flex items-center gap-4 pt-2">
-                <FieldLabel label="教育費" tooltip="「混合（小中公立・高大学私立）」が日本の平均的な家庭のパターンです" />
-                <div className="flex gap-2">
-                  {(["public", "mixed", "private"] as const).map((path) => (
-                    <button
-                      key={path}
-                      onClick={() => {
-                        const newChildren = [...config.children]
-                        newChildren[index] = { ...child, educationPath: path }
-                        onConfigChange({ ...config, children: newChildren })
-                      }}
-                      className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-                        child.educationPath === path
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-muted hover:bg-muted-foreground/10"
-                      }`}
-                    >
-                      {path === "public" ? "公立" : path === "private" ? "私立" : "混合"}
-                    </button>
-                  ))}
+              <div className="space-y-2 pt-2">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <FieldLabel label="教育費" tooltip="ステージごとに公立・私立を選択できます。プリセットで一括設定も可能です" />
+                  <div className="flex gap-1.5">
+                    {(["public", "mixed", "private"] as const).map((preset) => (
+                      <button
+                        key={preset}
+                        onClick={() => {
+                          const newChildren = [...config.children]
+                          newChildren[index] = {
+                            ...child,
+                            educationPath: preset,
+                            educationPaths: EDUCATION_PATHS_PRESETS[preset],
+                          }
+                          onConfigChange({ ...config, children: newChildren })
+                        }}
+                        className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                          !child.educationPaths && child.educationPath === preset
+                            ? "bg-primary text-primary-foreground"
+                            : JSON.stringify(child.educationPaths) === JSON.stringify(EDUCATION_PATHS_PRESETS[preset])
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-muted hover:bg-muted-foreground/10"
+                        }`}
+                      >
+                        {preset === "public" ? "全公立" : preset === "private" ? "全私立" : "混合"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="grid grid-cols-5 gap-1 text-xs">
+                  {([
+                    { key: "kindergarten" as keyof ChildEducationPaths, label: "幼稚園" },
+                    { key: "elementary"   as keyof ChildEducationPaths, label: "小学校" },
+                    { key: "juniorHigh"   as keyof ChildEducationPaths, label: "中学校" },
+                    { key: "highSchool"   as keyof ChildEducationPaths, label: "高校" },
+                    { key: "university"   as keyof ChildEducationPaths, label: "大学" },
+                  ] as const).map(({ key, label }) => {
+                    const paths = child.educationPaths ?? EDUCATION_PATHS_PRESETS[child.educationPath]
+                    const current = paths[key]
+                    return (
+                      <div key={key} className="space-y-0.5 text-center">
+                        <p className="text-muted-foreground text-[10px]">{label}</p>
+                        <div className="flex flex-col gap-0.5">
+                          {(["public", "private"] as const).map((v) => (
+                            <button
+                              key={v}
+                              onClick={() => {
+                                const newPaths: ChildEducationPaths = {
+                                  ...(child.educationPaths ?? EDUCATION_PATHS_PRESETS[child.educationPath]),
+                                  [key]: v,
+                                }
+                                const newChildren = [...config.children]
+                                newChildren[index] = { ...child, educationPaths: newPaths }
+                                onConfigChange({ ...config, children: newChildren })
+                              }}
+                              className={`rounded px-1 py-0.5 text-[10px] font-medium transition-colors ${
+                                current === v
+                                  ? "bg-primary text-primary-foreground"
+                                  : "bg-muted hover:bg-muted-foreground/10"
+                              }`}
+                            >
+                              {v === "public" ? "公立" : "私立"}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
               <div className="space-y-2 pt-2">

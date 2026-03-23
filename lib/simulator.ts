@@ -81,10 +81,25 @@ export interface Person {
     partTimeIncomeRatio?: number              // 時短中の収入比率（例: 0.7 = フル収入の70%）
 }
 
+export interface ChildEducationPaths {
+    kindergarten: "public" | "private"   // 幼稚園 3-5歳
+    elementary:   "public" | "private"   // 小学校 6-11歳
+    juniorHigh:   "public" | "private"   // 中学校 12-14歳
+    highSchool:   "public" | "private"   // 高校 15-17歳
+    university:   "public" | "private"   // 大学 18-21歳
+}
+
+export const EDUCATION_PATHS_PRESETS: Record<"public" | "private" | "mixed", ChildEducationPaths> = {
+    public:  { kindergarten: "public",  elementary: "public",  juniorHigh: "public",  highSchool: "public",  university: "public"  },
+    private: { kindergarten: "private", elementary: "private", juniorHigh: "private", highSchool: "private", university: "private" },
+    mixed:   { kindergarten: "public",  elementary: "public",  juniorHigh: "public",  highSchool: "private", university: "private" },
+}
+
 export interface Child {
     birthYear: number
     birthDate?: string              // 'YYYY-MM-DD' 形式（optional）
     educationPath: "public" | "private" | "mixed"
+    educationPaths?: ChildEducationPaths  // ステージ別設定（設定時はこちらが優先）
     daycareAnnualCost?: number      // 0〜2歳の保育園年額（デフォルト: 360,000円）
 }
 
@@ -599,7 +614,20 @@ function calculateChildCosts(children: Child[], year: number, inflationRate: num
         // 3〜21歳: 学校教育費（文科省データ準拠）
         if (childAge >= 3 && childAge <= 21) {
             const costIndex = childAge - 3
-            const baseCost = EDUCATION_COSTS[child.educationPath][costIndex] || 0
+            let baseCost: number
+            if (child.educationPaths) {
+                // ステージ別設定が優先
+                const ep = child.educationPaths
+                const stageKey: "public" | "private" =
+                    childAge <= 5  ? ep.kindergarten :
+                    childAge <= 11 ? ep.elementary :
+                    childAge <= 14 ? ep.juniorHigh :
+                    childAge <= 17 ? ep.highSchool :
+                    ep.university
+                baseCost = EDUCATION_COSTS[stageKey][costIndex] || 0
+            } else {
+                baseCost = EDUCATION_COSTS[child.educationPath][costIndex] || 0
+            }
             totalCost += baseCost * inflationMultiplier
         }
     }
