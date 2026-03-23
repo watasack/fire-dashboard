@@ -163,6 +163,9 @@ export interface SimulationConfig {
     mortgage: MortgageConfig | null
     childAllowanceEnabled: boolean
 
+    // 住居
+    monthlyRent?: number        // 賃貸の場合の月額家賃（持ち家の場合は0またはundefined）
+
     // Simulation settings
     simulationYears: number
     inflationRate: number
@@ -1532,7 +1535,8 @@ export function runSingleSimulation(
 
         // Total expenses（FIRE後は社会保険料を上乗せ）
         const propertyTax = config.propertyTaxAnnual ?? 0
-        const totalExpenses = baseExpenses + childCosts + mortgageCost + maintenanceCost + postFireSI + propertyTax
+        const rentCost = (config.monthlyRent ?? 0) * 12
+        const totalExpenses = baseExpenses + childCosts + mortgageCost + maintenanceCost + postFireSI + propertyTax + rentCost
 
         // Calculate child allowance (non-taxable, added directly to net income)
         const childAllowance = (config.childAllowanceEnabled !== false)

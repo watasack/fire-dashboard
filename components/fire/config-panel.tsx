@@ -904,6 +904,49 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
 
       <Card>
         <CardHeader className="pb-3">
+          <CardTitle className="text-base">住居</CardTitle>
+          <CardDescription>
+            {(config.monthlyRent ?? 0) > 0
+              ? `賃貸 — 月${formatCurrency(config.monthlyRent ?? 0)}を毎年の支出に計上中`
+              : "持ち家（または住居費を生活費に含める場合）"}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex gap-2">
+            {(['owned', 'rented'] as const).map(type => (
+              <button
+                key={type}
+                onClick={() => onConfigChange({ ...config, monthlyRent: type === 'rented' ? 100_000 : 0 })}
+                className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                  (type === 'rented' ? (config.monthlyRent ?? 0) > 0 : (config.monthlyRent ?? 0) === 0)
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted hover:bg-muted/80'
+                }`}
+              >
+                {type === 'owned' ? '持ち家' : '賃貸'}
+              </button>
+            ))}
+          </div>
+          {(config.monthlyRent ?? 0) > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <FieldLabel label="月額家賃" tooltip="管理費・駐車場代など毎月かかる住居費の合計。更新料は生活費に含めてください" />
+                <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.monthlyRent ?? 0)}/月</span>
+              </div>
+              <Slider
+                value={[config.monthlyRent ?? 0]}
+                onValueChange={([value]) => onConfigChange({ ...config, monthlyRent: value })}
+                min={30_000}
+                max={500_000}
+                step={5_000}
+              />
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="text-base">住宅ローン</CardTitle>
