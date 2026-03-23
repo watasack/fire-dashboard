@@ -48,12 +48,10 @@ function PersonConfig({
   person,
   label,
   onChange,
-  childBirthYears,
 }: {
   person: Person
   label: string
   onChange: (person: Person) => void
-  childBirthYears?: number[]
 }) {
   const isHomemaker = person.employmentType === 'homemaker'
 
@@ -228,38 +226,6 @@ function PersonConfig({
         </div>
       )}
 
-      {childBirthYears && childBirthYears.length > 0 && (
-        <div className="space-y-2 rounded-lg border border-accent/30 bg-accent/5 p-3">
-          <div className="flex items-center gap-1.5 mb-0.5">
-            <span className="text-xs font-medium text-accent-foreground/80 bg-accent/20 px-1.5 py-0.5 rounded-full">このツールの強み</span>
-          </div>
-          <FieldLabel label="産休・育休取得" tooltip="育休を取る場合、給与の代わりに育児休業給付金が支給されます" />
-          <p className="text-xs text-muted-foreground">育休を取る子どもを全て選択</p>
-          {childBirthYears.map((birthYear, index) => {
-            const checked = (person.maternityLeaveChildBirthYears ?? []).includes(birthYear)
-            return (
-              <div key={birthYear} className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id={`maternity-${label}-${birthYear}`}
-                  checked={checked}
-                  onChange={(e) => {
-                    const current = person.maternityLeaveChildBirthYears ?? []
-                    const updated = e.target.checked
-                      ? [...current, birthYear]
-                      : current.filter(y => y !== birthYear)
-                    onChange({ ...person, maternityLeaveChildBirthYears: updated })
-                  }}
-                  className="h-4 w-4 rounded border-gray-300"
-                />
-                <label htmlFor={`maternity-${label}-${birthYear}`} className="text-sm">
-                  子ども{index + 1}（{birthYear}年生まれ）
-                </label>
-              </div>
-            )
-          })}
-        </div>
-      )}
     </div>
   )
 }
@@ -491,7 +457,6 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
             person={config.person1}
             label="本人"
             onChange={updatePerson1}
-            childBirthYears={config.children.map(c => c.birthYear)}
           />
         </CardContent>
       </Card>
@@ -521,7 +486,6 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
               person={config.person2}
               label="配偶者"
               onChange={updatePerson2}
-              childBirthYears={config.children.map(c => c.birthYear)}
             />
           </CardContent>
         )}
@@ -760,6 +724,47 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
               </div>
             </div>
           ))}
+
+          {config.children.length > 0 && (
+            <div className="space-y-3 rounded-lg border border-accent/30 bg-accent/5 p-3">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-medium text-accent-foreground/80 bg-accent/20 px-1.5 py-0.5 rounded-full">このツールの強み</span>
+              </div>
+              <FieldLabel label="産休・育休取得" tooltip="育休を取る場合、給与の代わりに育児休業給付金が支給されます" />
+              <p className="text-xs text-muted-foreground">育休を取る子どもを全て選択</p>
+              {config.children.map((child, index) => (
+                <div key={child.birthYear} className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">子ども{index + 1}（{child.birthYear}年生まれ）</p>
+                  <div className="flex gap-4 pl-2">
+                    {[
+                      { personKey: 'person1' as const, personLabel: '本人', person: config.person1, update: updatePerson1 },
+                      ...(config.person2 ? [{ personKey: 'person2' as const, personLabel: '配偶者', person: config.person2, update: updatePerson2 }] : []),
+                    ].map(({ personKey, personLabel, person, update }) => {
+                      const checked = (person.maternityLeaveChildBirthYears ?? []).includes(child.birthYear)
+                      return (
+                        <div key={personKey} className="flex items-center gap-1.5">
+                          <input
+                            type="checkbox"
+                            id={`maternity-${personKey}-${child.birthYear}`}
+                            checked={checked}
+                            onChange={(e) => {
+                              const current = person.maternityLeaveChildBirthYears ?? []
+                              const updated = e.target.checked
+                                ? [...current, child.birthYear]
+                                : current.filter(y => y !== child.birthYear)
+                              update({ ...person, maternityLeaveChildBirthYears: updated })
+                            }}
+                            className="h-4 w-4 rounded border-gray-300"
+                          />
+                          <label htmlFor={`maternity-${personKey}-${child.birthYear}`} className="text-sm">{personLabel}</label>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           <div className="flex items-center justify-between pt-2 border-t">
             <div>
