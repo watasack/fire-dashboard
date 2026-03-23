@@ -188,6 +188,7 @@ export function FireDashboard() {
                 monteCarloResult={monteCarloResult}
                 currentAge={config.person1.currentAge}
                 isCalculating={isCalculating}
+                swr={config.safeWithdrawalRate}
               />
 
               {/* Charts and Analysis Tabs */}

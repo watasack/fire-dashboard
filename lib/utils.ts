@@ -7,11 +7,13 @@ export function cn(...inputs: ClassValue[]) {
 
 export function formatCurrency(value: number, compact = false): string {
     if (compact) {
-        if (value >= 100000000) {
-            return `${(value / 100000000).toFixed(1)}億円`
+        const abs = Math.abs(value)
+        const sign = value < 0 ? "-" : ""
+        if (abs >= 100000000) {
+            return `${sign}${(abs / 100000000).toFixed(1)}億円`
         }
-        if (value >= 10000) {
-            return `${Math.round(value / 10000)}万円`
+        if (abs >= 10000) {
+            return `${sign}${Math.round(abs / 10000)}万円`
         }
     }
     return new Intl.NumberFormat("ja-JP", {

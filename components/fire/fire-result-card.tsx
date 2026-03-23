@@ -11,9 +11,10 @@ interface FireResultCardProps {
   monteCarloResult: MonteCarloResult | null
   currentAge: number
   isCalculating: boolean
+  swr?: number
 }
 
-export function FireResultCard({ result, monteCarloResult, currentAge, isCalculating }: FireResultCardProps) {
+export function FireResultCard({ result, monteCarloResult, currentAge, isCalculating, swr = 0.04 }: FireResultCardProps) {
   if (!result) {
     return (
       <Card className="border-2 border-dashed border-muted-foreground/20">
@@ -121,7 +122,7 @@ export function FireResultCard({ result, monteCarloResult, currentAge, isCalcula
                   </TooltipTrigger>
                   <TooltipContent>
                     <p className="max-w-xs text-xs">
-                      年間支出 ÷ 安全引き出し率（4%）で計算されるFIRE達成に必要な資産額
+                      年間支出 ÷ 安全引き出し率（{(swr * 100).toFixed(1)}%）で計算されるFIRE達成に必要な資産額
                     </p>
                   </TooltipContent>
                 </Tooltip>

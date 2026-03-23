@@ -156,7 +156,12 @@ function PersonConfig({
         <select
           className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
           value={person.employmentType ?? 'employee'}
-          onChange={e => onChange({ ...person, employmentType: e.target.value as EmploymentType })}
+          onChange={e => {
+            const employmentType = e.target.value as EmploymentType
+            const updates: Partial<typeof person> = { employmentType }
+            if (employmentType === 'selfEmployed') updates.incomeGrowthRate = 0
+            onChange({ ...person, ...updates })
+          }}
         >
           <option value="employee">会社員</option>
           <option value="selfEmployed">自営業・フリーランス</option>
