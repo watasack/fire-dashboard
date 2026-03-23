@@ -787,7 +787,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
 
           <div className="flex items-center justify-between pt-2 border-t">
             <div>
-              <FieldLabel label="児童手当" tooltip="2024年10月〜の制度。0〜2歳は1.5万円/月、3〜17歳は1万円/月（第3子以降は全年齢3万円/月）。所得制限なし" />
+              <FieldLabel label="児童手当" tooltip="2024年10月〜の制度。0〜2歳は1.5万円/月、3〜17歳は1万円/月（第3子以降は全年齢3万円/月）。所得制限なし。第3子のカウントは22歳未満のきょうだいを含む" />
               <p className="text-xs text-muted-foreground">収入に加算</p>
             </div>
             <Switch
