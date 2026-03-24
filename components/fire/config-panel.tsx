@@ -540,6 +540,45 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
 
       <Card>
         <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Wallet className="h-4 w-4" />
+            その他資産
+          </CardTitle>
+          <CardDescription>定期預金・外貨預金・金（きん）など、株式以外の運用資産を入力します</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <FieldLabel label="現在評価額" tooltip="定期預金・外貨預金・金（きん）など、現金・株式・NISA以外の資産の合計額です" />
+              <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.otherAssets ?? 0, true)}</span>
+            </div>
+            <Slider
+              value={[config.otherAssets ?? 0]}
+              onValueChange={([value]) => onConfigChange({ ...config, otherAssets: value })}
+              min={0}
+              max={50000000}
+              step={500000}
+            />
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <FieldLabel label="期待リターン" tooltip="この資産の年間期待リターンです。定期預金なら0〜1%、外貨預金なら2〜5%、金（きん）なら2〜4%が目安です" />
+              <span className="text-sm font-mono text-muted-foreground">{((config.otherAssetsReturn ?? 0.02) * 100).toFixed(1)}%</span>
+            </div>
+            <Slider
+              value={[(config.otherAssetsReturn ?? 0.02) * 100]}
+              onValueChange={([value]) => onConfigChange({ ...config, otherAssetsReturn: value / 100 })}
+              min={0}
+              max={8}
+              step={0.1}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2 text-base">
               <PiggyBank className="h-4 w-4" />

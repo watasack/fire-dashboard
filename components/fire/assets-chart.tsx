@@ -47,7 +47,7 @@ export function AssetsChart({ result, monteCarloResult, showPercentiles = true, 
     return {
       age: d.age,
       year: d.year,
-      assets: d.assets + d.nisaAssets + d.idecoAssets,
+      assets: d.assets + d.nisaAssets + d.idecoAssets + d.otherAssets,
       fireNumber: d.fireNumber,
       // Stacked band segments (each is the *difference* between adjacent percentiles)
       // stackId="band": base(p10) → seg1(p25-p10) → seg2(p75-p25) → seg3(p90-p75)

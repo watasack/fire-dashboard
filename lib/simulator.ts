@@ -171,6 +171,8 @@ export interface SimulationConfig {
     cashAssets?: number             // 現金・普通預金（投資リターンなし）
     stocks?: number                 // 課税口座の株式評価額
     stocksCostBasis?: number        // 課税口座取得原価（税計算用）
+    otherAssets?: number            // その他資産（定期預金・外貨預金・金など）
+    otherAssetsReturn?: number      // その他資産の期待リターン（デフォルト2%）
     monthlyExpenses: number
     expenseGrowthRate: number
 
@@ -246,6 +248,7 @@ export interface YearlyData {
     stocks: number          // 課税口座残高
     nisaAssets: number
     idecoAssets: number
+    otherAssets: number       // その他資産（定期預金・外貨預金・金など）
     grossIncome: number       // 税引き前収入合計
     totalTax: number          // 税・社保合計
     income: number
@@ -416,6 +419,8 @@ export const DEFAULT_CONFIG: SimulationConfig = {
     cashAssets: 2_000_000,          // 現金200万円
     stocks: 8_000_000,              // 課税口座800万円
     stocksCostBasis: 6_000_000,     // 取得原価600万円
+    otherAssets: 0,                 // その他資産（定期預金・外貨預金・金など）
+    otherAssetsReturn: 0.02,        // 2%/年
     monthlyExpenses: 350000, // 35万円/月
     expenseGrowthRate: 0.01, // 1%/年
 
@@ -1368,12 +1373,13 @@ export function runSingleSimulation(
     let stocksCostBasis = initialCostBasis   // 取得原価
     let nisaAssets = config.nisa.balance ?? 0
     let idecoAssets = 0
+    let otherAssets = config.otherAssets ?? 0
     let nisaTotalContributed = config.nisa.totalContributed ?? 0  // NISA累積拠出額追跡
     let fireAge: number | null = null
     let fireYear: number | null = null
     let capitalGainsLastYear = 0    // 前年の売却益
     let lastYearFireIncome = 0      // 前年の就労収入（FIRE後: セミFIRE収入, FIRE前: 給与収入）
-    let peakAssets = initialCashAssets + initialStocks  // ピーク資産（NISA/iDeCo は除く）
+    let peakAssets = initialCashAssets + initialStocks + otherAssets  // ピーク資産（NISA/iDeCo は除く）
 
     // Calculate FIRE number based on current expenses
     const annualExpenses = config.monthlyExpenses * 12
@@ -1620,7 +1626,7 @@ export function runSingleSimulation(
         // 取り崩し戦略（FIRE後のみ適用）
         let drawdownFromPeak = 0
         let discretionaryReductionRate = 0
-        const effectiveTotalAssets = cashAssets + stockAssets + nisaAssets + idecoAssets
+        const effectiveTotalAssets = cashAssets + stockAssets + nisaAssets + idecoAssets + otherAssets
 
         if (isPostFire) {
             // ピーク資産を更新
@@ -1679,6 +1685,8 @@ export function runSingleSimulation(
         let newNisa = nisaAssets * (1 + returnRate)
         let newIdeco = idecoAssets * (1 + returnRate)
         let newCash = cashAssets  // 現金はリターンなし
+        const otherAssetsReturnRate = config.otherAssetsReturn ?? 0.02
+        let newOtherAssets = otherAssets * (1 + otherAssetsReturnRate)
         // stocksCostBasis はリターンでは変わらない（含み益が増えるのみ）
         let capitalGainsThisYear = 0
 
@@ -1763,6 +1771,13 @@ export function runSingleSimulation(
                 newCash -= shortfall
                 shortfall = 0
             }
+
+            // その他資産から（現金も枯渇した場合）
+            if (shortfall > 0 && newOtherAssets > 0) {
+                const sellAmount = Math.min(shortfall, newOtherAssets)
+                newOtherAssets -= sellAmount
+                shortfall -= sellAmount
+            }
         }
 
         cashAssets = newCash
@@ -1770,10 +1785,11 @@ export function runSingleSimulation(
         stocksCostBasis = Math.max(0, stocksCostBasis)
         nisaAssets = Math.max(0, newNisa)
         idecoAssets = Math.max(0, newIdeco)
+        otherAssets = Math.max(0, newOtherAssets)
 
         // 後方互換: assets = cashAssets + stockAssets
         const totalLiquidAssets = cashAssets + stockAssets
-        const totalAssets = totalLiquidAssets + nisaAssets + idecoAssets
+        const totalAssets = totalLiquidAssets + nisaAssets + idecoAssets + otherAssets
 
         // Calculate current FIRE number (expenses grow over time)
         const currentFireNumber = totalExpenses / INTERNAL_SWR
@@ -1795,6 +1811,7 @@ export function runSingleSimulation(
             stocks: Math.max(0, stockAssets),
             nisaAssets: Math.max(0, nisaAssets),
             idecoAssets: Math.max(0, idecoAssets),
+            otherAssets: Math.max(0, otherAssets),
             grossIncome: totalIncome,
             totalTax,
             income: netIncomeWithAllowance,
