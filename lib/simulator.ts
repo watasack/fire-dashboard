@@ -187,6 +187,8 @@ export interface SimulationConfig {
 
     // 住居
     monthlyRent?: number        // 賃貸の場合の月額家賃（持ち家の場合は0またはundefined）
+    rentToPurchaseYear?: number  // 賃貸→持ち家への切り替え年（将来購入モード）
+    purchaseDownPayment?: number // 購入時の頭金（切り替え年に一括計上）
 
     // Simulation settings
     simulationYears: number
@@ -1610,7 +1612,17 @@ export function runSingleSimulation(
 
         // Total expenses（FIRE後は社会保険料を上乗せ）
         const propertyTax = config.propertyTaxAnnual ?? 0
-        const rentCost = (config.monthlyRent ?? 0) * 12
+        let rentCost = 0
+        if (config.rentToPurchaseYear !== undefined) {
+            // 将来購入モード: 購入年より前は家賃、購入年に頭金を一括計上
+            if (currentSimYear < config.rentToPurchaseYear) {
+                rentCost = (config.monthlyRent ?? 0) * 12
+            } else if (currentSimYear === config.rentToPurchaseYear) {
+                rentCost = config.purchaseDownPayment ?? 0
+            }
+        } else {
+            rentCost = (config.monthlyRent ?? 0) * 12
+        }
         const totalExpenses = baseExpenses + childCosts + mortgageCost + maintenanceCost + postFireSI + propertyTax + rentCost
 
         // Calculate child allowance (non-taxable, added directly to net income)

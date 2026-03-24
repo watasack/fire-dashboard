@@ -959,31 +959,48 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
         <CardHeader className="pb-3">
           <CardTitle className="text-base">住居</CardTitle>
           <CardDescription>
-            {(config.monthlyRent ?? 0) > 0
+            {config.rentToPurchaseYear !== undefined
+              ? `賃貸中→${config.rentToPurchaseYear}年に購入予定（月${formatCurrency(config.monthlyRent ?? 0)}の家賃をそれまで計上）`
+              : (config.monthlyRent ?? 0) > 0
               ? `賃貸 — 月${formatCurrency(config.monthlyRent ?? 0)}を毎年の支出に計上中`
               : "持ち家（または住居費を生活費に含める場合）"}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex gap-2">
-            {(['owned', 'rented'] as const).map(type => (
-              <button
-                key={type}
-                onClick={() => onConfigChange({ ...config, monthlyRent: type === 'rented' ? 100_000 : 0 })}
-                className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                  (type === 'rented' ? (config.monthlyRent ?? 0) > 0 : (config.monthlyRent ?? 0) === 0)
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted hover:bg-muted/80'
-                }`}
-              >
-                {type === 'owned' ? '持ち家' : '賃貸'}
-              </button>
-            ))}
+            {(['owned', 'rented', 'future'] as const).map(type => {
+              const active =
+                type === 'future'  ? config.rentToPurchaseYear !== undefined :
+                type === 'rented'  ? config.rentToPurchaseYear === undefined && (config.monthlyRent ?? 0) > 0 :
+                                     config.rentToPurchaseYear === undefined && (config.monthlyRent ?? 0) === 0
+              return (
+                <button
+                  key={type}
+                  onClick={() => {
+                    const currentYear = new Date().getFullYear()
+                    if (type === 'owned') {
+                      onConfigChange({ ...config, monthlyRent: 0, rentToPurchaseYear: undefined, purchaseDownPayment: undefined })
+                    } else if (type === 'rented') {
+                      onConfigChange({ ...config, monthlyRent: (config.monthlyRent && config.monthlyRent > 0) ? config.monthlyRent : 100_000, rentToPurchaseYear: undefined, purchaseDownPayment: undefined })
+                    } else {
+                      onConfigChange({ ...config, monthlyRent: (config.monthlyRent && config.monthlyRent > 0) ? config.monthlyRent : 100_000, rentToPurchaseYear: currentYear + 5, purchaseDownPayment: 5_000_000 })
+                    }
+                  }}
+                  className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                    active ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'
+                  }`}
+                >
+                  {type === 'owned' ? '持ち家' : type === 'rented' ? '賃貸' : '将来購入'}
+                </button>
+              )
+            })}
           </div>
-          {(config.monthlyRent ?? 0) > 0 && (
+
+          {/* 賃貸 or 将来購入: 月額家賃 */}
+          {((config.monthlyRent ?? 0) > 0 || config.rentToPurchaseYear !== undefined) && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <FieldLabel label="月額家賃" tooltip="管理費・駐車場代など毎月かかる住居費の合計。更新料は生活費に含めてください" />
+                <FieldLabel label="現在の月額家賃" tooltip="管理費・駐車場代など毎月かかる住居費の合計。更新料は生活費に含めてください" />
                 <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.monthlyRent ?? 0)}/月</span>
               </div>
               <Slider
@@ -994,6 +1011,41 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
                 step={5_000}
               />
             </div>
+          )}
+
+          {/* 将来購入モード専用 */}
+          {config.rentToPurchaseYear !== undefined && (
+            <>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <FieldLabel label="購入予定年" tooltip="この年に持ち家に切り替わります。それ以前は家賃を、この年に頭金を一括計上します。購入後はローンカードの設定が適用されます" />
+                  <span className="text-sm font-mono text-muted-foreground">{config.rentToPurchaseYear}年</span>
+                </div>
+                <Slider
+                  value={[config.rentToPurchaseYear]}
+                  onValueChange={([value]) => onConfigChange({ ...config, rentToPurchaseYear: value })}
+                  min={new Date().getFullYear()}
+                  max={2050}
+                  step={1}
+                />
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <FieldLabel label="頭金" tooltip="購入時に一括で払う自己資金です。購入予定年の支出として計上されます" />
+                  <span className="text-sm font-mono text-muted-foreground">{((config.purchaseDownPayment ?? 0) / 10_000).toFixed(0)}万円</span>
+                </div>
+                <Slider
+                  value={[config.purchaseDownPayment ?? 5_000_000]}
+                  onValueChange={([value]) => onConfigChange({ ...config, purchaseDownPayment: value })}
+                  min={0}
+                  max={30_000_000}
+                  step={500_000}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                購入後のローン返済は「住宅ローン」カードで設定してください
+              </p>
+            </>
           )}
         </CardContent>
       </Card>
