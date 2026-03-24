@@ -1722,7 +1722,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
       {/* モバイル (lg未満): アコーディオン */}
       <div className="lg:hidden">
         <Accordion type="multiple" defaultValue={["basic"]}>
-          <AccordionItem value="basic">
+          <AccordionItem value="basic" id="config-basic">
             <AccordionTrigger>
               <span className="flex items-center gap-2"><Wallet className="h-4 w-4" />基本設定</span>
             </AccordionTrigger>
@@ -1730,7 +1730,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
               {basicInner}
             </AccordionContent>
           </AccordionItem>
-          <AccordionItem value="income">
+          <AccordionItem value="income" id="config-income">
             <AccordionTrigger>
               <span className="flex items-center gap-2"><Users className="h-4 w-4" />収入</span>
             </AccordionTrigger>
@@ -1738,7 +1738,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
               {incomeInner}
             </AccordionContent>
           </AccordionItem>
-          <AccordionItem value="investment">
+          <AccordionItem value="investment" id="config-invest">
             <AccordionTrigger>
               <span className="flex items-center gap-2"><TrendingUp className="h-4 w-4" />投資</span>
             </AccordionTrigger>
@@ -1746,7 +1746,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
               {investmentInner}
             </AccordionContent>
           </AccordionItem>
-          <AccordionItem value="life">
+          <AccordionItem value="life" id="config-life">
             <AccordionTrigger>
               <span className="flex items-center gap-2"><Baby className="h-4 w-4" />ライフ</span>
             </AccordionTrigger>
@@ -1754,7 +1754,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
               {lifeInner}
             </AccordionContent>
           </AccordionItem>
-          <AccordionItem value="advanced">
+          <AccordionItem value="advanced" id="config-detail">
             <AccordionTrigger>
               <span className="flex items-center gap-2"><Settings2 className="h-4 w-4" />詳細設定</span>
             </AccordionTrigger>

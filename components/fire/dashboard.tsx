@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { SimulationConfig, SimulationResult, MonteCarloResult, DEFAULT_CONFIG, runSingleSimulation, runMonteCarloSimulation } from "@/lib/simulator"
 import { FireResultCard } from "./fire-result-card"
 import { ConfigPanel } from "./config-panel"
@@ -12,9 +12,20 @@ import { CashFlowChart } from "./cashflow-chart"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent } from "@/components/ui/card"
 import { TooltipProvider } from "@/components/ui/tooltip"
-import { BarChart3, Settings, Lightbulb, TrendingUp, Info, ShieldCheck, Table2, Lock, Share2 } from "lucide-react"
+import { BarChart3, Lightbulb, TrendingUp, Info, ShieldCheck, Table2, Lock, Share2, Home, Wallet, Baby, Settings2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { encodeConfig, decodeConfig } from "@/lib/url-state"
+
+// Helper: determine which sections have meaningful input
+function getSectionCompletion(config: SimulationConfig) {
+  return {
+    basic: config.monthlyExpenses > 0,
+    income: config.person1.grossIncome > 0,
+    invest: (config.cashAssets ?? config.currentAssets ?? 0) > 0 || (config.stocks ?? 0) > 0 || config.nisa.enabled,
+    life: config.children.length > 0 || config.mortgage !== null || (config.postFireIncome != null),
+    detail: true, // always consider configured
+  }
+}
 
 // Debounce hook
 function useDebounce<T>(value: T, delay: number): T {
@@ -40,6 +51,7 @@ export function FireDashboard() {
   const [isCalculating, setIsCalculating] = useState(false)
   const [useMonteCarlo, setUseMonteCarlo] = useState(true)
   const [copied, setCopied] = useState(false)
+  const [activeSection, setActiveSection] = useState<string>("config-basic")
 
   // Read config from URL hash on mount
   useEffect(() => {
@@ -78,6 +90,33 @@ export function FireDashboard() {
 
     return () => clearTimeout(timer)
   }, [debouncedConfig, useMonteCarlo])
+
+  // IntersectionObserver: track which accordion section is in view (mobile only)
+  useEffect(() => {
+    const sectionIds = ["config-basic", "config-income", "config-invest", "config-life", "config-detail"]
+    const observers: IntersectionObserver[] = []
+
+    sectionIds.forEach((id) => {
+      const el = document.getElementById(id)
+      if (!el) return
+      const obs = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              setActiveSection(id)
+            }
+          })
+        },
+        { threshold: 0.3 }
+      )
+      obs.observe(el)
+      observers.push(obs)
+    })
+
+    return () => {
+      observers.forEach((obs) => obs.disconnect())
+    }
+  }, [])
 
   const handleConfigChange = useCallback((newConfig: SimulationConfig) => {
     setConfig({ ...newConfig, simulationYears: 100 - newConfig.person1.currentAge })
@@ -153,7 +192,7 @@ export function FireDashboard() {
           </div>
         </div>
 
-        <main className="container mx-auto px-4 py-6">
+        <main className="container mx-auto px-4 py-6 pb-24 lg:pb-6">
           <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
             {/* Left Panel - Configuration */}
             <aside className="space-y-6 order-2 lg:order-1">
@@ -253,6 +292,53 @@ export function FireDashboard() {
             </div>
           </div>
         </main>
+
+        {/* Mobile Bottom Navigation */}
+        {(() => {
+          const completion = getSectionCompletion(config)
+          const navItems = [
+            { id: "config-basic",  label: "基本",   icon: Home,      done: completion.basic },
+            { id: "config-income", label: "収入",   icon: Wallet,    done: completion.income },
+            { id: "config-invest", label: "投資",   icon: TrendingUp, done: completion.invest },
+            { id: "config-life",   label: "ライフ", icon: Baby,      done: completion.life },
+            { id: "config-detail", label: "詳細",   icon: Settings2, done: completion.detail },
+          ]
+          return (
+            <nav className="fixed bottom-0 inset-x-0 z-50 lg:hidden border-t bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
+              <div className="flex">
+                {navItems.map(({ id, label, icon: Icon, done }) => {
+                  const isActive = activeSection === id
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => {
+                        const el = document.getElementById(id)
+                        if (el) {
+                          el.scrollIntoView({ behavior: "smooth", block: "start" })
+                          setActiveSection(id)
+                        }
+                      }}
+                      className={`flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium transition-colors ${
+                        isActive
+                          ? "text-primary"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <span className="relative">
+                        <Icon className="h-5 w-5" />
+                        {done && (
+                          <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-primary border border-background" />
+                        )}
+                      </span>
+                      <span>{label}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </nav>
+          )
+        })()}
 
         {/* Footer */}
         <footer className="border-t bg-card/50 mt-12">
