@@ -421,6 +421,7 @@ export const DEFAULT_CONFIG: SimulationConfig = {
         pensionStartAge: 65,
         pensionAmount: 1500000, // 150万円/年
         employmentType: 'employee',
+        birthMonth: undefined,
     },
 
     // Spouse (null = no spouse)
@@ -432,6 +433,7 @@ export const DEFAULT_CONFIG: SimulationConfig = {
         pensionStartAge: 65,
         pensionAmount: 1200000, // 120万円/年
         employmentType: 'employee',
+        birthMonth: undefined,
         maternityLeaveConfig: [
             {
                 childBirthDate: '2022-07',  // 産休・育休を取る子の出生年月
@@ -451,6 +453,7 @@ export const DEFAULT_CONFIG: SimulationConfig = {
         annualLimit: 3_600_000,
         lifetimeLimit: 18_000_000,
         totalContributed: 0,
+        balance: 0,
     },
 
     // iDeCo
@@ -462,10 +465,26 @@ export const DEFAULT_CONFIG: SimulationConfig = {
 
     // Children
     children: [
-        { birthYear: 2022, educationPath: "public" as const }
+        {
+            birthYear: 2022,
+            educationPath: "public" as const,
+            educationPaths: {
+                kindergarten: "public", elementary: "public", juniorHigh: "public",
+                highSchool: "public", university: "public",
+            },
+            daycareAnnualCost: 360_000,
+        }
     ],
     mortgage: null,
     childAllowanceEnabled: true,
+
+    // 住居
+    monthlyRent: 0,
+    rentToPurchaseYear: undefined,
+    purchaseDownPayment: undefined,
+
+    // 固定資産税
+    propertyTaxAnnual: 0,
 
     // Simulation settings
     simulationYears: 50,

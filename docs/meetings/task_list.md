@@ -102,7 +102,7 @@
 ## 🔵 コード監査で発見された潜在的改善（2026-03-24 追加）
 
 ### 高優先度
-- [ ] **DEFAULT_CONFIG に新フィールドのデフォルト値を明示**（`educationPaths`, `daycareAnnualCost`, `rentToPurchaseYear`, `purchaseDownPayment`, `birthMonth`, `propertyTaxAnnual`, `nisa.balance`, 住宅ローン詳細項目群）→ URLシェアの完全性に直結。BUG-08と同一
+- [x] **DEFAULT_CONFIG に新フィールドのデフォルト値を明示**（`educationPaths`, `daycareAnnualCost`, `rentToPurchaseYear`, `purchaseDownPayment`, `birthMonth`, `propertyTaxAnnual`, `nisa.balance`, 住宅ローン詳細項目群）→ URLシェアの完全性に直結。BUG-08と同一 ✅ 2026-03-24
 
 ### 中優先度
 - [ ] **fireMonth の実装を修正**（`fire-result-card.tsx` で「2035年6月」のように月表示しているが、simulator.ts の実装は `birthMonth` をそのまま使うだけで実際の達成月を計算していない。月表示を削除するか、正しく計算するか要判断）
