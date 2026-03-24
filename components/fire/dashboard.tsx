@@ -15,6 +15,7 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import { BarChart3, Lightbulb, TrendingUp, Info, ShieldCheck, Table2, Lock, Share2, Home, Wallet, Baby, Settings2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { encodeConfig, decodeConfig } from "@/lib/url-state"
+import Link from "next/link"
 
 // Helper: determine which sections have meaningful input
 function getSectionCompletion(config: SimulationConfig) {
@@ -145,6 +146,12 @@ export function FireDashboard() {
                 <p className="text-xs text-muted-foreground">育休や時短の影響も含めて、あなたのFIRE時期を計算します</p>
               </div>
             </div>
+            <Link
+              href="/faq"
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors hidden sm:block"
+            >
+              よくある質問
+            </Link>
             </div>
         </header>
 
