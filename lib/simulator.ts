@@ -259,6 +259,8 @@ export interface YearlyData {
     nationalPensionPremium: number    // 国民年金保険料（FIRE後60歳未満のみ）
     postFireSocialInsurance: number   // 国保 + 国民年金の合計
     maintenanceCost: number            // 住宅メンテナンス費用（周期的大型出費）
+    rentCost: number                   // 家賃または頭金（将来購入モードの購入年は頭金）
+    propertyTax: number                // 固定資産税
     drawdownFromPeak: number           // ピークからの下落率（-0.1 = -10%）
     discretionaryReductionRate: number // 当年の裁量支出削減率（0〜1）
 }
@@ -311,6 +313,8 @@ export interface AnnualTableRow {
     isFireAchieved: boolean
     isSemiFire: boolean
     fireNumber: number
+    housingCost: number   // 家賃 + ローン返済 + 固定資産税 + 大規模修繕費の合計
+    childCosts: number
 }
 
 export interface CashFlowChartGroup {
@@ -342,6 +346,8 @@ export function formatAnnualTableData(yearlyData: YearlyData[]): AnnualTableRow[
         isFireAchieved: data.isFireAchieved,
         isSemiFire: data.isSemiFire,
         fireNumber: data.fireNumber,
+        housingCost: data.rentCost + data.mortgageCost + data.propertyTax + data.maintenanceCost,
+        childCosts: data.childCosts,
     }))
 }
 
@@ -1792,6 +1798,8 @@ export function runSingleSimulation(
             childCosts,
             mortgageCost,
             maintenanceCost,
+            rentCost,
+            propertyTax,
             childAllowance,
             fireNumber: currentFireNumber,
             isFireAchieved,

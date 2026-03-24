@@ -32,15 +32,16 @@ export function AnnualCashFlowTable({ result }: AnnualCashFlowTableProps) {
       </CardHeader>
       <CardContent className="p-0">
         <div className="max-h-96 overflow-x-auto overflow-y-auto">
-          <table className="w-full min-w-[560px] text-sm">
+          <table className="w-full min-w-[720px] text-sm">
             <thead className="sticky top-0 bg-card border-b z-10">
               <tr>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">年齢</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">西暦</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">総資産(万)</th>
-                <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">税前年収(万)</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">手取り(万)</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">支出(万)</th>
+                <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">住居費(万)</th>
+                <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">子育て(万)</th>
                 <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">収支(万)</th>
                 <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground">FIRE</th>
               </tr>
@@ -58,9 +59,14 @@ export function AnnualCashFlowTable({ result }: AnnualCashFlowTableProps) {
                     <td className="px-3 py-1.5 font-medium">{row.age}歳</td>
                     <td className="px-3 py-1.5 text-muted-foreground">{row.year}</td>
                     <td className="px-3 py-1.5 text-right">{Math.round(row.totalAssets / 10000).toLocaleString()}</td>
-                    <td className="px-3 py-1.5 text-right">{Math.round(row.grossIncome / 10000).toLocaleString()}</td>
                     <td className="px-3 py-1.5 text-right">{Math.round(row.netIncome / 10000).toLocaleString()}</td>
                     <td className="px-3 py-1.5 text-right">{Math.round(row.expenses / 10000).toLocaleString()}</td>
+                    <td className="px-3 py-1.5 text-right text-muted-foreground">
+                      {row.housingCost > 0 ? Math.round(row.housingCost / 10000).toLocaleString() : "—"}
+                    </td>
+                    <td className="px-3 py-1.5 text-right text-muted-foreground">
+                      {row.childCosts > 0 ? Math.round(row.childCosts / 10000).toLocaleString() : "—"}
+                    </td>
                     <td className={`px-3 py-1.5 text-right font-medium ${cfColor}`}>
                       {row.netCashFlow >= 0 ? "+" : ""}{Math.round(row.netCashFlow / 10000).toLocaleString()}
                     </td>
