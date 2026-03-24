@@ -331,7 +331,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
             <div className="space-y-4">
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <FieldLabel label="現金・預金" tooltip="銀行口座の合計残高です（普通・定期・財形など）。投資リターンは発生しません" />
+                  <FieldLabel label="現金・預金" tooltip="銀行口座の合計残高です（普通・定期・財形など）。保険の積立金・外貨預金・金（きん）もここに含めてください。投資リターンは発生しません" />
                   <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.cashAssets ?? 0, true)}</span>
                 </div>
                 <Slider
@@ -345,7 +345,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
 
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <FieldLabel label="株式評価額（課税口座）" tooltip="証券会社の特定口座にある株・投信の今の評価額。NISAは含めません" />
+                  <FieldLabel label="株式評価額（課税口座）" tooltip="証券会社の特定口座にある株・投信の今の評価額。NISAは含めません。保険積立・外貨預金・金（きん）は現金として上の欄に入力してください" />
                   <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.stocks ?? 0, true)}</span>
                 </div>
                 <Slider
