@@ -313,28 +313,15 @@ def test_basic_tab_controls(page: Page):
     else:
         suite.add("現在の資産スライダー", False, f"スライダー要素が存在しない (count={slider_count})")
 
-    # 4b: 詳細入力リンク (PC版タブパネル内に絞り込む)
+    # 4b: 基本タブに「現金・預金」ラベルが表示される
     try:
         panel = page.locator(".not-lg\\:hidden [role='tabpanel']").first
-        detail_link = panel.get_by_role("button", name="詳細入力（現金/株式を分けて入力）")
-        detail_link.wait_for(state="visible", timeout=3000)
-        detail_link.click()
-        page.wait_for_timeout(SHORT_WAIT_MS)
-        cash_label = panel.get_by_text("現金・預金")
         suite.add(
-            "「詳細入力」クリック → 現金/株式スライダーが展開される",
-            cash_label.is_visible(),
-        )
-        # 戻す
-        back_link = panel.get_by_role("button", name="← 合算表示に戻す")
-        back_link.click()
-        page.wait_for_timeout(SHORT_WAIT_MS)
-        suite.add(
-            "「合算表示に戻す」クリック → 合算スライダーに戻る",
-            detail_link.is_visible(),
+            "基本タブ: 現金・預金ラベルが表示される",
+            panel.get_by_text("現金・預金", exact=True).is_visible(),
         )
     except Exception as e:
-        suite.add("詳細入力ボタン", False, str(e))
+        suite.add("基本タブ: 現金・預金ラベル", False, str(e))
 
     # 4c: 生活費モード切替
     try:
@@ -460,7 +447,21 @@ def test_investment_tab_controls(page: Page):
     except Exception:
         pass
 
-    # 6a: NISAスイッチ
+    # 6a: 株式（課税口座）カードが表示される
+    try:
+        inv_panel = page.locator(".not-lg\\:hidden [role='tabpanel'][data-state='active']")
+        suite.add(
+            "投資タブ: 株式評価額ラベルが表示される",
+            inv_panel.get_by_text("株式評価額", exact=True).is_visible(),
+        )
+        suite.add(
+            "投資タブ: 株式取得原価ラベルが表示される",
+            inv_panel.get_by_text("株式取得原価", exact=True).is_visible(),
+        )
+    except Exception as e:
+        suite.add("投資タブ: 株式カード", False, str(e))
+
+    # 6b: NISAスイッチ
     try:
         nisa_switch = page.locator("#nisa-toggle")
         initial = nisa_switch.is_checked()
@@ -486,7 +487,7 @@ def test_investment_tab_controls(page: Page):
     except Exception as e:
         suite.add("NISAスイッチ", False, str(e))
 
-    # 6b: iDeCoスイッチ
+    # 6c: iDeCoスイッチ
     try:
         ideco_switch = page.locator("#ideco-toggle")
         initial = ideco_switch.is_checked()
@@ -1309,24 +1310,14 @@ def test_mobile_basic_accordion(page: Page):
     else:
         suite.add("モバイル: 資産スライダー", False, f"role=slider が存在しない (count={slider_count})")
 
-    # 4b: 詳細入力ボタン
+    # 4b: 基本設定アコーディオンに「現金・預金」ラベルが表示される
     try:
-        detail_btn = content.get_by_role("button", name="詳細入力（現金/株式を分けて入力）")
-        detail_btn.wait_for(state="visible", timeout=3000)
-        detail_btn.click()
-        page.wait_for_timeout(SHORT_WAIT_MS)
         suite.add(
-            "モバイル: 詳細入力クリック → 現金/株式スライダーが展開される",
-            content.get_by_text("現金・預金").is_visible(),
-        )
-        content.get_by_role("button", name="← 合算表示に戻す").click()
-        page.wait_for_timeout(SHORT_WAIT_MS)
-        suite.add(
-            "モバイル: 合算表示に戻す → 合算スライダーに戻る",
-            detail_btn.is_visible(),
+            "モバイル: 基本設定 — 現金・預金ラベルが表示される",
+            content.get_by_text("現金・預金", exact=True).is_visible(),
         )
     except Exception as e:
-        suite.add("モバイル: 詳細入力ボタン", False, str(e))
+        suite.add("モバイル: 現金・預金ラベル", False, str(e))
 
     # 4c: 生活費モード
     try:
@@ -1431,7 +1422,21 @@ def test_mobile_investment_accordion(page: Page):
         suite.add("モバイル: 投資アコーディオンを開く", False, "トリガーが見つからない")
         return
 
-    # 6a: NISAスイッチ
+    # 6a: 株式（課税口座）カードが表示される
+    try:
+        inv_content = mobile_accordion_content(page, "投資")
+        suite.add(
+            "モバイル: 投資アコーディオン — 株式評価額ラベルが表示される",
+            inv_content.get_by_text("株式評価額", exact=True).is_visible(),
+        )
+        suite.add(
+            "モバイル: 投資アコーディオン — 株式取得原価ラベルが表示される",
+            inv_content.get_by_text("株式取得原価", exact=True).is_visible(),
+        )
+    except Exception as e:
+        suite.add("モバイル: 株式カード", False, str(e))
+
+    # 6b: NISAスイッチ
     try:
         nisa = page.locator("#nisa-toggle")
         if nisa.is_checked():
@@ -1449,7 +1454,7 @@ def test_mobile_investment_accordion(page: Page):
     except Exception as e:
         suite.add("モバイル: NISAスイッチ", False, str(e))
 
-    # 6b: iDeCoスイッチ
+    # 6c: iDeCoスイッチ
     try:
         ideco = page.locator("#ideco-toggle")
         if ideco.is_checked():

@@ -247,7 +247,6 @@ function PersonConfig({
 const ACCORDION_STORAGE_KEY = "fire_config_accordion"
 
 export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarloChange }: ConfigPanelProps) {
-  const [showAssetDetail, setShowAssetDetail] = useState(false)
   const [accordionValues, setAccordionValues] = useState<string[]>(() => {
     if (typeof window === "undefined") return ["basic"]
     try {
@@ -307,91 +306,19 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
           <CardDescription>まずここから。資産・生活費を入力してFIRE時期を計算します</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {!showAssetDetail ? (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <FieldLabel label="現在の資産（現金＋株式）" tooltip="証券口座・銀行口座の残高の合計を入力してください。NISAは投資タブで入力します。保険の積立金・外貨預金・金（きん）は現金としてカウントしてください" />
-                <span className="text-sm font-mono text-muted-foreground">{formatCurrency((config.cashAssets ?? 0) + (config.stocks ?? config.currentAssets ?? 0), true)}</span>
-              </div>
-              <Slider
-                value={[(config.cashAssets ?? 0) + (config.stocks ?? config.currentAssets ?? 0)]}
-                onValueChange={([value]) => onConfigChange({ ...config, cashAssets: 0, stocks: value, stocksCostBasis: value })}
-                min={0}
-                max={100000000}
-                step={1000000}
-              />
-              <button
-                onClick={() => setShowAssetDetail(true)}
-                className="text-xs text-muted-foreground underline underline-offset-2"
-              >
-                詳細入力（現金/株式を分けて入力）
-              </button>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <FieldLabel label="現金・預金" tooltip="銀行口座の合計残高です（普通・定期・財形など）。保険の積立金・外貨預金・金（きん）も現金としてカウントしてください。株式・NISAは投資タブで入力します" />
+              <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.cashAssets ?? 0, true)}</span>
             </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <FieldLabel label="現金・預金" tooltip="銀行口座の合計残高です（普通・定期・財形など）。保険の積立金・外貨預金・金（きん）もここに含めてください。投資リターンは発生しません" />
-                  <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.cashAssets ?? 0, true)}</span>
-                </div>
-                <Slider
-                  value={[config.cashAssets ?? 0]}
-                  onValueChange={([value]) => onConfigChange({ ...config, cashAssets: value })}
-                  min={0}
-                  max={50000000}
-                  step={500000}
-                />
-              </div>
-
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <FieldLabel label="株式評価額（課税口座）" tooltip="証券会社の特定口座にある株・投信の今の評価額。NISAは含めません。保険積立・外貨預金・金（きん）は現金として上の欄に入力してください" />
-                  <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.stocks ?? 0, true)}</span>
-                </div>
-                <Slider
-                  value={[config.stocks ?? 0]}
-                  onValueChange={([newStocksValue]) => onConfigChange({
-                    ...config,
-                    stocks: newStocksValue,
-                    stocksCostBasis: Math.min(config.stocksCostBasis ?? 0, newStocksValue),
-                  })}
-                  min={0}
-                  max={100000000}
-                  step={1000000}
-                />
-              </div>
-
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <FieldLabel label="株式取得原価" tooltip="株を最初に買ったときの合計金額。「含み益 = 評価額 − 取得原価」の部分に売却時20%の税金がかかります" />
-                  <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.stocksCostBasis ?? 0, true)}</span>
-                </div>
-                <Slider
-                  value={[config.stocksCostBasis ?? 0]}
-                  onValueChange={([value]) => onConfigChange({ ...config, stocksCostBasis: value })}
-                  min={0}
-                  max={(config.stocks ?? 0) > 0 ? (config.stocks ?? 0) : 100000000}
-                  step={500000}
-                />
-              </div>
-
-              {(() => {
-                const unrealizedGain = (config.stocks ?? 0) - (config.stocksCostBasis ?? 0)
-                return (
-                  <p className={`text-xs ${unrealizedGain >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                    含み益: {unrealizedGain >= 0 ? '+' : ''}{formatCurrency(unrealizedGain, true)}
-                  </p>
-                )
-              })()}
-
-              <button
-                onClick={() => setShowAssetDetail(false)}
-                className="text-xs text-muted-foreground underline underline-offset-2"
-              >
-                ← 合算表示に戻す
-              </button>
-            </div>
-          )}
+            <Slider
+              value={[config.cashAssets ?? 0]}
+              onValueChange={([value]) => onConfigChange({ ...config, cashAssets: value })}
+              min={0}
+              max={50000000}
+              step={500000}
+            />
+          </div>
 
           <div className="space-y-2">
             <FieldLabel label="生活費の算出方法" tooltip="「固定費」は手軽でシンプル。「ライフステージ」にすると子育て期は生活費が増え、老後は減る現実に近い計算になります" />
@@ -559,6 +486,55 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
             />
           </div>
 
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">株式（課税口座）</CardTitle>
+          <CardDescription>証券会社の特定口座にある株・投信の現在残高を入力します</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <FieldLabel label="株式評価額" tooltip="証券会社の特定口座にある株・投信の今の評価額。NISA口座・iDeCo口座の残高は含めません" />
+              <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.stocks ?? 0, true)}</span>
+            </div>
+            <Slider
+              value={[config.stocks ?? 0]}
+              onValueChange={([newStocksValue]) => onConfigChange({
+                ...config,
+                stocks: newStocksValue,
+                stocksCostBasis: Math.min(config.stocksCostBasis ?? 0, newStocksValue),
+              })}
+              min={0}
+              max={100000000}
+              step={1000000}
+            />
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <FieldLabel label="株式取得原価" tooltip="株を最初に買ったときの合計金額。「含み益 = 評価額 − 取得原価」の部分に売却時20%の税金がかかります" />
+              <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.stocksCostBasis ?? 0, true)}</span>
+            </div>
+            <Slider
+              value={[config.stocksCostBasis ?? 0]}
+              onValueChange={([value]) => onConfigChange({ ...config, stocksCostBasis: value })}
+              min={0}
+              max={(config.stocks ?? 0) > 0 ? (config.stocks ?? 0) : 100000000}
+              step={500000}
+            />
+          </div>
+
+          {(() => {
+            const unrealizedGain = (config.stocks ?? 0) - (config.stocksCostBasis ?? 0)
+            return (
+              <p className={`text-xs ${unrealizedGain >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                含み益: {unrealizedGain >= 0 ? '+' : ''}{formatCurrency(unrealizedGain, true)}
+              </p>
+            )
+          })()}
         </CardContent>
       </Card>
 
