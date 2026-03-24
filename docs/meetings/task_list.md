@@ -105,8 +105,8 @@
 - [x] **DEFAULT_CONFIG に新フィールドのデフォルト値を明示**（`educationPaths`, `daycareAnnualCost`, `rentToPurchaseYear`, `purchaseDownPayment`, `birthMonth`, `propertyTaxAnnual`, `nisa.balance`, 住宅ローン詳細項目群）→ URLシェアの完全性に直結。BUG-08と同一 ✅ 2026-03-24
 
 ### 中優先度
-- [ ] **fireMonth の実装を修正**（`fire-result-card.tsx` で「2035年6月」のように月表示しているが、simulator.ts の実装は `birthMonth` をそのまま使うだけで実際の達成月を計算していない。月表示を削除するか、正しく計算するか要判断）
-- [ ] **将来購入モード時の固定資産税タイミング修正**（現状は `rentToPurchaseYear` 設定時も購入前から固定資産税が計上される。購入年の翌年以降のみ課税すべき）
+- [x] **fireMonth の表示を修正**（MCのmedianFireAgeと単独シミュレーションのresult.fireYearがズレる場合に備え、fire-result-card.txsでfireAgeから表示年を逆算するよう修正） ✅ 2026-03-24
+- [x] **将来購入モード時の固定資産税タイミング修正**（購入年以降のみ固定資産税を課税するよう修正） ✅ 2026-03-24
 
 ### 低優先度
 - [ ] **MetricsSummary の未使用変数を削除**（`totalChildCosts` 等が計算されているが表示に使われていない）

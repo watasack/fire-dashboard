@@ -1630,7 +1630,10 @@ export function runSingleSimulation(
         }
 
         // Total expenses（FIRE後は社会保険料を上乗せ）
-        const propertyTax = config.propertyTaxAnnual ?? 0
+        // 将来購入モードの場合は購入年以降のみ固定資産税を課税
+        const propertyTax = config.rentToPurchaseYear !== undefined
+            ? (currentSimYear >= config.rentToPurchaseYear ? (config.propertyTaxAnnual ?? 0) : 0)
+            : (config.propertyTaxAnnual ?? 0)
         let rentCost = 0
         if (config.rentToPurchaseYear !== undefined) {
             // 将来購入モード: 購入年より前は家賃、購入年に頭金を一括計上

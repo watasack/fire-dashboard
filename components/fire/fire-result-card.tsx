@@ -31,6 +31,10 @@ export function FireResultCard({ result, monteCarloResult, currentAge, isCalcula
   const fireAge = monteCarloResult?.medianFireAge ?? result.fireAge
   const fireProbability = monteCarloResult?.successRate ?? (result.fireAge ? 1 : 0)
   const yearsToFire = fireAge ? fireAge - currentAge : null
+  // fireAgeから表示用の年を逆算（MCのmedianFireAgeとresult.fireYearがズレる場合に備える）
+  const startYear = result.yearlyData[0]?.year ?? new Date().getFullYear()
+  const displayFireYear = fireAge ? startYear + (fireAge - currentAge) : null
+  const displayFireMonth = result.fireMonth  // birthMonthがそのままFIRE達成月になる
   const isFireAchievable = fireProbability >= 0.5
   const endAge = currentAge + result.totalYears
   const firePosition = fireAge && result.totalYears > 0
@@ -84,10 +88,10 @@ export function FireResultCard({ result, monteCarloResult, currentAge, isCalcula
               {yearsToFire && (
                 <p className="text-sm text-muted-foreground">
                   あと{yearsToFire}年
-                  {result.fireYear && result.fireMonth
-                    ? `（${result.fireYear}年${result.fireMonth}月）`
-                    : result.fireYear
-                    ? `（${result.fireYear}年）`
+                  {displayFireYear && displayFireMonth
+                    ? `（${displayFireYear}年${displayFireMonth}月）`
+                    : displayFireYear
+                    ? `（${displayFireYear}年）`
                     : ""}
                 </p>
               )}
