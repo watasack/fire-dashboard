@@ -23,16 +23,18 @@ interface AssetsChartProps {
   result: SimulationResult | null
   monteCarloResult: MonteCarloResult | null
   showPercentiles?: boolean
+  compact?: boolean
 }
 
-export function AssetsChart({ result, monteCarloResult, showPercentiles = true }: AssetsChartProps) {
+export function AssetsChart({ result, monteCarloResult, showPercentiles = true, compact = false }: AssetsChartProps) {
+  const chartHeight = compact ? "h-[200px]" : "h-[260px] sm:h-[360px] lg:h-[400px]"
   if (!result) {
     return (
       <Card>
         <CardHeader>
           <CardTitle>資産推移</CardTitle>
         </CardHeader>
-        <CardContent className="flex h-[260px] sm:h-[360px] lg:h-[400px] items-center justify-center">
+        <CardContent className={`flex ${chartHeight} items-center justify-center`}>
           <p className="text-muted-foreground">データがありません</p>
         </CardContent>
       </Card>
@@ -70,7 +72,7 @@ export function AssetsChart({ result, monteCarloResult, showPercentiles = true }
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="h-[260px] sm:h-[360px] lg:h-[400px]">
+        <div className={chartHeight}>
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={chartData} margin={{ top: 20, right: 8, bottom: 20, left: 20 }}>
               <defs>
@@ -212,16 +214,18 @@ export function AssetsChart({ result, monteCarloResult, showPercentiles = true }
 
 interface IncomeExpenseChartProps {
   result: SimulationResult | null
+  compact?: boolean
 }
 
-export function IncomeExpenseChart({ result }: IncomeExpenseChartProps) {
+export function IncomeExpenseChart({ result, compact = false }: IncomeExpenseChartProps) {
+  const chartHeight = compact ? "h-[180px]" : "h-[240px] sm:h-[280px] lg:h-[300px]"
   if (!result) {
     return (
       <Card>
         <CardHeader>
           <CardTitle>収支推移</CardTitle>
         </CardHeader>
-        <CardContent className="flex h-[240px] sm:h-[280px] lg:h-[300px] items-center justify-center">
+        <CardContent className={`flex ${chartHeight} items-center justify-center`}>
           <p className="text-muted-foreground">データがありません</p>
         </CardContent>
       </Card>
@@ -243,7 +247,7 @@ export function IncomeExpenseChart({ result }: IncomeExpenseChartProps) {
         <CardDescription>年間の収入・支出・貯蓄の推移</CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="h-[240px] sm:h-[280px] lg:h-[300px]">
+        <div className={chartHeight}>
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={chartData} margin={{ top: 20, right: 8, bottom: 20, left: 20 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" opacity={0.5} />

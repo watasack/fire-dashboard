@@ -17,16 +17,18 @@ import {
 
 interface CashFlowChartProps {
   result: SimulationResult | null
+  compact?: boolean
 }
 
-export function CashFlowChart({ result }: CashFlowChartProps) {
+export function CashFlowChart({ result, compact = false }: CashFlowChartProps) {
+  const chartHeight = compact ? "h-[200px]" : "h-[240px] sm:h-[280px] lg:h-[300px]"
   if (!result) {
     return (
       <Card>
         <CardHeader>
           <CardTitle>収支グラフ</CardTitle>
         </CardHeader>
-        <CardContent className="flex h-[240px] sm:h-[280px] lg:h-[300px] items-center justify-center">
+        <CardContent className={`flex ${chartHeight} items-center justify-center`}>
           <p className="text-muted-foreground">データがありません</p>
         </CardContent>
       </Card>
@@ -47,7 +49,7 @@ export function CashFlowChart({ result }: CashFlowChartProps) {
         <CardDescription>年齢別の収入・支出・年間収支</CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="h-[240px] sm:h-[280px] lg:h-[300px]">
+        <div className={chartHeight}>
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={chartData} margin={{ top: 20, right: 8, bottom: 40, left: 20 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" opacity={0.5} />

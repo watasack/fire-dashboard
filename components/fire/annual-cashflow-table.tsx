@@ -6,16 +6,15 @@ import { formatCurrency } from "@/lib/utils"
 
 interface AnnualCashFlowTableProps {
   result: SimulationResult | null
+  compact?: boolean
 }
 
-export function AnnualCashFlowTable({ result }: AnnualCashFlowTableProps) {
+export function AnnualCashFlowTable({ result, compact = false }: AnnualCashFlowTableProps) {
   if (!result) {
     return (
       <Card>
-        <CardHeader>
-          <CardTitle>年次収支テーブル</CardTitle>
-        </CardHeader>
-        <CardContent className="flex h-[300px] items-center justify-center">
+        {!compact && <CardHeader><CardTitle>年次収支テーブル</CardTitle></CardHeader>}
+        <CardContent className="flex h-[200px] items-center justify-center">
           <p className="text-muted-foreground">データがありません</p>
         </CardContent>
       </Card>
@@ -26,12 +25,14 @@ export function AnnualCashFlowTable({ result }: AnnualCashFlowTableProps) {
 
   return (
     <Card className="overflow-hidden">
-      <CardHeader>
-        <CardTitle>年次収支テーブル</CardTitle>
-        <CardDescription>年齢別の資産・収入・支出・年間収支一覧</CardDescription>
-      </CardHeader>
+      {!compact && (
+        <CardHeader>
+          <CardTitle>年次収支テーブル</CardTitle>
+          <CardDescription>年齢別の資産・収入・支出・年間収支一覧</CardDescription>
+        </CardHeader>
+      )}
       <CardContent className="p-0">
-        <div className="max-h-96 overflow-x-auto overflow-y-auto">
+        <div className={`${compact ? "h-[200px]" : "max-h-96"} overflow-x-auto overflow-y-auto`}>
           <table className="w-full min-w-[720px] text-sm">
             <thead className="sticky top-0 bg-card border-b z-10">
               <tr>

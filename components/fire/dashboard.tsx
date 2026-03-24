@@ -192,12 +192,81 @@ export function FireDashboard() {
           </div>
         </div>
 
-        <main className="container mx-auto px-4 py-6 pb-24 lg:pb-6">
-          <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
+        <main className="container mx-auto px-4 lg:py-6 lg:pb-6">
+
+          {/* ===== MOBILE LAYOUT (lg:hidden) ===== */}
+          {/* 上部: グラフ固定 / 下部: 設定+結果スクロール */}
+          <div
+            className="lg:hidden flex flex-col overflow-hidden"
+            style={{ height: "calc(100dvh - 112px - 56px)" }}
+          >
+            {/* 上部: グラフタブ（固定） */}
+            <div className="shrink-0 pt-3 pb-1 border-b">
+              <Tabs defaultValue="assets" className="w-full">
+                <TabsList className="grid w-full grid-cols-4 mb-3">
+                  <TabsTrigger value="assets" className="flex items-center gap-1 text-xs">
+                    <BarChart3 className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">資産推移</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="cashflow" className="flex items-center gap-1 text-xs">
+                    <TrendingUp className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">収支</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="annual" className="flex items-center gap-1 text-xs">
+                    <Table2 className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">年次表</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="scenarios" className="flex items-center gap-1 text-xs">
+                    <Lightbulb className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">次の一手</span>
+                  </TabsTrigger>
+                </TabsList>
+                <TabsContent value="assets" className="mt-0">
+                  <AssetsChart compact result={result} monteCarloResult={monteCarloResult} showPercentiles={false} />
+                </TabsContent>
+                <TabsContent value="cashflow" className="mt-0">
+                  <CashFlowChart compact result={result} />
+                </TabsContent>
+                <TabsContent value="annual" className="mt-0">
+                  <AnnualCashFlowTable compact result={result} />
+                </TabsContent>
+                <TabsContent value="scenarios" className="mt-0 h-[200px] overflow-y-auto">
+                  <ScenarioComparison baseConfig={config} baseResult={result} baseMcResult={monteCarloResult} onConfigChange={handleConfigChange} />
+                </TabsContent>
+              </Tabs>
+            </div>
+
+            {/* 下部: スクロール可能（設定 → 結果詳細） */}
+            <div className="flex-1 overflow-y-auto">
+              <div className="py-4 space-y-4">
+                <ConfigPanel config={config} onConfigChange={handleConfigChange} useMonteCarlo={useMonteCarlo} onMonteCarloChange={setUseMonteCarlo} />
+                <FireResultCard result={result} monteCarloResult={monteCarloResult} currentAge={config.person1.currentAge} isCalculating={isCalculating} />
+                <MetricsSummary config={config} result={result} mcResult={monteCarloResult} isCalculating={isCalculating} />
+                <Card>
+                  <CardContent className="flex items-start gap-3 p-4">
+                    <Info className="h-5 w-5 text-muted-foreground mt-0.5" />
+                    <div className="text-sm text-muted-foreground">
+                      <p className="font-medium text-foreground mb-1">計算方法について</p>
+                      <ul className="space-y-1 text-xs">
+                        <li>FIRE達成: 資産が「年間支出 × 25倍」以上になった時点（4%ルール）</li>
+                        <li>市場変動: 株価のランダムな動きを1000通りシミュレーション（悪い年が続いた場合も含む）</li>
+                        <li>NISA/iDeCo: 非課税口座の運用益は税金なしで計算</li>
+                        <li>教育費: 文部科学省データをもとに、子どもの年齢に合わせて自動計算</li>
+                        <li>プライバシー: 計算はすべてブラウザ内で完結。入力データは外部に送信されません</li>
+                      </ul>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </div>
+
+          {/* ===== DESKTOP LAYOUT (hidden lg:grid) ===== */}
+          <div className="hidden lg:grid gap-6 lg:grid-cols-[380px_1fr]">
             {/* Left Panel - Configuration */}
-            <aside className="space-y-6 order-2 lg:order-1">
+            <aside className="space-y-6">
               <ConfigPanel config={config} onConfigChange={handleConfigChange} useMonteCarlo={useMonteCarlo} onMonteCarloChange={setUseMonteCarlo} />
-              
+
               {/* Trust indicators */}
               <Card className="border-primary/20 bg-primary/5">
                 <CardContent className="flex items-start gap-3 p-4">
@@ -217,17 +286,9 @@ export function FireDashboard() {
             </aside>
 
             {/* Right Panel - Results */}
-            <div className="space-y-6 order-1 lg:order-2 min-w-0">
-              {/* Key Metrics Summary */}
+            <div className="space-y-6 min-w-0">
               <MetricsSummary config={config} result={result} mcResult={monteCarloResult} isCalculating={isCalculating} />
-              
-              {/* FIRE Result Card */}
-              <FireResultCard
-                result={result}
-                monteCarloResult={monteCarloResult}
-                currentAge={config.person1.currentAge}
-                isCalculating={isCalculating}
-              />
+              <FireResultCard result={result} monteCarloResult={monteCarloResult} currentAge={config.person1.currentAge} isCalculating={isCalculating} />
 
               {/* Charts and Analysis Tabs */}
               <Tabs defaultValue="assets" className="w-full">
@@ -249,24 +310,16 @@ export function FireDashboard() {
                     <span className="truncate">次の一手</span>
                   </TabsTrigger>
                 </TabsList>
-
                 <TabsContent value="assets" className="mt-4">
-                  <AssetsChart
-                    result={result}
-                    monteCarloResult={monteCarloResult}
-                    showPercentiles={false}
-                  />
+                  <AssetsChart result={result} monteCarloResult={monteCarloResult} showPercentiles={false} />
                 </TabsContent>
-
                 <TabsContent value="cashflow" className="mt-4 space-y-4">
                   <CashFlowChart result={result} />
                   <IncomeExpenseChart result={result} />
                 </TabsContent>
-
                 <TabsContent value="annual" className="mt-4">
                   <AnnualCashFlowTable result={result} />
                 </TabsContent>
-
                 <TabsContent value="scenarios" className="mt-4">
                   <ScenarioComparison baseConfig={config} baseResult={result} baseMcResult={monteCarloResult} onConfigChange={handleConfigChange} />
                 </TabsContent>
