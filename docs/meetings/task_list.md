@@ -15,7 +15,7 @@
 | ~~BUG-05~~ | ~~SWR変更時にKPIパネルの必要資産額説明内のSWR値がリアルタイム更新されない~~ → config.safeWithdrawalRateをpropとして渡しリアルタイム表示 ✅ 2026-03-23 | ~~KPIパネル~~ |
 | ~~BUG-06~~ | ~~収支グラフで年間収支がマイナスになると「万円」単位が消える~~ → formatCurrencyを絶対値判定に修正 ✅ 2026-03-23 | ~~収支グラフ~~ |
 | BUG-07 | `npx next build` で `/404` ページのpre-renderに失敗する（`<Html> should not be imported outside of pages/_document`）。根本原因は `.next` キャッシュの汚染。`rm -rf .next` 後の再ビルドで解消。発生した際は `.next` 削除で対処 | ビルドキャッシュ |
-| BUG-08 | URLシェア機能の不完全: 最近追加されたフィールド（`educationPaths`, `daycareAnnualCost`, `rentToPurchaseYear`, `purchaseDownPayment`, `birthMonth`, `propertyTaxAnnual`, `nisa.balance`, 住宅ローン詳細項目群）が `DEFAULT_CONFIG` に明示的に含まれていない。URLから復元した際に `??` フォールバックで処理されるため計算は壊れないが、UI表示が意図と異なる場合がある | `lib/simulator.ts` DEFAULT_CONFIG |
+| ~~BUG-08~~ | ~~URLシェア機能の不完全: 最近追加されたフィールドが `DEFAULT_CONFIG` に明示的に含まれていない~~ → DEFAULT_CONFIGに全フィールドのデフォルト値を明示 ✅ 2026-03-24 | ~~`lib/simulator.ts` DEFAULT_CONFIG~~ |
 
 ---
 
