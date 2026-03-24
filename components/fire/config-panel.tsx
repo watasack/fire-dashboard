@@ -559,19 +559,6 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
             />
           </div>
 
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <FieldLabel label="安全引き出し率（SWR）" tooltip="「資産のうち毎年何%を使うか」です。4%なら「必要年収÷0.04 = 必要資産」。保守的にするなら3〜3.5%がおすすめ" />
-              <span className="text-sm font-mono text-muted-foreground">{(config.safeWithdrawalRate * 100).toFixed(1)}%</span>
-            </div>
-            <Slider
-              value={[config.safeWithdrawalRate * 100]}
-              onValueChange={([value]) => onConfigChange({ ...config, safeWithdrawalRate: value / 100 })}
-              min={2}
-              max={6}
-              step={0.1}
-            />
-          </div>
         </CardContent>
       </Card>
 

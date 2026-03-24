@@ -353,7 +353,7 @@ def test_basic_tab_controls(page: Page):
         page.wait_for_timeout(SHORT_WAIT_MS)
         suite.add(
             "生活費モード「固定費」ボタン → 月間生活費スライダーに戻る",
-            panel.get_by_text("月間生活費").is_visible(),
+            panel.get_by_text("月間生活費", exact=True).is_visible(),
         )
     except Exception as e:
         suite.add("生活費モードボタン", False, str(e))
@@ -405,9 +405,10 @@ def test_income_tab_controls(page: Page):
         suite.add("配偶者スイッチ", False, str(e))
 
     # 5b: 雇用形態セレクト
+    # 誕生月セレクト追加により page.locator("select").first が別要素を指すため
+    # employment オプションを持つセレクトをCSS属性セレクタで特定する
     try:
-        # 最初の select (本人の雇用形態)
-        emp_select = page.locator("select").first
+        emp_select = page.locator("select:has(option[value='selfEmployed'])").first
         emp_select.select_option("selfEmployed")
         page.wait_for_timeout(SHORT_WAIT_MS)
         wait_calc(page)
@@ -602,10 +603,10 @@ def test_advanced_tab_controls(page: Page):
     except Exception as e:
         suite.add("モンテカルロスイッチ", False, str(e))
 
-    # 8b: 取り崩し戦略ボタン (固定額/定率/ガードレール)
+    # 8b: 取り崩し戦略ボタン (固定額/定率/暴落時支出抑制)
     withdrawal_btns = [
         ("定率", "percentage"),
-        ("ガードレール", "guardrail"),
+        ("暴落時支出抑制", "guardrail"),
         ("固定額", "fixed"),
     ]
     for btn_label, _ in withdrawal_btns:
@@ -614,8 +615,8 @@ def test_advanced_tab_controls(page: Page):
             btn.click()
             page.wait_for_timeout(SHORT_WAIT_MS)
             wait_calc(page)
-            # ガードレールの場合は追加設定が表示されるはず
-            if btn_label == "ガードレール":
+            # 暴落時支出抑制の場合は追加設定が表示されるはず
+            if btn_label == "暴落時支出抑制":
                 suite.add(
                     f"取り崩し戦略「{btn_label}」→ 追加設定（裁量支出比率）が表示される",
                     page.get_by_text("裁量支出比率").is_visible(),
@@ -628,27 +629,7 @@ def test_advanced_tab_controls(page: Page):
         except Exception as e:
             suite.add(f"取り崩し戦略「{btn_label}」", False, str(e))
 
-    # 8c: MCリターンモデルボタン
-    mc_models = ["正規分布", "平均回帰", "ブートストラップ"]
-    for model in mc_models:
-        try:
-            btn = page.get_by_role("button", name=model).first
-            btn.click()
-            page.wait_for_timeout(SHORT_WAIT_MS)
-            wait_calc(page)
-            suite.add(
-                f"MCリターンモデル「{model}」ボタンがクリックできる",
-                True,
-            )
-        except Exception as e:
-            suite.add(f"MCリターンモデル「{model}」", False, str(e))
-
-    # 元に戻す
-    try:
-        page.get_by_role("button", name="正規分布").first.click()
-        page.wait_for_timeout(SHORT_WAIT_MS)
-    except Exception:
-        pass
+    # 8c: MCリターンモデルはUIから削除済み (MCモデル集約タスクで統合) → テスト対象外
 
     # 8d: FIRE後社会保険料の詳細設定
     try:
@@ -700,10 +681,14 @@ def test_income_sliders_and_details(page: Page):
     except Exception as e:
         suite.add("収入タブ: 本人スライダー操作", False, str(e))
 
-    # 5d-2: 産休・育休チェックボックス (子どもが存在する場合に表示)
+    # 5d-2: 産休・育休チェックボックス (ライフタブの子どもリスト内に配置)
+    # UIリファクタで収入タブ→ライフタブに移動済み
     checkbox_count_before = 0
     try:
-        checkboxes = panel.locator("input[type='checkbox']")
+        page.locator(".not-lg\\:hidden").get_by_role("tab", name="ライフ").click()
+        page.wait_for_timeout(TAB_WAIT_MS)
+        life_panel = page.locator(".not-lg\\:hidden [role='tabpanel'][data-state='active']").first
+        checkboxes = life_panel.locator("input[id^='maternity-']")
         checkbox_count_before = checkboxes.count()
         if checkbox_count_before > 0:
             cb = checkboxes.first
@@ -716,16 +701,14 @@ def test_income_sliders_and_details(page: Page):
                 f"産休・育休チェックボックス ({checkbox_count_before}個検出) → ON/OFF切替できる",
                 before != after,
             )
-            # 元に戻す
             if before != after:
                 cb.click()
                 page.wait_for_timeout(SHORT_WAIT_MS)
         else:
-            suite.add(
-                "産休・育休チェックボックス",
-                False,
-                "チェックボックスが見つからない (ライフタブで子どもを0人に設定している可能性)",
-            )
+            suite.add("産休・育休チェックボックス", False, "チェックボックスが見つからない (子どもが0人の可能性)")
+        # 収入タブに戻る
+        page.locator(".not-lg\\:hidden").get_by_role("tab", name="収入").click()
+        page.wait_for_timeout(TAB_WAIT_MS)
     except Exception as e:
         suite.add("産休・育休チェックボックス", False, str(e))
 
@@ -738,14 +721,19 @@ def test_income_sliders_and_details(page: Page):
             page.wait_for_timeout(SHORT_WAIT_MS)
             wait_calc(page)
 
-        # 配偶者の産休・育休チェックボックスが増加するか
-        checkboxes_with_spouse = panel.locator("input[type='checkbox']")
-        total_cb = checkboxes_with_spouse.count()
+        # 配偶者ON時: ライフタブの産休・育休チェックボックスが増加するか確認
+        page.locator(".not-lg\\:hidden").get_by_role("tab", name="ライフ").click()
+        page.wait_for_timeout(TAB_WAIT_MS)
+        life_panel_after = page.locator(".not-lg\\:hidden [role='tabpanel'][data-state='active']").first
+        total_cb = life_panel_after.locator("input[id^='maternity-']").count()
         suite.add(
-            f"配偶者ON時: 産休・育休チェックボックスが増加する",
+            "配偶者ON時: 産休・育休チェックボックスが増加する",
             total_cb > checkbox_count_before,
             f"本人: {checkbox_count_before}個 → 本人+配偶者: {total_cb}個",
         )
+        # 収入タブに戻る
+        page.locator(".not-lg\\:hidden").get_by_role("tab", name="収入").click()
+        page.wait_for_timeout(TAB_WAIT_MS)
 
         # 配偶者の雇用形態セレクト (2つ目のセレクト)
         selects = panel.locator("select")
@@ -820,15 +808,6 @@ def test_investment_sliders(page: Page):
         suite.add("投資タブ: リスク(標準偏差)スライダー操作 → エラーなし", True)
     except Exception as e:
         suite.add("投資タブ: リスクスライダー", False, str(e))
-
-    # SWR(安全引き出し率)スライダー
-    try:
-        swr_slider = sliders.nth(2)
-        drag_slider_right(page, swr_slider)
-        wait_calc(page)
-        suite.add("投資タブ: SWR(安全引き出し率)スライダー操作 → エラーなし", True)
-    except Exception as e:
-        suite.add("投資タブ: SWRスライダー", False, str(e))
 
     save_screenshot(page, "06b_investment_sliders")
 
@@ -943,7 +922,7 @@ def test_advanced_details(page: Page):
 
     # 8e-3: ガードレール戦略の詳細スライダー
     try:
-        page.get_by_role("button", name="ガードレール").first.click()
+        page.get_by_role("button", name="暴落時支出抑制").first.click()
         page.wait_for_timeout(SHORT_WAIT_MS)
         wait_calc(page)
 
@@ -1184,9 +1163,10 @@ def test_mobile_initial_load(page: Page):
         len(page.title()) > 0,
         page.title(),
     )
+    # スマホではヘッダーテキストが意図的に非表示 (lg未満で hidden)
     suite.add(
-        "モバイル: ヘッダー 'FIRE シミュレーター' が表示される",
-        page.locator("header h1").is_visible(),
+        "モバイル: ヘッダーテキスト 'FIRE シミュレーター' がモバイルで非表示になっている",
+        not page.locator("header h1").is_visible(),
     )
 
     fire_age = get_kpi_fire_age(page)
@@ -1361,7 +1341,7 @@ def test_mobile_basic_accordion(page: Page):
         page.wait_for_timeout(SHORT_WAIT_MS)
         suite.add(
             "モバイル: 生活費「固定費」→ 月間生活費スライダーに戻る",
-            content.get_by_text("月間生活費").is_visible(),
+            content.get_by_text("月間生活費", exact=True).is_visible(),
         )
     except Exception as e:
         suite.add("モバイル: 生活費モードボタン", False, str(e))
@@ -1402,9 +1382,9 @@ def test_mobile_income_accordion(page: Page):
     except Exception as e:
         suite.add("モバイル: 配偶者スイッチ", False, str(e))
 
-    # 5b: 雇用形態セレクト
+    # 5b: 雇用形態セレクト (employment オプションを持つセレクトをCSS属性セレクタで特定)
     try:
-        emp_select = page.locator("select").first
+        emp_select = page.locator("select:has(option[value='selfEmployed'])").first
         emp_select.select_option("selfEmployed")
         page.wait_for_timeout(SHORT_WAIT_MS)
         wait_calc(page)
@@ -1593,14 +1573,14 @@ def test_mobile_advanced_accordion(page: Page):
     except Exception as e:
         suite.add("モバイル: モンテカルロスイッチ", False, str(e))
 
-    # 8b: 取り崩し戦略ボタン
-    for btn_label in ["定率", "ガードレール", "固定額"]:
+    # 8b: 取り崩し戦略ボタン (ガードレールは「暴落時支出抑制」に名称変更済み)
+    for btn_label in ["定率", "暴落時支出抑制", "固定額"]:
         try:
             btn = page.get_by_role("button", name=btn_label).first
             btn.click()
             page.wait_for_timeout(SHORT_WAIT_MS)
             wait_calc(page)
-            if btn_label == "ガードレール":
+            if btn_label == "暴落時支出抑制":
                 suite.add(
                     f"モバイル: 取り崩し戦略「{btn_label}」→ 裁量支出比率設定が表示される",
                     page.get_by_text("裁量支出比率").is_visible(),
@@ -1610,18 +1590,10 @@ def test_mobile_advanced_accordion(page: Page):
         except Exception as e:
             suite.add(f"モバイル: 取り崩し戦略「{btn_label}」", False, str(e))
 
-    # 8c: MCリターンモデルボタン
-    for model in ["正規分布", "平均回帰", "ブートストラップ"]:
-        try:
-            page.get_by_role("button", name=model).first.click()
-            page.wait_for_timeout(SHORT_WAIT_MS)
-            wait_calc(page)
-            suite.add(f"モバイル: MCモデル「{model}」ボタンがクリックできる", True)
-        except Exception as e:
-            suite.add(f"モバイル: MCモデル「{model}」", False, str(e))
-    # 正規分布に戻す
+    # MCリターンモデルはUIから削除済み (MCモデル集約タスクで統合) → テスト対象外
+
+    # 固定額に戻す
     try:
-        page.get_by_role("button", name="正規分布").first.click()
         page.get_by_role("button", name="固定額").first.click()
         page.wait_for_timeout(SHORT_WAIT_MS)
     except Exception:
@@ -1666,11 +1638,13 @@ def test_mobile_income_sliders_and_details(page: Page):
     except Exception as e:
         suite.add("モバイル: 収入スライダー操作", False, str(e))
 
-    # M-5d-2: 産休・育休チェックボックス
+    # M-5d-2: 産休・育休チェックボックス (ライフアコーディオンの子どもリスト内に配置)
+    # UIリファクタで収入→ライフに移動済み
     checkbox_count_before = 0
     try:
-        content = mobile_accordion_content(page, "収入")
-        checkboxes = content.locator("input[type='checkbox']")
+        mobile_open_accordion(page, "ライフ")
+        life_content = mobile_accordion_content(page, "ライフ")
+        checkboxes = life_content.locator("input[id^='maternity-']")
         checkbox_count_before = checkboxes.count()
         if checkbox_count_before > 0:
             cb = checkboxes.first
@@ -1680,7 +1654,7 @@ def test_mobile_income_sliders_and_details(page: Page):
             wait_calc(page)
             after = cb.is_checked()
             suite.add(
-                f"モバイル: 産休・育休チェックボックス ({checkbox_count_before}個) → ON/OFF切替できる",
+                f"モバイル: 産休・育休チェックボックス ({checkbox_count_before}個検出) → ON/OFF切替できる",
                 before != after,
             )
             if before != after:
@@ -1690,8 +1664,10 @@ def test_mobile_income_sliders_and_details(page: Page):
             suite.add(
                 "モバイル: 産休・育休チェックボックス",
                 False,
-                "チェックボックスが見つからない",
+                "チェックボックスが見つからない (子どもが0人の可能性)",
             )
+        # 収入アコーディオンに戻る
+        mobile_open_accordion(page, "収入")
     except Exception as e:
         suite.add("モバイル: 産休・育休チェックボックス", False, str(e))
 
@@ -1704,14 +1680,17 @@ def test_mobile_income_sliders_and_details(page: Page):
             page.wait_for_timeout(SHORT_WAIT_MS)
             wait_calc(page)
 
-        # 配偶者の産休・育休チェックボックスが増加するか
-        content = mobile_accordion_content(page, "収入")
-        total_cb = content.locator("input[type='checkbox']").count()
+        # 配偶者ON時: ライフアコーディオンの産休・育休チェックボックスが増加するか確認
+        mobile_open_accordion(page, "ライフ")
+        life_content_after = mobile_accordion_content(page, "ライフ")
+        total_cb = life_content_after.locator("input[id^='maternity-']").count()
         suite.add(
             "モバイル: 配偶者ON時: 産休・育休チェックボックスが増加する",
             total_cb > checkbox_count_before,
             f"本人: {checkbox_count_before}個 → 本人+配偶者: {total_cb}個",
         )
+        # 収入アコーディオンに戻る
+        mobile_open_accordion(page, "収入")
 
         # 配偶者の雇用形態セレクト (2つ目のセレクト)
         selects = content.locator("select")
@@ -1778,14 +1757,6 @@ def test_mobile_investment_sliders(page: Page):
         suite.add("モバイル: リスク(標準偏差)スライダー操作 → エラーなし", True)
     except Exception as e:
         suite.add("モバイル: リスクスライダー", False, str(e))
-
-    # SWR(安全引き出し率)スライダー
-    try:
-        drag_slider_right(page, sliders.nth(2))
-        wait_calc(page)
-        suite.add("モバイル: SWR(安全引き出し率)スライダー操作 → エラーなし", True)
-    except Exception as e:
-        suite.add("モバイル: SWRスライダー", False, str(e))
 
     save_screenshot(page, "m06b_investment_sliders")
 
@@ -1882,7 +1853,7 @@ def test_mobile_advanced_details(page: Page):
 
     # ガードレール詳細スライダー
     try:
-        page.get_by_role("button", name="ガードレール").first.click()
+        page.get_by_role("button", name="暴落時支出抑制").first.click()
         page.wait_for_timeout(SHORT_WAIT_MS)
         wait_calc(page)
 
@@ -2174,7 +2145,7 @@ def test_kpi_direction_sanity(page: Page):
         # 月間生活費スライダーは下の方にある (resource後にある)
         sliders = panel.locator("[role='slider']")
         # 月間生活費スライダーをドラッグ (複数あるため、get_by_text周辺を探す)
-        expense_label = panel.get_by_text("月間生活費")
+        expense_label = panel.get_by_text("月間生活費", exact=True)
         if expense_label.is_visible():
             # ラベルの近くのスライダーを操作
             expense_slider = panel.locator("[role='slider']").last
@@ -2334,7 +2305,7 @@ def test_lifecycle_mode_input(page: Page):
         # 固定費モードに戻す
         panel.get_by_role("button", name="固定費").click()
         page.wait_for_timeout(SHORT_WAIT_MS)
-        suite.add("ライフステージ→固定費モードに戻る", panel.get_by_text("月間生活費").is_visible())
+        suite.add("ライフステージ→固定費モードに戻る", panel.get_by_text("月間生活費", exact=True).is_visible())
 
     except Exception as e:
         suite.add("ライフステージ数値入力テスト", False, str(e))
@@ -2361,7 +2332,7 @@ def test_guardrail_cleanup(page: Page):
         )
 
         # ガードレールに切り替え
-        page.get_by_role("button", name="ガードレール").first.click()
+        page.get_by_role("button", name="暴落時支出抑制").first.click()
         page.wait_for_timeout(SHORT_WAIT_MS)
         wait_calc(page)
         sliders_guardrail = panel.locator("[role='slider']").count()
@@ -2390,7 +2361,7 @@ def test_guardrail_cleanup(page: Page):
         )
 
         # 定率に切り替えてもクリーンアップされるか
-        page.get_by_role("button", name="ガードレール").first.click()
+        page.get_by_role("button", name="暴落時支出抑制").first.click()
         page.wait_for_timeout(SHORT_WAIT_MS)
         page.get_by_role("button", name="定率").first.click()
         page.wait_for_timeout(SHORT_WAIT_MS)
@@ -2586,7 +2557,7 @@ def test_mobile_lifecycle_input(page: Page):
         page.wait_for_timeout(SHORT_WAIT_MS)
         suite.add(
             "モバイル: 固定費モードに戻る",
-            content.get_by_text("月間生活費").is_visible(),
+            content.get_by_text("月間生活費", exact=True).is_visible(),
         )
     except Exception as e:
         suite.add("モバイル: ライフステージ数値入力テスト", False, str(e))
@@ -2607,7 +2578,7 @@ def test_mobile_guardrail_cleanup(page: Page):
             not page.get_by_text("裁量支出比率").is_visible(),
         )
 
-        page.get_by_role("button", name="ガードレール").first.click()
+        page.get_by_role("button", name="暴落時支出抑制").first.click()
         page.wait_for_timeout(SHORT_WAIT_MS)
         wait_calc(page)
         sliders_guardrail = content.locator("[role='slider']").count()

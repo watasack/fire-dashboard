@@ -3,6 +3,13 @@
 // ============================================================================
 
 // ----------------------------------------------------------------------------
+// Internal constants
+// ----------------------------------------------------------------------------
+
+/** SWRは内部定数として固定（ユーザーには非公開）。FIRE達成判定・定率引き出し戦略で使用 */
+const INTERNAL_SWR = 0.04
+
+// ----------------------------------------------------------------------------
 // Types
 // ----------------------------------------------------------------------------
 
@@ -170,7 +177,6 @@ export interface SimulationConfig {
     // Investment settings
     investmentReturn: number
     investmentVolatility: number
-    safeWithdrawalRate: number
 
     // People
     person1: Person
@@ -416,7 +422,6 @@ export const DEFAULT_CONFIG: SimulationConfig = {
     // Investment settings
     investmentReturn: 0.05, // 5%/年
     investmentVolatility: 0.15, // 15%
-    safeWithdrawalRate: 0.04, // 4%
 
     // Primary person
     person1: {
@@ -1372,7 +1377,7 @@ export function runSingleSimulation(
 
     // Calculate FIRE number based on current expenses
     const annualExpenses = config.monthlyExpenses * 12
-    const fireNumber = annualExpenses / config.safeWithdrawalRate
+    const fireNumber = annualExpenses / INTERNAL_SWR
 
     // 年金を事前計算（等比数列の期待値で平均標準報酬月額を算出）
     const calcAvgMonthlyRemuneration = (grossIncome: number, growthRate: number, years: number): number => {
@@ -1626,7 +1631,7 @@ export function runSingleSimulation(
                 baseExpenses,
                 effectiveTotalAssets,
                 peakAssets,
-                config.safeWithdrawalRate,
+                INTERNAL_SWR,
                 config.guardrailConfig,
                 lifecycleStage
             )
@@ -1771,7 +1776,7 @@ export function runSingleSimulation(
         const totalAssets = totalLiquidAssets + nisaAssets + idecoAssets
 
         // Calculate current FIRE number (expenses grow over time)
-        const currentFireNumber = totalExpenses / config.safeWithdrawalRate
+        const currentFireNumber = totalExpenses / INTERNAL_SWR
 
         // Check FIRE achievement
         const isFireAchieved = totalAssets >= currentFireNumber
@@ -1995,9 +2000,6 @@ export function runMonteCarloSimulation(
         })
     }
 
-    // Calculate success rate
-    const successfulSimulations = fireAges.filter((age) => age !== null).length
-    const successRate = successfulSimulations / iterations
 
     // Calculate percentiles for FIRE age
     const validFireAges = fireAges.filter((age): age is number => age !== null).sort((a, b) => a - b)
@@ -2042,16 +2044,17 @@ export function runMonteCarloSimulation(
         ? sortedDepletionAges[Math.floor(sortedDepletionAges.length * 0.50)]
         : null
 
-    // 90歳まで資産が持つ成功率の文言
+    // 成功率: シミュレーション期間（100歳まで）資産が枯渇しない確率
     const targetAge = config.person1.currentAge + config.simulationYears
     const successCount = depletionAges.filter(a => a === null || a > targetAge).length
+    const mcSuccessRate = successCount / iterations
     const successCountFormatted = `${iterations}通りのうち${successCount}通りで${targetAge}歳まで資産が持ちました`
 
     return {
         medianFireAge,
         percentile10,
         percentile90,
-        successRate,
+        successRate: mcSuccessRate,
         yearlyPercentiles,
         depletionAgeP10,
         depletionAgeP50,

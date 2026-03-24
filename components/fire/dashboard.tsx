@@ -227,7 +227,6 @@ export function FireDashboard() {
                 monteCarloResult={monteCarloResult}
                 currentAge={config.person1.currentAge}
                 isCalculating={isCalculating}
-                swr={config.safeWithdrawalRate}
               />
 
               {/* Charts and Analysis Tabs */}
@@ -269,7 +268,7 @@ export function FireDashboard() {
                 </TabsContent>
 
                 <TabsContent value="scenarios" className="mt-4">
-                  <ScenarioComparison baseConfig={config} baseResult={result} onConfigChange={handleConfigChange} />
+                  <ScenarioComparison baseConfig={config} baseResult={result} baseMcResult={monteCarloResult} onConfigChange={handleConfigChange} />
                 </TabsContent>
               </Tabs>
 

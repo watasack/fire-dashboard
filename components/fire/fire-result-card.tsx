@@ -4,19 +4,17 @@ import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { cn, formatCurrency, formatPercent } from "@/lib/utils"
 import { SimulationResult, MonteCarloResult } from "@/lib/simulator"
-import { TrendingUp, Target, Calendar, Wallet, AlertCircle, CheckCircle2, Info } from "lucide-react"
+import { TrendingUp, Target, Calendar, AlertCircle, CheckCircle2, Info } from "lucide-react"
 
 interface FireResultCardProps {
   result: SimulationResult | null
   monteCarloResult: MonteCarloResult | null
   currentAge: number
   isCalculating: boolean
-  swr?: number
 }
 
-export function FireResultCard({ result, monteCarloResult, currentAge, isCalculating, swr = 0.04 }: FireResultCardProps) {
+export function FireResultCard({ result, monteCarloResult, currentAge, isCalculating }: FireResultCardProps) {
   const [fireAgeTooltipOpen, setFireAgeTooltipOpen] = useState(false)
-  const [fireNumberTooltipOpen, setFireNumberTooltipOpen] = useState(false)
 
   if (!result) {
     return (
@@ -113,31 +111,6 @@ export function FireResultCard({ result, monteCarloResult, currentAge, isCalcula
               <p className="text-sm text-muted-foreground">
                 {fireProbability >= 0.8 ? "高い確率" :
                  fireProbability >= 0.5 ? "達成圏内" : "改善の余地あり"}
-              </p>
-            </div>
-
-            {/* FIRE Number */}
-            <div className="space-y-1">
-              <span className="flex flex-col gap-0">
-                <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                  <Wallet className="h-4 w-4" />
-                  <span>必要資産額</span>
-                  <button
-                    type="button"
-                    onClick={() => setFireNumberTooltipOpen(p => !p)}
-                    className="inline-flex p-2.5 -m-2.5 text-muted-foreground/60 hover:text-muted-foreground transition-colors"
-                  >
-                    <Info className="h-4 w-4 shrink-0" />
-                  </button>
-                </span>
-                {fireNumberTooltipOpen && (
-                  <span className="mt-1 text-xs text-muted-foreground leading-relaxed">
-                    年間支出 ÷ 安全引き出し率（{(swr * 100).toFixed(1)}%）で計算されるFIRE達成に必要な資産額
-                  </span>
-                )}
-              </span>
-              <p className="text-2xl font-bold tracking-tight">
-                {formatCurrency(result.fireNumber, true)}
               </p>
             </div>
 

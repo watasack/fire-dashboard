@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { SimulationConfig, runSingleSimulation, generateScenarios, SimulationResult } from "@/lib/simulator"
+import { SimulationConfig, MonteCarloResult, runMonteCarloSimulation, generateScenarios, SimulationResult } from "@/lib/simulator"
 import { cn } from "@/lib/utils"
 import { useMemo } from "react"
 import { ArrowDown, ArrowUp, Minus, Lightbulb, TrendingUp, Wallet, Briefcase, Calendar } from "lucide-react"
@@ -10,6 +10,7 @@ import { ArrowDown, ArrowUp, Minus, Lightbulb, TrendingUp, Wallet, Briefcase, Ca
 interface ScenarioComparisonProps {
   baseConfig: SimulationConfig
   baseResult: SimulationResult | null
+  baseMcResult: MonteCarloResult | null
   onConfigChange?: (config: SimulationConfig) => void
 }
 
@@ -20,15 +21,16 @@ const SCENARIO_ICONS = {
   "副業で月10万円追加": Briefcase,
 }
 
-export function ScenarioComparison({ baseConfig, baseResult, onConfigChange }: ScenarioComparisonProps) {
+export function ScenarioComparison({ baseConfig, baseResult, baseMcResult, onConfigChange }: ScenarioComparisonProps) {
   const scenarios = useMemo(() => {
     if (!baseResult) return []
 
+    const baseFireAge = baseMcResult?.medianFireAge ?? null
     const scenarioConfigs = generateScenarios(baseConfig)
-    
+
     return scenarioConfigs.map((scenario) => {
-      const mergedConfig = { ...baseConfig, ...scenario.changes } as import('@/lib/simulator').SimulationConfig
-      
+      const mergedConfig = { ...baseConfig, ...scenario.changes } as SimulationConfig
+
       // Handle nested objects
       if (scenario.changes.person1) {
         mergedConfig.person1 = { ...baseConfig.person1, ...scenario.changes.person1 }
@@ -43,9 +45,8 @@ export function ScenarioComparison({ baseConfig, baseResult, onConfigChange }: S
         mergedConfig.ideco = { ...baseConfig.ideco, ...scenario.changes.ideco }
       }
 
-      const result = runSingleSimulation(mergedConfig)
-      const baseFireAge = baseResult.fireAge
-      const scenarioFireAge = result.fireAge
+      const mcResult = runMonteCarloSimulation(mergedConfig, 1000)
+      const scenarioFireAge = mcResult.medianFireAge
 
       let fireAgeDelta: number | null = null
       if (baseFireAge && scenarioFireAge) {
@@ -59,13 +60,12 @@ export function ScenarioComparison({ baseConfig, baseResult, onConfigChange }: S
       return {
         name: scenario.name,
         description: scenario.description,
-        result,
+        mcResult,
         mergedConfig,
         fireAgeDelta,
-        finalAssetsDelta: result.finalAssets - baseResult.finalAssets,
       }
     })
-  }, [baseConfig, baseResult])
+  }, [baseConfig, baseResult, baseMcResult])
 
   if (!baseResult) {
     return (
@@ -161,9 +161,9 @@ export function ScenarioComparison({ baseConfig, baseResult, onConfigChange }: S
                         </>
                       )}
                     </div>
-                    {scenario.result.fireAge && (
+                    {scenario.mcResult.medianFireAge && (
                       <p className="text-sm text-muted-foreground">
-                        {scenario.result.fireAge}歳でFIRE
+                        {scenario.mcResult.medianFireAge}歳でFIRE
                       </p>
                     )}
                   </div>
