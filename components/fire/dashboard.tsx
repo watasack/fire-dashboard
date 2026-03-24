@@ -222,7 +222,7 @@ export function FireDashboard() {
                   </TabsTrigger>
                 </TabsList>
                 <TabsContent value="assets" className="mt-0">
-                  <AssetsChart compact result={result} monteCarloResult={monteCarloResult} showPercentiles={false} />
+                  <AssetsChart compact result={result} monteCarloResult={monteCarloResult} showPercentiles={useMonteCarlo} />
                 </TabsContent>
                 <TabsContent value="cashflow" className="mt-0">
                   <CashFlowChart compact result={result} />
@@ -311,7 +311,7 @@ export function FireDashboard() {
                   </TabsTrigger>
                 </TabsList>
                 <TabsContent value="assets" className="mt-4">
-                  <AssetsChart result={result} monteCarloResult={monteCarloResult} showPercentiles={false} />
+                  <AssetsChart result={result} monteCarloResult={monteCarloResult} showPercentiles={useMonteCarlo} />
                 </TabsContent>
                 <TabsContent value="cashflow" className="mt-4 space-y-4">
                   <CashFlowChart result={result} />
