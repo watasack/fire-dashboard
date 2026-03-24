@@ -3,7 +3,7 @@
 import { Card, CardContent } from "@/components/ui/card"
 import { SimulationConfig, SimulationResult, MonteCarloResult } from "@/lib/simulator"
 import { formatCurrency, formatPercent } from "@/lib/utils"
-import { TrendingUp, TrendingDown, Wallet, PiggyBank, Baby, Calendar, Target, ShieldAlert } from "lucide-react"
+import { TrendingUp, TrendingDown, Target } from "lucide-react"
 
 interface MetricsSummaryProps {
   config: SimulationConfig
@@ -43,14 +43,6 @@ function MetricCard({ icon, label, value, subValue, trend }: MetricCardProps) {
 }
 
 export function MetricsSummary({ config, result, mcResult, isCalculating }: MetricsSummaryProps) {
-  const totalIncome = config.person1.grossIncome + (config.person2?.grossIncome ?? 0)
-  const annualExpenses = config.monthlyExpenses * 12
-  const savingsRate = (totalIncome - annualExpenses) / totalIncome
-  const childCount = config.children.length
-
-  // Calculate total child education costs over time
-  const totalChildCosts = result?.yearlyData.reduce((sum, d) => sum + d.childCosts, 0) ?? 0
-
   // FIRE達成率
   const achievementPercent = result ? Math.round(result.fireAchievementRate * 100) : 0
   const achievementColor = achievementPercent >= 100 ? "text-green-600" : "text-blue-600"

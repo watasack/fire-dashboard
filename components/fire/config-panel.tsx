@@ -244,8 +244,24 @@ function PersonConfig({
   )
 }
 
+const ACCORDION_STORAGE_KEY = "fire_config_accordion"
+
 export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarloChange }: ConfigPanelProps) {
   const [showAssetDetail, setShowAssetDetail] = useState(false)
+  const [accordionValues, setAccordionValues] = useState<string[]>(() => {
+    if (typeof window === "undefined") return ["basic"]
+    try {
+      const stored = localStorage.getItem(ACCORDION_STORAGE_KEY)
+      return stored ? JSON.parse(stored) : ["basic"]
+    } catch {
+      return ["basic"]
+    }
+  })
+
+  const handleAccordionChange = (values: string[]) => {
+    setAccordionValues(values)
+    try { localStorage.setItem(ACCORDION_STORAGE_KEY, JSON.stringify(values)) } catch { /* ignore */ }
+  }
 
   const defaultGuardrail = {
     threshold1: -0.10, reduction1: 0.40,
@@ -1721,7 +1737,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
     <>
       {/* モバイル (lg未満): アコーディオン */}
       <div className="lg:hidden">
-        <Accordion type="multiple" defaultValue={["basic"]}>
+        <Accordion type="multiple" value={accordionValues} onValueChange={handleAccordionChange}>
           <AccordionItem value="basic" id="config-basic">
             <AccordionTrigger>
               <span className="flex items-center gap-2"><Wallet className="h-4 w-4" />基本設定</span>

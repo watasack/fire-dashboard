@@ -109,8 +109,8 @@
 - [x] **将来購入モード時の固定資産税タイミング修正**（購入年以降のみ固定資産税を課税するよう修正） ✅ 2026-03-24
 
 ### 低優先度
-- [ ] **MetricsSummary の未使用変数を削除**（`totalChildCosts` 等が計算されているが表示に使われていない）
-- [ ] **モバイルアコーディオンの開閉状態を localStorage に保存**（現状は常に「基本」タブが開いた状態でリセットされる）
+- [x] **MetricsSummary の未使用変数を削除**（`totalChildCosts`・`savingsRate`・`childCount` と未使用lucideアイコンを削除） ✅ 2026-03-24
+- [x] **モバイルアコーディオンの開閉状態を localStorage に保存**（セクション開閉状態を `fire_config_accordion` キーで保存・復元） ✅ 2026-03-24
 
 ---
 
