@@ -15,6 +15,7 @@
 | ~~BUG-05~~ | ~~SWR変更時にKPIパネルの必要資産額説明内のSWR値がリアルタイム更新されない~~ → config.safeWithdrawalRateをpropとして渡しリアルタイム表示 ✅ 2026-03-23 | ~~KPIパネル~~ |
 | ~~BUG-06~~ | ~~収支グラフで年間収支がマイナスになると「万円」単位が消える~~ → formatCurrencyを絶対値判定に修正 ✅ 2026-03-23 | ~~収支グラフ~~ |
 | BUG-07 | `npx next build` で `/404` ページのpre-renderに失敗する（`<Html> should not be imported outside of pages/_document`）。根本原因は `.next` キャッシュの汚染。`rm -rf .next` 後の再ビルドで解消。発生した際は `.next` 削除で対処 | ビルドキャッシュ |
+| BUG-08 | URLシェア機能の不完全: 最近追加されたフィールド（`educationPaths`, `daycareAnnualCost`, `rentToPurchaseYear`, `purchaseDownPayment`, `birthMonth`, `propertyTaxAnnual`, `nisa.balance`, 住宅ローン詳細項目群）が `DEFAULT_CONFIG` に明示的に含まれていない。URLから復元した際に `??` フォールバックで処理されるため計算は壊れないが、UI表示が意図と異なる場合がある | `lib/simulator.ts` DEFAULT_CONFIG |
 
 ---
 
@@ -80,6 +81,7 @@
 - [x] 収支グラフの5年単位集計を削除（毎年単位に統一） ✅ 2026-03-24
 - [x] 収支推移グラフの線を太くする（netCFをBarからLine strokeWidth=3に変更） ✅ 2026-03-23
 - [x] 年次収支テーブルの「純CF」→「収支」に変更 ✅ 2026-03-23
+- [ ] **年次テーブルに住居費・固定資産税・教育費の支出内訳を追加**（現状は「支出合計」のみで、将来購入モードで頭金が計上される年や家賃→消滅の年が視覚的に分からない）
 
 ### 次の一手タブ
 - [x] 「この設定を試す」ボタンに「即時反映」であることを明記（サブテキスト追加） ✅ 2026-03-23
@@ -94,6 +96,21 @@
 - [ ] 画面上には常にグラフとKPIを表示（スクロールしなくても見える）
 - [x] スマホヘッダーの「FIREシミュレーター」固定テキストを削除（lg未満で非表示に変更） ✅ 2026-03-23
 - [x] 入力済み項目の進捗インジケーターを追加 → 下部ナビの各アイコンに入力済み判定ドット（primary色）を表示 ✅ 2026-03-24
+
+---
+
+## 🔵 コード監査で発見された潜在的改善（2026-03-24 追加）
+
+### 高優先度
+- [ ] **DEFAULT_CONFIG に新フィールドのデフォルト値を明示**（`educationPaths`, `daycareAnnualCost`, `rentToPurchaseYear`, `purchaseDownPayment`, `birthMonth`, `propertyTaxAnnual`, `nisa.balance`, 住宅ローン詳細項目群）→ URLシェアの完全性に直結。BUG-08と同一
+
+### 中優先度
+- [ ] **fireMonth の実装を修正**（`fire-result-card.tsx` で「2035年6月」のように月表示しているが、simulator.ts の実装は `birthMonth` をそのまま使うだけで実際の達成月を計算していない。月表示を削除するか、正しく計算するか要判断）
+- [ ] **将来購入モード時の固定資産税タイミング修正**（現状は `rentToPurchaseYear` 設定時も購入前から固定資産税が計上される。購入年の翌年以降のみ課税すべき）
+
+### 低優先度
+- [ ] **MetricsSummary の未使用変数を削除**（`totalChildCosts` 等が計算されているが表示に使われていない）
+- [ ] **モバイルアコーディオンの開閉状態を localStorage に保存**（現状は常に「基本」タブが開いた状態でリセットされる）
 
 ---
 
