@@ -1,8 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Slider } from "@/components/ui/slider"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -10,6 +9,7 @@ import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/
 import { SimulationConfig, Person, EmploymentType, WithdrawalStrategy, MCReturnModel, PostFireIncomeConfig, LifecycleExpenseConfig, ChildEducationPaths, EDUCATION_PATHS_PRESETS, calcMortgageMonthlyPayment } from "@/lib/simulator"
 import { formatCurrency, cn } from "@/lib/utils"
 import { User, Users, Wallet, TrendingUp, Baby, PiggyBank, Settings2, Info } from "lucide-react"
+import { SliderField } from "@/components/fire/slider-field"
 
 interface ConfigPanelProps {
   config: SimulationConfig
@@ -57,19 +57,14 @@ function PersonConfig({
 
   return (
     <div className="space-y-6">
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <FieldLabel label="現在の年齢" tooltip="今あなたが何歳かを入力します。ここを起点にFIREまでの年数を計算します" />
-          <span className="text-sm font-mono text-muted-foreground">{person.currentAge}歳</span>
-        </div>
-        <Slider
-          value={[person.currentAge]}
-          onValueChange={([value]) => onChange({ ...person, currentAge: value })}
-          min={20}
-          max={60}
-          step={1}
-        />
-      </div>
+      <SliderField
+        label="現在の年齢"
+        tooltip="今あなたが何歳かを入力します。ここを起点にFIREまでの年数を計算します"
+        value={person.currentAge}
+        onChange={(value) => onChange({ ...person, currentAge: value })}
+        min={20} max={60} step={1}
+        format={(v) => `${v}歳`}
+      />
 
       <div className="space-y-2">
         <FieldLabel label="誕生月" tooltip="誕生月を設定するとFIRE達成時期を「2034年10月」のように月単位で表示できます" />
@@ -86,86 +81,61 @@ function PersonConfig({
       </div>
 
       {!isHomemaker && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <FieldLabel label="年収" tooltip={
-              (person.employmentType ?? 'employee') === 'selfEmployed'
-                ? "売上から経費を引いた事業所得を入力してください。手取り計算は自動でやります"
-                : "源泉徴収票の一番上の「支払金額」を入力してください。手取り計算は自動でやります"
-            } />
-            <span className="text-sm font-mono text-muted-foreground">{formatCurrency(person.grossIncome, true)}</span>
-          </div>
-          <Slider
-            value={[person.grossIncome]}
-            onValueChange={([value]) => onChange({ ...person, grossIncome: value })}
-            min={2000000}
-            max={20000000}
-            step={100000}
-          />
-        </div>
+        <SliderField
+          label="年収"
+          tooltip={
+            (person.employmentType ?? 'employee') === 'selfEmployed'
+              ? "売上から経費を引いた事業所得を入力してください。手取り計算は自動でやります"
+              : "源泉徴収票の一番上の「支払金額」を入力してください。手取り計算は自動でやります"
+          }
+          value={person.grossIncome}
+          onChange={(value) => onChange({ ...person, grossIncome: value })}
+          min={2000000} max={20000000} step={100000}
+          format={(v) => formatCurrency(v, true)}
+        />
       )}
 
       {!isHomemaker && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <FieldLabel label="年収上昇率" tooltip="毎年どれくらい年収が上がるか。「あまり変わらない」→1%、「昇進予定あり」→2〜3%が目安です" />
-            <span className="text-sm font-mono text-muted-foreground">{(person.incomeGrowthRate * 100).toFixed(1)}%</span>
-          </div>
-          <Slider
-            value={[person.incomeGrowthRate * 100]}
-            onValueChange={([value]) => onChange({ ...person, incomeGrowthRate: value / 100 })}
-            min={0}
-            max={5}
-            step={0.1}
-          />
-        </div>
+        <SliderField
+          label="年収上昇率"
+          tooltip="毎年どれくらい年収が上がるか。「あまり変わらない」→1%、「昇進予定あり」→2〜3%が目安です"
+          value={person.incomeGrowthRate * 100}
+          onChange={(value) => onChange({ ...person, incomeGrowthRate: value / 100 })}
+          min={0} max={5} step={0.1}
+          format={(v) => `${v.toFixed(1)}%`}
+        />
       )}
 
       {isHomemaker && (
         <p className="text-xs text-muted-foreground">専業主婦/夫は年収・社会保険料なし（国民年金第3号）</p>
       )}
 
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <FieldLabel label="退職年齢" tooltip="「何歳でFIREしたいか」を入力します。まず目標を入れて、後で調整してみてください" />
-          <span className="text-sm font-mono text-muted-foreground">{person.retirementAge}歳</span>
-        </div>
-        <Slider
-          value={[person.retirementAge]}
-          onValueChange={([value]) => onChange({ ...person, retirementAge: value })}
-          min={50}
-          max={70}
-          step={1}
-        />
-      </div>
+      <SliderField
+        label="退職年齢"
+        tooltip="「何歳でFIREしたいか」を入力します。まず目標を入れて、後で調整してみてください"
+        value={person.retirementAge}
+        onChange={(value) => onChange({ ...person, retirementAge: value })}
+        min={50} max={70} step={1}
+        format={(v) => `${v}歳`}
+      />
 
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <FieldLabel label="年金受給額（年間）" tooltip="毎年届く「ねんきん定期便」や「ねんきんネット」で確認できます。会社員は年150〜200万円が目安" />
-          <span className="text-sm font-mono text-muted-foreground">{formatCurrency(person.pensionAmount ?? 0, true)}</span>
-        </div>
-        <Slider
-          value={[person.pensionAmount ?? 0]}
-          onValueChange={([value]) => onChange({ ...person, pensionAmount: value })}
-          min={0}
-          max={3000000}
-          step={50000}
-        />
-      </div>
+      <SliderField
+        label="年金受給額（年間）"
+        tooltip="毎年届く「ねんきん定期便」や「ねんきんネット」で確認できます。会社員は年150〜200万円が目安"
+        value={person.pensionAmount ?? 0}
+        onChange={(value) => onChange({ ...person, pensionAmount: value })}
+        min={0} max={3000000} step={50000}
+        format={(v) => formatCurrency(v, true)}
+      />
 
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <FieldLabel label="年金受給開始年齢" tooltip="原則65歳ですが、70歳まで遅らせると42%増、75歳まで遅らせると84%増になります" />
-          <span className="text-sm font-mono text-muted-foreground">{person.pensionStartAge}歳</span>
-        </div>
-        <Slider
-          value={[person.pensionStartAge]}
-          onValueChange={([value]) => onChange({ ...person, pensionStartAge: value })}
-          min={60}
-          max={75}
-          step={1}
-        />
-      </div>
+      <SliderField
+        label="年金受給開始年齢"
+        tooltip="原則65歳ですが、70歳まで遅らせると42%増、75歳まで遅らせると84%増になります"
+        value={person.pensionStartAge}
+        onChange={(value) => onChange({ ...person, pensionStartAge: value })}
+        min={60} max={75} step={1}
+        format={(v) => `${v}歳`}
+      />
 
       <div className="space-y-2">
         <FieldLabel label="雇用形態" tooltip="税金や年金の計算が変わります。「会社員」= 会社が社保を半分払ってくれる。「自営業」= 全額自分で支払う" />
@@ -209,32 +179,24 @@ function PersonConfig({
           </div>
           {person.partTimeUntilAge != null && (
             <div className="space-y-4">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <FieldLabel label="時短終了年齢" tooltip="「何歳でフルタイムに戻るか」を入力します。子どもが小学校入学（6歳）ごろが多いです" className="text-xs" />
-                  <span className="text-xs font-mono text-muted-foreground">{person.partTimeUntilAge}歳まで</span>
-                </div>
-                <Slider
-                  value={[person.partTimeUntilAge]}
-                  onValueChange={([value]) => onChange({ ...person, partTimeUntilAge: value })}
-                  min={person.currentAge + 1}
-                  max={person.retirementAge}
-                  step={1}
-                />
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <FieldLabel label="時短中の収入比率" tooltip="時短でどれくらい収入が減るかです。「7時間→6時間」なら約85%、「週4日」なら80%が目安です" className="text-xs" />
-                  <span className="text-xs font-mono text-muted-foreground">{((person.partTimeIncomeRatio ?? 0.8) * 100).toFixed(0)}%</span>
-                </div>
-                <Slider
-                  value={[(person.partTimeIncomeRatio ?? 0.8) * 100]}
-                  onValueChange={([value]) => onChange({ ...person, partTimeIncomeRatio: value / 100 })}
-                  min={50}
-                  max={100}
-                  step={5}
-                />
-              </div>
+              <SliderField
+                label="時短終了年齢"
+                tooltip="「何歳でフルタイムに戻るか」を入力します。子どもが小学校入学（6歳）ごろが多いです"
+                value={person.partTimeUntilAge}
+                onChange={(value) => onChange({ ...person, partTimeUntilAge: value })}
+                min={person.currentAge + 1} max={person.retirementAge} step={1}
+                format={(v) => `${v}歳まで`}
+                small
+              />
+              <SliderField
+                label="時短中の収入比率"
+                tooltip="時短でどれくらい収入が減るかです。「7時間→6時間」なら約85%、「週4日」なら80%が目安です"
+                value={(person.partTimeIncomeRatio ?? 0.8) * 100}
+                onChange={(value) => onChange({ ...person, partTimeIncomeRatio: value / 100 })}
+                min={50} max={100} step={5}
+                format={(v) => `${v.toFixed(0)}%`}
+                small
+              />
             </div>
           )}
         </div>
@@ -247,15 +209,14 @@ function PersonConfig({
 const ACCORDION_STORAGE_KEY = "fire_config_accordion"
 
 export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarloChange }: ConfigPanelProps) {
-  const [accordionValues, setAccordionValues] = useState<string[]>(() => {
-    if (typeof window === "undefined") return ["basic"]
+  const [accordionValues, setAccordionValues] = useState<string[]>(["basic"])
+
+  useEffect(() => {
     try {
       const stored = localStorage.getItem(ACCORDION_STORAGE_KEY)
-      return stored ? JSON.parse(stored) : ["basic"]
-    } catch {
-      return ["basic"]
-    }
-  })
+      if (stored) setAccordionValues(JSON.parse(stored))
+    } catch { /* ignore */ }
+  }, [])
 
   const handleAccordionChange = (values: string[]) => {
     setAccordionValues(values)
@@ -306,19 +267,14 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
           <CardDescription>まずここから。資産・生活費を入力してFIRE時期を計算します</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <FieldLabel label="現金・預金" tooltip="銀行口座の合計残高です（普通・定期・財形など）。保険の積立金・外貨預金・金（きん）も現金としてカウントしてください。株式・NISAは投資タブで入力します" />
-              <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.cashAssets ?? 0, true)}</span>
-            </div>
-            <Slider
-              value={[config.cashAssets ?? 0]}
-              onValueChange={([value]) => onConfigChange({ ...config, cashAssets: value })}
-              min={0}
-              max={50000000}
-              step={500000}
-            />
-          </div>
+          <SliderField
+            label="現金・預金"
+            tooltip="銀行口座の合計残高です（普通・定期・財形など）。保険の積立金・外貨預金・金（きん）も現金としてカウントしてください。株式・NISAは投資タブで入力します"
+            value={config.cashAssets ?? 0}
+            onChange={(value) => onConfigChange({ ...config, cashAssets: value })}
+            min={0} max={50000000} step={500000}
+            format={(v) => formatCurrency(v, true)}
+          />
 
           <div className="space-y-2">
             <FieldLabel label="生活費の算出方法" tooltip="「固定費」は手軽でシンプル。「ライフステージ」にすると子育て期は生活費が増え、老後は減る現実に近い計算になります" />
@@ -342,16 +298,13 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
           {(config.expenseMode ?? 'fixed') === 'fixed' && (
             <div className="space-y-3">
               <p className="text-xs text-muted-foreground">月間生活費を一定額として計算します。住宅ローン・教育費は別途ライフタブで入力します。</p>
-              <div className="flex items-center justify-between">
-                <FieldLabel label="月間生活費" tooltip="食費・光熱費・通信費など毎月かかる生活費の合計。住宅ローンや教育費は後のライフタブで入力します" />
-                <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.monthlyExpenses)}/月</span>
-              </div>
-              <Slider
-                value={[config.monthlyExpenses]}
-                onValueChange={([value]) => onConfigChange({ ...config, monthlyExpenses: value })}
-                min={100000}
-                max={1000000}
-                step={10000}
+              <SliderField
+                label="月間生活費"
+                tooltip="食費・光熱費・通信費など毎月かかる生活費の合計。住宅ローンや教育費は後のライフタブで入力します"
+                value={config.monthlyExpenses}
+                onChange={(value) => onConfigChange({ ...config, monthlyExpenses: value })}
+                min={100000} max={1000000} step={10000}
+                format={(v) => `${formatCurrency(v)}/月`}
               />
             </div>
           )}
@@ -458,33 +411,23 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
           <CardDescription>資産運用の想定リターンとリスクを設定します</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <FieldLabel label="期待リターン" tooltip="毎年平均何%増えると想定するかです。全世界株インデックスなら5〜7%が過去実績です" />
-              <span className="text-sm font-mono text-muted-foreground">{(config.investmentReturn * 100).toFixed(1)}%</span>
-            </div>
-            <Slider
-              value={[config.investmentReturn * 100]}
-              onValueChange={([value]) => onConfigChange({ ...config, investmentReturn: value / 100 })}
-              min={1}
-              max={10}
-              step={0.1}
-            />
-          </div>
+          <SliderField
+            label="期待リターン"
+            tooltip="毎年平均何%増えると想定するかです。全世界株インデックスなら5〜7%が過去実績です"
+            value={config.investmentReturn * 100}
+            onChange={(value) => onConfigChange({ ...config, investmentReturn: value / 100 })}
+            min={1} max={10} step={0.1}
+            format={(v) => `${v.toFixed(1)}%`}
+          />
 
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <FieldLabel label="リスク（標準偏差）" tooltip="「当たり年と外れ年の差」です。大きくするほどリーマンショック級の暴落も計算に含まれます。株式なら15〜20%が過去実績" />
-              <span className="text-sm font-mono text-muted-foreground">{(config.investmentVolatility * 100).toFixed(1)}%</span>
-            </div>
-            <Slider
-              value={[config.investmentVolatility * 100]}
-              onValueChange={([value]) => onConfigChange({ ...config, investmentVolatility: value / 100 })}
-              min={5}
-              max={30}
-              step={0.5}
-            />
-          </div>
+          <SliderField
+            label="リスク（標準偏差）"
+            tooltip="「当たり年と外れ年の差」です。大きくするほどリーマンショック級の暴落も計算に含まれます。株式なら15〜20%が過去実績"
+            value={config.investmentVolatility * 100}
+            onChange={(value) => onConfigChange({ ...config, investmentVolatility: value / 100 })}
+            min={5} max={30} step={0.5}
+            format={(v) => `${v.toFixed(1)}%`}
+          />
 
         </CardContent>
       </Card>
@@ -495,37 +438,27 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
           <CardDescription>証券会社の特定口座にある株・投信の現在残高を入力します</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <FieldLabel label="株式評価額" tooltip="証券会社の特定口座にある株・投信の今の評価額。NISA口座・iDeCo口座の残高は含めません" />
-              <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.stocks ?? 0, true)}</span>
-            </div>
-            <Slider
-              value={[config.stocks ?? 0]}
-              onValueChange={([newStocksValue]) => onConfigChange({
-                ...config,
-                stocks: newStocksValue,
-                stocksCostBasis: Math.min(config.stocksCostBasis ?? 0, newStocksValue),
-              })}
-              min={0}
-              max={100000000}
-              step={1000000}
-            />
-          </div>
+          <SliderField
+            label="株式評価額"
+            tooltip="証券会社の特定口座にある株・投信の今の評価額。NISA口座・iDeCo口座の残高は含めません"
+            value={config.stocks ?? 0}
+            onChange={(newStocksValue) => onConfigChange({
+              ...config,
+              stocks: newStocksValue,
+              stocksCostBasis: Math.min(config.stocksCostBasis ?? 0, newStocksValue),
+            })}
+            min={0} max={100000000} step={1000000}
+            format={(v) => formatCurrency(v, true)}
+          />
 
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <FieldLabel label="株式取得原価" tooltip="株を最初に買ったときの合計金額。「含み益 = 評価額 − 取得原価」の部分に売却時20%の税金がかかります" />
-              <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.stocksCostBasis ?? 0, true)}</span>
-            </div>
-            <Slider
-              value={[config.stocksCostBasis ?? 0]}
-              onValueChange={([value]) => onConfigChange({ ...config, stocksCostBasis: value })}
-              min={0}
-              max={(config.stocks ?? 0) > 0 ? (config.stocks ?? 0) : 100000000}
-              step={500000}
-            />
-          </div>
+          <SliderField
+            label="株式取得原価"
+            tooltip="株を最初に買ったときの合計金額。「含み益 = 評価額 − 取得原価」の部分に売却時20%の税金がかかります"
+            value={config.stocksCostBasis ?? 0}
+            onChange={(value) => onConfigChange({ ...config, stocksCostBasis: value })}
+            min={0} max={(config.stocks ?? 0) > 0 ? (config.stocks ?? 0) : 100000000} step={500000}
+            format={(v) => formatCurrency(v, true)}
+          />
 
           {(() => {
             const unrealizedGain = (config.stocks ?? 0) - (config.stocksCostBasis ?? 0)
@@ -547,33 +480,23 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
           <CardDescription>定期預金・外貨預金・金（きん）など、株式以外の運用資産を入力します</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <FieldLabel label="現在評価額" tooltip="定期預金・外貨預金・金（きん）など、現金・株式・NISA以外の資産の合計額です" />
-              <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.otherAssets ?? 0, true)}</span>
-            </div>
-            <Slider
-              value={[config.otherAssets ?? 0]}
-              onValueChange={([value]) => onConfigChange({ ...config, otherAssets: value })}
-              min={0}
-              max={50000000}
-              step={500000}
-            />
-          </div>
+          <SliderField
+            label="現在評価額"
+            tooltip="定期預金・外貨預金・金（きん）など、現金・株式・NISA以外の資産の合計額です"
+            value={config.otherAssets ?? 0}
+            onChange={(value) => onConfigChange({ ...config, otherAssets: value })}
+            min={0} max={50000000} step={500000}
+            format={(v) => formatCurrency(v, true)}
+          />
 
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <FieldLabel label="期待リターン" tooltip="この資産の年間期待リターンです。定期預金なら0〜1%、外貨預金なら2〜5%、金（きん）なら2〜4%が目安です" />
-              <span className="text-sm font-mono text-muted-foreground">{((config.otherAssetsReturn ?? 0.02) * 100).toFixed(1)}%</span>
-            </div>
-            <Slider
-              value={[(config.otherAssetsReturn ?? 0.02) * 100]}
-              onValueChange={([value]) => onConfigChange({ ...config, otherAssetsReturn: value / 100 })}
-              min={0}
-              max={8}
-              step={0.1}
-            />
-          </div>
+          <SliderField
+            label="期待リターン"
+            tooltip="この資産の年間期待リターンです。定期預金なら0〜1%、外貨預金なら2〜5%、金（きん）なら2〜4%が目安です"
+            value={(config.otherAssetsReturn ?? 0.02) * 100}
+            onChange={(value) => onConfigChange({ ...config, otherAssetsReturn: value / 100 })}
+            min={0} max={8} step={0.1}
+            format={(v) => `${v.toFixed(1)}%`}
+          />
         </CardContent>
       </Card>
 
@@ -605,36 +528,22 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
         </CardHeader>
         {config.nisa.enabled && (
           <CardContent className="space-y-6">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <FieldLabel label="現在のNISA評価額" tooltip="今すでにNISA口座にある資産の評価額を入力してください。証券会社のアプリで確認できます" />
-                <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.nisa.balance ?? 0, true)}</span>
-              </div>
-              <Slider
-                value={[config.nisa.balance ?? 0]}
-                onValueChange={([value]) =>
-                  onConfigChange({ ...config, nisa: { ...config.nisa, balance: value } })
-                }
-                min={0}
-                max={18000000}
-                step={100000}
-              />
-            </div>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <FieldLabel label="年間投資額" tooltip="つみたて投資枠（年120万円まで）と成長投資枠（年240万円まで）の合計。毎年いくら積み立てているか入力してください" />
-                <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.nisa.annualContribution, true)}</span>
-              </div>
-              <Slider
-                value={[config.nisa.annualContribution]}
-                onValueChange={([value]) =>
-                  onConfigChange({ ...config, nisa: { ...config.nisa, annualContribution: value } })
-                }
-                min={0}
-                max={3600000}
-                step={100000}
-              />
-            </div>
+            <SliderField
+              label="現在のNISA評価額"
+              tooltip="今すでにNISA口座にある資産の評価額を入力してください。証券会社のアプリで確認できます"
+              value={config.nisa.balance ?? 0}
+              onChange={(value) => onConfigChange({ ...config, nisa: { ...config.nisa, balance: value } })}
+              min={0} max={18000000} step={100000}
+              format={(v) => formatCurrency(v, true)}
+            />
+            <SliderField
+              label="年間投資額"
+              tooltip="つみたて投資枠（年120万円まで）と成長投資枠（年240万円まで）の合計。毎年いくら積み立てているか入力してください"
+              value={config.nisa.annualContribution}
+              onChange={(value) => onConfigChange({ ...config, nisa: { ...config.nisa, annualContribution: value } })}
+              min={0} max={3600000} step={100000}
+              format={(v) => formatCurrency(v, true)}
+            />
           </CardContent>
         )}
       </Card>
@@ -667,38 +576,22 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
         </CardHeader>
         {config.ideco.enabled && (
           <CardContent className="space-y-6">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <FieldLabel label="月額拠出額" tooltip="掛金が全額「所得控除」になるので税金が減ります。ただし60歳まで絶対に引き出せないのが注意点です" />
-                <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.ideco.monthlyContribution)}/月</span>
-              </div>
-              <Slider
-                value={[config.ideco.monthlyContribution]}
-                onValueChange={([value]) =>
-                  onConfigChange({ ...config, ideco: { ...config.ideco, monthlyContribution: value } })
-                }
-                min={5000}
-                max={68000}
-                step={1000}
-              />
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <FieldLabel label="受取開始年齢" tooltip="FIREが早くても60歳まで受け取れません。受取時に税控除があります" />
-                <span className="text-sm font-mono text-muted-foreground">
-                  {config.ideco.withdrawalStartAge ?? 60}歳
-                </span>
-              </div>
-              <Slider
-                value={[config.ideco.withdrawalStartAge ?? 60]}
-                onValueChange={([value]) =>
-                  onConfigChange({ ...config, ideco: { ...config.ideco, withdrawalStartAge: value } })
-                }
-                min={60}
-                max={75}
-                step={1}
-              />
-            </div>
+            <SliderField
+              label="月額拠出額"
+              tooltip="掛金が全額「所得控除」になるので税金が減ります。ただし60歳まで絶対に引き出せないのが注意点です"
+              value={config.ideco.monthlyContribution}
+              onChange={(value) => onConfigChange({ ...config, ideco: { ...config.ideco, monthlyContribution: value } })}
+              min={5000} max={68000} step={1000}
+              format={(v) => `${formatCurrency(v)}/月`}
+            />
+            <SliderField
+              label="受取開始年齢"
+              tooltip="FIREが早くても60歳まで受け取れません。受取時に税控除があります"
+              value={config.ideco.withdrawalStartAge ?? 60}
+              onChange={(value) => onConfigChange({ ...config, ideco: { ...config.ideco, withdrawalStartAge: value } })}
+              min={60} max={75} step={1}
+              format={(v) => `${v}歳`}
+            />
           </CardContent>
         )}
       </Card>
@@ -716,52 +609,42 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
           <CardDescription>子どもの人数・誕生年を入力すると、教育費と児童手当を自動計算します</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <FieldLabel label="子どもの人数" tooltip="子どもの人数を入力すると、教育費と児童手当が自動でFIRE計算に反映されます" />
-              <span className="text-sm font-mono text-muted-foreground">{config.children.length}人</span>
-            </div>
-            <Slider
-              value={[config.children.length]}
-              onValueChange={([value]) => {
-                const currentYear = new Date().getFullYear()
-                const children = Array.from({ length: value }, (_, i) => {
-                  const existing = config.children[i]
-                  const educationPath = existing?.educationPath ?? "mixed" as const
-                  return {
-                    birthYear: existing?.birthYear ?? currentYear + i * 2,
-                    educationPath,
-                    educationPaths: existing?.educationPaths ?? EDUCATION_PATHS_PRESETS[educationPath],
-                  }
-                })
-                onConfigChange({ ...config, children })
-              }}
-              min={0}
-              max={3}
-              step={1}
-            />
-          </div>
+          <SliderField
+            label="子どもの人数"
+            tooltip="子どもの人数を入力すると、教育費と児童手当が自動でFIRE計算に反映されます"
+            value={config.children.length}
+            onChange={(value) => {
+              const currentYear = new Date().getFullYear()
+              const children = Array.from({ length: value }, (_, i) => {
+                const existing = config.children[i]
+                const educationPath = existing?.educationPath ?? "mixed" as const
+                return {
+                  birthYear: existing?.birthYear ?? currentYear + i * 2,
+                  educationPath,
+                  educationPaths: existing?.educationPaths ?? EDUCATION_PATHS_PRESETS[educationPath],
+                }
+              })
+              onConfigChange({ ...config, children })
+            }}
+            min={0} max={3} step={1}
+            format={(v) => `${v}人`}
+          />
 
           {config.children.map((child, index) => (
             <div key={index} className="space-y-3 rounded-lg bg-muted/50 p-4">
               <p className="text-sm font-medium">子ども {index + 1}</p>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <FieldLabel label="誕生年" tooltip="西暦で入力してください（例: 2024年生まれなら2024）。学費の発生タイミングを自動で計算します" />
-                  <span className="text-sm font-mono text-muted-foreground">{child.birthYear}年</span>
-                </div>
-                <Slider
-                  value={[child.birthYear]}
-                  onValueChange={([value]) => {
-                    const newChildren = [...config.children]
-                    newChildren[index] = { ...child, birthYear: value }
-                    onConfigChange({ ...config, children: newChildren })
-                  }}
-                  min={2020}
-                  max={2035}
-                  step={1}
-                />
-              </div>
+              <SliderField
+                label="誕生年"
+                tooltip="西暦で入力してください（例: 2024年生まれなら2024）。学費の発生タイミングを自動で計算します"
+                value={child.birthYear}
+                onChange={(value) => {
+                  const newChildren = [...config.children]
+                  newChildren[index] = { ...child, birthYear: value }
+                  onConfigChange({ ...config, children: newChildren })
+                }}
+                min={2020} max={2035} step={1}
+                format={(v) => `${v}年`}
+              />
               <div className="space-y-2 pt-2">
                 <div className="flex items-center gap-3 flex-wrap">
                   <FieldLabel label="教育費" tooltip="ステージごとに公立・私立を選択できます。プリセットで一括設定も可能です" />
@@ -832,23 +715,18 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
                   })}
                 </div>
               </div>
-              <div className="space-y-2 pt-2">
-                <div className="flex items-center justify-between">
-                  <FieldLabel label="保育料（0〜2歳）" tooltip="認可保育園の年額費用です。認可外は高くなります。0歳児クラスは月5〜6万円が目安" />
-                  <span className="text-sm font-mono text-muted-foreground">
-                    {((child.daycareAnnualCost ?? 360_000) / 10_000).toFixed(0)}万円/年
-                  </span>
-                </div>
-                <Slider
-                  value={[child.daycareAnnualCost ?? 360_000]}
-                  onValueChange={([value]) => {
+              <div className="pt-2">
+                <SliderField
+                  label="保育料（0〜2歳）"
+                  tooltip="認可保育園の年額費用です。認可外は高くなります。0歳児クラスは月5〜6万円が目安"
+                  value={child.daycareAnnualCost ?? 360_000}
+                  onChange={(value) => {
                     const newChildren = [...config.children]
                     newChildren[index] = { ...child, daycareAnnualCost: value }
                     onConfigChange({ ...config, children: newChildren })
                   }}
-                  min={0}
-                  max={1_200_000}
-                  step={10_000}
+                  min={0} max={1_200_000} step={10_000}
+                  format={(v) => `${(v / 10_000).toFixed(0)}万円/年`}
                 />
               </div>
             </div>
@@ -936,39 +814,29 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
         </CardHeader>
         {config.postFireIncome !== null && config.postFireIncome !== undefined && (
           <CardContent className="space-y-6">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <FieldLabel label="月収（税引き前）" tooltip="FIRE後も少し働いて得る月収を入力します。月10万円でも計算が大きく変わります" />
-                <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.postFireIncome.monthlyAmount)}/月</span>
-              </div>
-              <Slider
-                value={[config.postFireIncome.monthlyAmount]}
-                onValueChange={([value]) => onConfigChange({
-                  ...config,
-                  postFireIncome: { ...(config.postFireIncome as PostFireIncomeConfig), monthlyAmount: value },
-                })}
-                min={0}
-                max={500000}
-                step={10000}
-              />
-            </div>
+            <SliderField
+              label="月収（税引き前）"
+              tooltip="FIRE後も少し働いて得る月収を入力します。月10万円でも計算が大きく変わります"
+              value={config.postFireIncome.monthlyAmount}
+              onChange={(value) => onConfigChange({
+                ...config,
+                postFireIncome: { ...(config.postFireIncome as PostFireIncomeConfig), monthlyAmount: value },
+              })}
+              min={0} max={500000} step={10000}
+              format={(v) => `${formatCurrency(v)}/月`}
+            />
 
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <FieldLabel label="終了年齢" tooltip="ここまでは働いて、それ以降は年金生活に切り替えるイメージです" />
-                <span className="text-sm font-mono text-muted-foreground">{config.postFireIncome.untilAge}歳まで</span>
-              </div>
-              <Slider
-                value={[config.postFireIncome.untilAge]}
-                onValueChange={([value]) => onConfigChange({
-                  ...config,
-                  postFireIncome: { ...(config.postFireIncome as PostFireIncomeConfig), untilAge: value },
-                })}
-                min={40}
-                max={80}
-                step={1}
-              />
-            </div>
+            <SliderField
+              label="終了年齢"
+              tooltip="ここまでは働いて、それ以降は年金生活に切り替えるイメージです"
+              value={config.postFireIncome.untilAge}
+              onChange={(value) => onConfigChange({
+                ...config,
+                postFireIncome: { ...(config.postFireIncome as PostFireIncomeConfig), untilAge: value },
+              })}
+              min={40} max={80} step={1}
+              format={(v) => `${v}歳まで`}
+            />
           </CardContent>
         )}
       </Card>
@@ -1016,50 +884,35 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
 
           {/* 賃貸 or 将来購入: 月額家賃 */}
           {((config.monthlyRent ?? 0) > 0 || config.rentToPurchaseYear !== undefined) && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <FieldLabel label="現在の月額家賃" tooltip="管理費・駐車場代など毎月かかる住居費の合計。更新料は生活費に含めてください" />
-                <span className="text-sm font-mono text-muted-foreground">{formatCurrency(config.monthlyRent ?? 0)}/月</span>
-              </div>
-              <Slider
-                value={[config.monthlyRent ?? 0]}
-                onValueChange={([value]) => onConfigChange({ ...config, monthlyRent: value })}
-                min={30_000}
-                max={500_000}
-                step={5_000}
-              />
-            </div>
+            <SliderField
+              label="現在の月額家賃"
+              tooltip="管理費・駐車場代など毎月かかる住居費の合計。更新料は生活費に含めてください"
+              value={config.monthlyRent ?? 0}
+              onChange={(value) => onConfigChange({ ...config, monthlyRent: value })}
+              min={30_000} max={500_000} step={5_000}
+              format={(v) => `${formatCurrency(v)}/月`}
+            />
           )}
 
           {/* 将来購入モード専用 */}
           {config.rentToPurchaseYear !== undefined && (
             <>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <FieldLabel label="購入予定年" tooltip="この年に持ち家に切り替わります。それ以前は家賃を、この年に頭金を一括計上します。購入後はローンカードの設定が適用されます" />
-                  <span className="text-sm font-mono text-muted-foreground">{config.rentToPurchaseYear}年</span>
-                </div>
-                <Slider
-                  value={[config.rentToPurchaseYear]}
-                  onValueChange={([value]) => onConfigChange({ ...config, rentToPurchaseYear: value })}
-                  min={new Date().getFullYear()}
-                  max={2050}
-                  step={1}
-                />
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <FieldLabel label="頭金" tooltip="購入時に一括で払う自己資金です。購入予定年の支出として計上されます" />
-                  <span className="text-sm font-mono text-muted-foreground">{((config.purchaseDownPayment ?? 0) / 10_000).toFixed(0)}万円</span>
-                </div>
-                <Slider
-                  value={[config.purchaseDownPayment ?? 5_000_000]}
-                  onValueChange={([value]) => onConfigChange({ ...config, purchaseDownPayment: value })}
-                  min={0}
-                  max={30_000_000}
-                  step={500_000}
-                />
-              </div>
+              <SliderField
+                label="購入予定年"
+                tooltip="この年に持ち家に切り替わります。それ以前は家賃を、この年に頭金を一括計上します。購入後はローンカードの設定が適用されます"
+                value={config.rentToPurchaseYear}
+                onChange={(value) => onConfigChange({ ...config, rentToPurchaseYear: value })}
+                min={new Date().getFullYear()} max={2050} step={1}
+                format={(v) => `${v}年`}
+              />
+              <SliderField
+                label="頭金"
+                tooltip="購入時に一括で払う自己資金です。購入予定年の支出として計上されます"
+                value={config.purchaseDownPayment ?? 5_000_000}
+                onChange={(value) => onConfigChange({ ...config, purchaseDownPayment: value })}
+                min={0} max={30_000_000} step={500_000}
+                format={(v) => `${(v / 10_000).toFixed(0)}万円`}
+              />
               <p className="text-xs text-muted-foreground">
                 購入後のローン返済は「住宅ローン」カードで設定してください
               </p>
@@ -1133,67 +986,52 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
 
               {!isDetail ? (
                 <>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <FieldLabel label="月額返済額" tooltip="毎月の住宅ローン返済額です。完済年まで支出として計算されます" />
-                      <span className="text-sm font-mono text-muted-foreground">{formatCurrency(m.monthlyPayment)}/月</span>
-                    </div>
-                    <Slider
-                      value={[m.monthlyPayment]}
-                      onValueChange={([value]) => onConfigChange({ ...config, mortgage: { ...m, monthlyPayment: value } })}
-                      min={30000} max={300000} step={5000}
-                    />
-                  </div>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <FieldLabel label="完済年" tooltip="ローンが終わる予定の西暦年。完済後は月々の支出が減るので、FIREが近づきます" />
-                      <span className="text-sm font-mono text-muted-foreground">{m.endYear}年</span>
-                    </div>
-                    <Slider
-                      value={[m.endYear]}
-                      onValueChange={([value]) => onConfigChange({ ...config, mortgage: { ...m, endYear: value } })}
-                      min={2025} max={2060} step={1}
-                    />
-                  </div>
+                  <SliderField
+                    label="月額返済額"
+                    tooltip="毎月の住宅ローン返済額です。完済年まで支出として計算されます"
+                    value={m.monthlyPayment}
+                    onChange={(value) => onConfigChange({ ...config, mortgage: { ...m, monthlyPayment: value } })}
+                    min={30000} max={300000} step={5000}
+                    format={(v) => `${formatCurrency(v)}/月`}
+                  />
+                  <SliderField
+                    label="完済年"
+                    tooltip="ローンが終わる予定の西暦年。完済後は月々の支出が減るので、FIREが近づきます"
+                    value={m.endYear}
+                    onChange={(value) => onConfigChange({ ...config, mortgage: { ...m, endYear: value } })}
+                    min={2025} max={2060} step={1}
+                    format={(v) => `${v}年`}
+                  />
                 </>
               ) : (
                 <>
                   {/* 借入額 */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <FieldLabel label="借入額" tooltip="銀行から借りる金額です。物件価格から頭金を引いた額を入力します" />
-                      <span className="text-sm font-mono text-muted-foreground">{(loanAmount / 10_000).toFixed(0)}万円</span>
-                    </div>
-                    <Slider
-                      value={[loanAmount]}
-                      onValueChange={([value]) => applyDetail({ loanAmount: value })}
-                      min={1_000_000} max={80_000_000} step={500_000}
-                    />
-                  </div>
+                  <SliderField
+                    label="借入額"
+                    tooltip="銀行から借りる金額です。物件価格から頭金を引いた額を入力します"
+                    value={loanAmount}
+                    onChange={(value) => applyDetail({ loanAmount: value })}
+                    min={1_000_000} max={80_000_000} step={500_000}
+                    format={(v) => `${(v / 10_000).toFixed(0)}万円`}
+                  />
                   {/* 借入開始年 */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <FieldLabel label="借入開始年" tooltip="ローン開始の年です。変動金利の場合、5年後の金利見直しタイミングを計算するために使います" />
-                      <span className="text-sm font-mono text-muted-foreground">{loanStartYear}年</span>
-                    </div>
-                    <Slider
-                      value={[loanStartYear]}
-                      onValueChange={([value]) => applyDetail({ loanStartYear: value })}
-                      min={2020} max={2035} step={1}
-                    />
-                  </div>
+                  <SliderField
+                    label="借入開始年"
+                    tooltip="ローン開始の年です。変動金利の場合、5年後の金利見直しタイミングを計算するために使います"
+                    value={loanStartYear}
+                    onChange={(value) => applyDetail({ loanStartYear: value })}
+                    min={2020} max={2035} step={1}
+                    format={(v) => `${v}年`}
+                  />
                   {/* 返済期間 */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <FieldLabel label="返済期間" tooltip="ローンの借入期間です。一般的には35年が最長です" />
-                      <span className="text-sm font-mono text-muted-foreground">{loanTermYears}年（{loanStartYear + loanTermYears}年完済）</span>
-                    </div>
-                    <Slider
-                      value={[loanTermYears]}
-                      onValueChange={([value]) => applyDetail({ loanTermYears: value })}
-                      min={5} max={35} step={1}
-                    />
-                  </div>
+                  <SliderField
+                    label="返済期間"
+                    tooltip="ローンの借入期間です。一般的には35年が最長です"
+                    value={loanTermYears}
+                    onChange={(value) => applyDetail({ loanTermYears: value })}
+                    min={5} max={35} step={1}
+                    format={(v) => `${v}年（${loanStartYear + v}年完済）`}
+                  />
                   {/* 金利タイプ */}
                   <div className="space-y-2">
                     <FieldLabel label="金利タイプ" tooltip="固定金利は返済期間中ずっと同じ金利。変動金利は市場によって変わります。日本の住宅ローンの約7割は変動金利です" />
@@ -1212,33 +1050,24 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
                     </div>
                   </div>
                   {/* 現在の金利 */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <FieldLabel
-                        label={loanType === "fixed" ? "適用金利" : "現在の金利（変動）"}
-                        tooltip={loanType === "fixed" ? "ローン期間中ずっと適用される金利です" : "現在の適用金利です。変動金利の目安は0.3〜1.0%程度（2024年時点）"}
-                      />
-                      <span className="text-sm font-mono text-muted-foreground">{(interestRate * 100).toFixed(2)}%</span>
-                    </div>
-                    <Slider
-                      value={[Math.round(interestRate * 10000)]}
-                      onValueChange={([value]) => applyDetail({ interestRate: value / 10000 })}
-                      min={10} max={400} step={5}
-                    />
-                  </div>
+                  <SliderField
+                    label={loanType === "fixed" ? "適用金利" : "現在の金利（変動）"}
+                    tooltip={loanType === "fixed" ? "ローン期間中ずっと適用される金利です" : "現在の適用金利です。変動金利の目安は0.3〜1.0%程度（2024年時点）"}
+                    value={Math.round(interestRate * 10000)}
+                    onChange={(value) => applyDetail({ interestRate: value / 10000 })}
+                    min={10} max={400} step={5}
+                    format={(v) => `${(v / 100).toFixed(2)}%`}
+                  />
                   {/* 変動金利: 将来想定金利 */}
                   {loanType === "variable" && (
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <FieldLabel label="将来想定金利" tooltip="借入5年後の金利見直し時に、この金利に上昇したと仮定してシミュレーションします。最悪シナリオの確認に使えます" />
-                        <span className="text-sm font-mono text-muted-foreground">{(variableRateForecast * 100).toFixed(2)}%</span>
-                      </div>
-                      <Slider
-                        value={[Math.round(variableRateForecast * 10000)]}
-                        onValueChange={([value]) => applyDetail({ variableRateForecast: value / 10000 })}
-                        min={10} max={500} step={5}
-                      />
-                    </div>
+                    <SliderField
+                      label="将来想定金利"
+                      tooltip="借入5年後の金利見直し時に、この金利に上昇したと仮定してシミュレーションします。最悪シナリオの確認に使えます"
+                      value={Math.round(variableRateForecast * 10000)}
+                      onChange={(value) => applyDetail({ variableRateForecast: value / 10000 })}
+                      min={10} max={500} step={5}
+                      format={(v) => `${(v / 100).toFixed(2)}%`}
+                    />
                   )}
                   {/* 自動計算結果 */}
                   <div className="rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground space-y-1">
@@ -1267,18 +1096,13 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
           <CardDescription>持ち家の場合に毎年かかる税金です。戸建ては年10〜20万円、マンションは5〜15万円が目安</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="flex items-center justify-between">
-            <FieldLabel label="年額" tooltip="固定資産税＋都市計画税の合計額を入力してください。市区町村から毎年5月ごろに通知が届きます" />
-            <span className="text-sm font-mono text-muted-foreground">
-              {((config.propertyTaxAnnual ?? 0) / 10_000).toFixed(0)}万円/年
-            </span>
-          </div>
-          <Slider
-            value={[config.propertyTaxAnnual ?? 0]}
-            onValueChange={([value]) => onConfigChange({ ...config, propertyTaxAnnual: value })}
-            min={0}
-            max={500000}
-            step={10000}
+          <SliderField
+            label="年額"
+            tooltip="固定資産税＋都市計画税の合計額を入力してください。市区町村から毎年5月ごろに通知が届きます"
+            value={config.propertyTaxAnnual ?? 0}
+            onChange={(value) => onConfigChange({ ...config, propertyTaxAnnual: value })}
+            min={0} max={500000} step={10000}
+            format={(v) => `${(v / 10_000).toFixed(0)}万円/年`}
           />
         </CardContent>
       </Card>
@@ -1311,39 +1135,30 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
           const mc = config.maintenanceCosts![0]
           return (
             <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <FieldLabel label="1回あたりの費用" tooltip="外壁塗装・屋根補修・給湯器交換など大型修繕の合計費用。戸建ては100〜200万円が目安" />
-                  <span className="text-sm font-mono text-muted-foreground">{(mc.amount / 10_000).toFixed(0)}万円</span>
-                </div>
-                <Slider
-                  value={[mc.amount]}
-                  onValueChange={([value]) => onConfigChange({ ...config, maintenanceCosts: [{ ...mc, amount: value }] })}
-                  min={500_000} max={5_000_000} step={100_000}
-                />
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <FieldLabel label="修繕サイクル" tooltip="何年ごとに大規模修繕が必要か。外壁・屋根は15〜20年が一般的です" />
-                  <span className="text-sm font-mono text-muted-foreground">{mc.intervalYears}年ごと</span>
-                </div>
-                <Slider
-                  value={[mc.intervalYears]}
-                  onValueChange={([value]) => onConfigChange({ ...config, maintenanceCosts: [{ ...mc, intervalYears: value }] })}
-                  min={5} max={30} step={1}
-                />
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <FieldLabel label="初回発生年" tooltip="最初に大規模修繕が発生する予定の西暦年" />
-                  <span className="text-sm font-mono text-muted-foreground">{mc.firstYear}年</span>
-                </div>
-                <Slider
-                  value={[mc.firstYear]}
-                  onValueChange={([value]) => onConfigChange({ ...config, maintenanceCosts: [{ ...mc, firstYear: value }] })}
-                  min={new Date().getFullYear()} max={2060} step={1}
-                />
-              </div>
+              <SliderField
+                label="1回あたりの費用"
+                tooltip="外壁塗装・屋根補修・給湯器交換など大型修繕の合計費用。戸建ては100〜200万円が目安"
+                value={mc.amount}
+                onChange={(value) => onConfigChange({ ...config, maintenanceCosts: [{ ...mc, amount: value }] })}
+                min={500_000} max={5_000_000} step={100_000}
+                format={(v) => `${(v / 10_000).toFixed(0)}万円`}
+              />
+              <SliderField
+                label="修繕サイクル"
+                tooltip="何年ごとに大規模修繕が必要か。外壁・屋根は15〜20年が一般的です"
+                value={mc.intervalYears}
+                onChange={(value) => onConfigChange({ ...config, maintenanceCosts: [{ ...mc, intervalYears: value }] })}
+                min={5} max={30} step={1}
+                format={(v) => `${v}年ごと`}
+              />
+              <SliderField
+                label="初回発生年"
+                tooltip="最初に大規模修繕が発生する予定の西暦年"
+                value={mc.firstYear}
+                onChange={(value) => onConfigChange({ ...config, maintenanceCosts: [{ ...mc, firstYear: value }] })}
+                min={new Date().getFullYear()} max={2060} step={1}
+                format={(v) => `${v}年`}
+              />
             </CardContent>
           )
         })()}
@@ -1369,32 +1184,22 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
               onCheckedChange={onMonteCarloChange}
             />
           </div>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <FieldLabel label="インフレ率" tooltip="年金・教育費・住宅ローンなどの計算に使う物価上昇率です。日銀目標の2%が一般的です" />
-              <span className="text-sm font-mono text-muted-foreground">{(config.inflationRate * 100).toFixed(1)}%</span>
-            </div>
-            <Slider
-              value={[config.inflationRate * 100]}
-              onValueChange={([value]) => onConfigChange({ ...config, inflationRate: value / 100 })}
-              min={0}
-              max={3}
-              step={0.1}
-            />
-          </div>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <FieldLabel label="生活費上昇率" tooltip="食費・日用品など毎月の生活費が毎年どれくらい上がるかです。インフレ率と独立して設定でき、1〜2%が目安です" />
-              <span className="text-sm font-mono text-muted-foreground">{(config.expenseGrowthRate * 100).toFixed(1)}%</span>
-            </div>
-            <Slider
-              value={[config.expenseGrowthRate * 100]}
-              onValueChange={([value]) => onConfigChange({ ...config, expenseGrowthRate: value / 100 })}
-              min={0}
-              max={3}
-              step={0.1}
-            />
-          </div>
+          <SliderField
+            label="インフレ率"
+            tooltip="年金・教育費・住宅ローンなどの計算に使う物価上昇率です。日銀目標の2%が一般的です"
+            value={config.inflationRate * 100}
+            onChange={(value) => onConfigChange({ ...config, inflationRate: value / 100 })}
+            min={0} max={3} step={0.1}
+            format={(v) => `${v.toFixed(1)}%`}
+          />
+          <SliderField
+            label="生活費上昇率"
+            tooltip="食費・日用品など毎月の生活費が毎年どれくらい上がるかです。インフレ率と独立して設定でき、1〜2%が目安です"
+            value={config.expenseGrowthRate * 100}
+            onChange={(value) => onConfigChange({ ...config, expenseGrowthRate: value / 100 })}
+            min={0} max={3} step={0.1}
+            format={(v) => `${v.toFixed(1)}%`}
+          />
         </CardContent>
       </Card>
 
@@ -1430,133 +1235,102 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
 
           {(config.withdrawalStrategy ?? 'fixed') === 'guardrail' && (
             <div className="space-y-4">
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <FieldLabel label="裁量支出比率" tooltip="生活費の中で「暴落時に削れる部分」の割合。旅行・外食・服などが対象。30%が一般的な想定です" />
-                  <span className="text-sm font-mono text-muted-foreground">{((config.guardrailConfig?.discretionaryRatio ?? 0.3) * 100).toFixed(0)}%</span>
-                </div>
-                <Slider
-                  value={[(config.guardrailConfig?.discretionaryRatio ?? 0.3) * 100]}
-                  onValueChange={([value]) => onConfigChange({
-                    ...config,
-                    guardrailConfig: {
-                      threshold1: config.guardrailConfig?.threshold1 ?? -0.10,
-                      reduction1: config.guardrailConfig?.reduction1 ?? 0.40,
-                      threshold2: config.guardrailConfig?.threshold2 ?? -0.20,
-                      reduction2: config.guardrailConfig?.reduction2 ?? 0.80,
-                      threshold3: config.guardrailConfig?.threshold3 ?? -0.35,
-                      reduction3: config.guardrailConfig?.reduction3 ?? 0.95,
-                      discretionaryRatio: value / 100,
-                    },
-                  })}
-                  min={10}
-                  max={50}
-                  step={5}
-                />
-              </div>
+              <SliderField
+                label="裁量支出比率"
+                tooltip="生活費の中で「暴落時に削れる部分」の割合。旅行・外食・服などが対象。30%が一般的な想定です"
+                value={(config.guardrailConfig?.discretionaryRatio ?? 0.3) * 100}
+                onChange={(value) => onConfigChange({
+                  ...config,
+                  guardrailConfig: {
+                    threshold1: config.guardrailConfig?.threshold1 ?? -0.10,
+                    reduction1: config.guardrailConfig?.reduction1 ?? 0.40,
+                    threshold2: config.guardrailConfig?.threshold2 ?? -0.20,
+                    reduction2: config.guardrailConfig?.reduction2 ?? 0.80,
+                    threshold3: config.guardrailConfig?.threshold3 ?? -0.35,
+                    reduction3: config.guardrailConfig?.reduction3 ?? 0.95,
+                    discretionaryRatio: value / 100,
+                  },
+                })}
+                min={10} max={50} step={5}
+                format={(v) => `${v.toFixed(0)}%`}
+              />
 
-              <div className="space-y-1">
-                <p className="text-xs font-medium text-muted-foreground pt-1">下落閾値と裁量支出削減率</p>
-              </div>
+              <p className="text-xs font-medium text-muted-foreground pt-1">下落閾値と裁量支出削減率</p>
 
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <FieldLabel label="閾値1（軽微な下落）" tooltip="資産がピークからこの割合以上下落するとフェーズ1の削減が発動します" className="text-xs" />
-                  <span className="text-xs font-mono text-muted-foreground">
-                    {((config.guardrailConfig?.threshold1 ?? -0.10) * 100).toFixed(0)}%
-                  </span>
-                </div>
-                <Slider
-                  value={[(config.guardrailConfig?.threshold1 ?? -0.10) * 100]}
-                  onValueChange={([value]) => onConfigChange({
-                    ...config,
-                    guardrailConfig: { ...defaultGuardrail, ...config.guardrailConfig, threshold1: value / 100 }
-                  })}
-                  min={-30} max={-5} step={1}
-                />
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <FieldLabel label="削減率1" tooltip="フェーズ1発動時に裁量支出を削減する割合（例: 40%削減 = 裁量支出が60%になる）" className="text-xs" />
-                  <span className="text-xs font-mono text-muted-foreground">
-                    {((config.guardrailConfig?.reduction1 ?? 0.40) * 100).toFixed(0)}%削減
-                  </span>
-                </div>
-                <Slider
-                  value={[(config.guardrailConfig?.reduction1 ?? 0.40) * 100]}
-                  onValueChange={([value]) => onConfigChange({
-                    ...config,
-                    guardrailConfig: { ...defaultGuardrail, ...config.guardrailConfig, reduction1: value / 100 }
-                  })}
-                  min={10} max={70} step={5}
-                />
-              </div>
+              <SliderField
+                label="閾値1（軽微な下落）"
+                tooltip="資産がピークからこの割合以上下落するとフェーズ1の削減が発動します"
+                value={(config.guardrailConfig?.threshold1 ?? -0.10) * 100}
+                onChange={(value) => onConfigChange({
+                  ...config,
+                  guardrailConfig: { ...defaultGuardrail, ...config.guardrailConfig, threshold1: value / 100 }
+                })}
+                min={-30} max={-5} step={1}
+                format={(v) => `${v.toFixed(0)}%`}
+                small
+              />
+              <SliderField
+                label="削減率1"
+                tooltip="フェーズ1発動時に裁量支出を削減する割合（例: 40%削減 = 裁量支出が60%になる）"
+                value={(config.guardrailConfig?.reduction1 ?? 0.40) * 100}
+                onChange={(value) => onConfigChange({
+                  ...config,
+                  guardrailConfig: { ...defaultGuardrail, ...config.guardrailConfig, reduction1: value / 100 }
+                })}
+                min={10} max={70} step={5}
+                format={(v) => `${v.toFixed(0)}%削減`}
+                small
+              />
 
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <FieldLabel label="閾値2（中程度の下落）" tooltip="資産がピークからこの割合以上下落するとフェーズ2の削減が発動します" className="text-xs" />
-                  <span className="text-xs font-mono text-muted-foreground">
-                    {((config.guardrailConfig?.threshold2 ?? -0.20) * 100).toFixed(0)}%
-                  </span>
-                </div>
-                <Slider
-                  value={[(config.guardrailConfig?.threshold2 ?? -0.20) * 100]}
-                  onValueChange={([value]) => onConfigChange({
-                    ...config,
-                    guardrailConfig: { ...defaultGuardrail, ...config.guardrailConfig, threshold2: value / 100 }
-                  })}
-                  min={-40} max={-10} step={1}
-                />
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <FieldLabel label="削減率2" tooltip="フェーズ2発動時に裁量支出を削減する割合" className="text-xs" />
-                  <span className="text-xs font-mono text-muted-foreground">
-                    {((config.guardrailConfig?.reduction2 ?? 0.80) * 100).toFixed(0)}%削減
-                  </span>
-                </div>
-                <Slider
-                  value={[(config.guardrailConfig?.reduction2 ?? 0.80) * 100]}
-                  onValueChange={([value]) => onConfigChange({
-                    ...config,
-                    guardrailConfig: { ...defaultGuardrail, ...config.guardrailConfig, reduction2: value / 100 }
-                  })}
-                  min={40} max={95} step={5}
-                />
-              </div>
+              <SliderField
+                label="閾値2（中程度の下落）"
+                tooltip="資産がピークからこの割合以上下落するとフェーズ2の削減が発動します"
+                value={(config.guardrailConfig?.threshold2 ?? -0.20) * 100}
+                onChange={(value) => onConfigChange({
+                  ...config,
+                  guardrailConfig: { ...defaultGuardrail, ...config.guardrailConfig, threshold2: value / 100 }
+                })}
+                min={-40} max={-10} step={1}
+                format={(v) => `${v.toFixed(0)}%`}
+                small
+              />
+              <SliderField
+                label="削減率2"
+                tooltip="フェーズ2発動時に裁量支出を削減する割合"
+                value={(config.guardrailConfig?.reduction2 ?? 0.80) * 100}
+                onChange={(value) => onConfigChange({
+                  ...config,
+                  guardrailConfig: { ...defaultGuardrail, ...config.guardrailConfig, reduction2: value / 100 }
+                })}
+                min={40} max={95} step={5}
+                format={(v) => `${v.toFixed(0)}%削減`}
+                small
+              />
 
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <FieldLabel label="閾値3（深刻な下落）" tooltip="資産がピークからこの割合以上下落するとフェーズ3の削減が発動します。これ以上の下落でも同じ削減率が適用されます" className="text-xs" />
-                  <span className="text-xs font-mono text-muted-foreground">
-                    {((config.guardrailConfig?.threshold3 ?? -0.35) * 100).toFixed(0)}%
-                  </span>
-                </div>
-                <Slider
-                  value={[(config.guardrailConfig?.threshold3 ?? -0.35) * 100]}
-                  onValueChange={([value]) => onConfigChange({
-                    ...config,
-                    guardrailConfig: { ...defaultGuardrail, ...config.guardrailConfig, threshold3: value / 100 }
-                  })}
-                  min={-60} max={-20} step={1}
-                />
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <FieldLabel label="削減率3" tooltip="フェーズ3発動時の削減率。ほぼ必須支出のみで生活するレベルに設定するのが一般的です" className="text-xs" />
-                  <span className="text-xs font-mono text-muted-foreground">
-                    {((config.guardrailConfig?.reduction3 ?? 0.95) * 100).toFixed(0)}%削減
-                  </span>
-                </div>
-                <Slider
-                  value={[(config.guardrailConfig?.reduction3 ?? 0.95) * 100]}
-                  onValueChange={([value]) => onConfigChange({
-                    ...config,
-                    guardrailConfig: { ...defaultGuardrail, ...config.guardrailConfig, reduction3: value / 100 }
-                  })}
-                  min={60} max={100} step={5}
-                />
-              </div>
+              <SliderField
+                label="閾値3（深刻な下落）"
+                tooltip="資産がピークからこの割合以上下落するとフェーズ3の削減が発動します。これ以上の下落でも同じ削減率が適用されます"
+                value={(config.guardrailConfig?.threshold3 ?? -0.35) * 100}
+                onChange={(value) => onConfigChange({
+                  ...config,
+                  guardrailConfig: { ...defaultGuardrail, ...config.guardrailConfig, threshold3: value / 100 }
+                })}
+                min={-60} max={-20} step={1}
+                format={(v) => `${v.toFixed(0)}%`}
+                small
+              />
+              <SliderField
+                label="削減率3"
+                tooltip="フェーズ3発動時の削減率。ほぼ必須支出のみで生活するレベルに設定するのが一般的です"
+                value={(config.guardrailConfig?.reduction3 ?? 0.95) * 100}
+                onChange={(value) => onConfigChange({
+                  ...config,
+                  guardrailConfig: { ...defaultGuardrail, ...config.guardrailConfig, reduction3: value / 100 }
+                })}
+                min={60} max={100} step={5}
+                format={(v) => `${v.toFixed(0)}%削減`}
+                small
+              />
             </div>
           )}
         </CardContent>
@@ -1574,141 +1348,109 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
               詳細設定を表示
             </summary>
             <div className="mt-4 space-y-4">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <FieldLabel label="医療分所得割率" tooltip="国保の医療費分として収入に対してかかる率。自治体で異なりますが全国平均は約11%です" className="text-xs" />
-                  <span className="text-xs font-mono text-muted-foreground">
-                    {(config.postFireSocialInsurance.nhisoIncomeRate * 100).toFixed(2)}%
-                  </span>
-                </div>
-                <Slider
-                  value={[config.postFireSocialInsurance.nhisoIncomeRate * 100]}
-                  onValueChange={([value]) => onConfigChange({
-                    ...config,
-                    postFireSocialInsurance: { ...config.postFireSocialInsurance, nhisoIncomeRate: value / 100 }
-                  })}
-                  min={5} max={15} step={0.01}
-                />
-              </div>
+              <SliderField
+                label="医療分所得割率"
+                tooltip="国保の医療費分として収入に対してかかる率。自治体で異なりますが全国平均は約11%です"
+                value={config.postFireSocialInsurance.nhisoIncomeRate * 100}
+                onChange={(value) => onConfigChange({
+                  ...config,
+                  postFireSocialInsurance: { ...config.postFireSocialInsurance, nhisoIncomeRate: value / 100 }
+                })}
+                min={5} max={15} step={0.01}
+                format={(v) => `${v.toFixed(2)}%`}
+                small
+              />
 
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <FieldLabel label="後期高齢者支援金分所得割率" tooltip="国保保険料のうち「高齢者支援のための上乗せ分」の料率（全国平均約2.6%）です" className="text-xs" />
-                  <span className="text-xs font-mono text-muted-foreground">
-                    {(config.postFireSocialInsurance.nhisoSupportIncomeRate * 100).toFixed(2)}%
-                  </span>
-                </div>
-                <Slider
-                  value={[config.postFireSocialInsurance.nhisoSupportIncomeRate * 100]}
-                  onValueChange={([value]) => onConfigChange({
-                    ...config,
-                    postFireSocialInsurance: { ...config.postFireSocialInsurance, nhisoSupportIncomeRate: value / 100 }
-                  })}
-                  min={1} max={5} step={0.01}
-                />
-              </div>
+              <SliderField
+                label="後期高齢者支援金分所得割率"
+                tooltip="国保保険料のうち「高齢者支援のための上乗せ分」の料率（全国平均約2.6%）です"
+                value={config.postFireSocialInsurance.nhisoSupportIncomeRate * 100}
+                onChange={(value) => onConfigChange({
+                  ...config,
+                  postFireSocialInsurance: { ...config.postFireSocialInsurance, nhisoSupportIncomeRate: value / 100 }
+                })}
+                min={1} max={5} step={0.01}
+                format={(v) => `${v.toFixed(2)}%`}
+                small
+              />
 
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <FieldLabel label="均等割（1人あたり）" tooltip="収入がゼロでも1人あたり年約5万円かかる定額の国保保険料です" className="text-xs" />
-                  <span className="text-xs font-mono text-muted-foreground">
-                    {formatCurrency(config.postFireSocialInsurance.nhisoFixedAmountPerPerson)}
-                  </span>
-                </div>
-                <Slider
-                  value={[config.postFireSocialInsurance.nhisoFixedAmountPerPerson]}
-                  onValueChange={([value]) => onConfigChange({
-                    ...config,
-                    postFireSocialInsurance: { ...config.postFireSocialInsurance, nhisoFixedAmountPerPerson: value }
-                  })}
-                  min={10000} max={100000} step={1000}
-                />
-              </div>
+              <SliderField
+                label="均等割（1人あたり）"
+                tooltip="収入がゼロでも1人あたり年約5万円かかる定額の国保保険料です"
+                value={config.postFireSocialInsurance.nhisoFixedAmountPerPerson}
+                onChange={(value) => onConfigChange({
+                  ...config,
+                  postFireSocialInsurance: { ...config.postFireSocialInsurance, nhisoFixedAmountPerPerson: value }
+                })}
+                min={10000} max={100000} step={1000}
+                format={(v) => formatCurrency(v)}
+                small
+              />
 
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <FieldLabel label="平等割（世帯）" tooltip="世帯に1つかかる定額料金です。自治体によっては「均等割のみ」でここは0円の場合もあります" className="text-xs" />
-                  <span className="text-xs font-mono text-muted-foreground">
-                    {formatCurrency(config.postFireSocialInsurance.nhisoHouseholdFixed)}
-                  </span>
-                </div>
-                <Slider
-                  value={[config.postFireSocialInsurance.nhisoHouseholdFixed]}
-                  onValueChange={([value]) => onConfigChange({
-                    ...config,
-                    postFireSocialInsurance: { ...config.postFireSocialInsurance, nhisoHouseholdFixed: value }
-                  })}
-                  min={0} max={100000} step={1000}
-                />
-              </div>
+              <SliderField
+                label="平等割（世帯）"
+                tooltip="世帯に1つかかる定額料金です。自治体によっては「均等割のみ」でここは0円の場合もあります"
+                value={config.postFireSocialInsurance.nhisoHouseholdFixed}
+                onChange={(value) => onConfigChange({
+                  ...config,
+                  postFireSocialInsurance: { ...config.postFireSocialInsurance, nhisoHouseholdFixed: value }
+                })}
+                min={0} max={100000} step={1000}
+                format={(v) => formatCurrency(v)}
+                small
+              />
 
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <FieldLabel label="国保年間上限額" tooltip="国保には上限があります。高収入でもここまでしかかかりません（現在の上限: 約106万円/年）" className="text-xs" />
-                  <span className="text-xs font-mono text-muted-foreground">
-                    {formatCurrency(config.postFireSocialInsurance.nhisoMaxAnnual, true)}
-                  </span>
-                </div>
-                <Slider
-                  value={[config.postFireSocialInsurance.nhisoMaxAnnual]}
-                  onValueChange={([value]) => onConfigChange({
-                    ...config,
-                    postFireSocialInsurance: { ...config.postFireSocialInsurance, nhisoMaxAnnual: value }
-                  })}
-                  min={500000} max={2000000} step={10000}
-                />
-              </div>
+              <SliderField
+                label="国保年間上限額"
+                tooltip="国保には上限があります。高収入でもここまでしかかかりません（現在の上限: 約106万円/年）"
+                value={config.postFireSocialInsurance.nhisoMaxAnnual}
+                onChange={(value) => onConfigChange({
+                  ...config,
+                  postFireSocialInsurance: { ...config.postFireSocialInsurance, nhisoMaxAnnual: value }
+                })}
+                min={500000} max={2000000} step={10000}
+                format={(v) => formatCurrency(v, true)}
+                small
+              />
 
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <FieldLabel label="国民年金月額保険料" tooltip="FIREすると年金を自分で払います。今は月約17,000円。夫婦2人なら月約34,000円です" className="text-xs" />
-                  <span className="text-xs font-mono text-muted-foreground">
-                    {formatCurrency(config.postFireSocialInsurance.nationalPensionMonthlyPremium)}/月
-                  </span>
-                </div>
-                <Slider
-                  value={[config.postFireSocialInsurance.nationalPensionMonthlyPremium]}
-                  onValueChange={([value]) => onConfigChange({
-                    ...config,
-                    postFireSocialInsurance: { ...config.postFireSocialInsurance, nationalPensionMonthlyPremium: value }
-                  })}
-                  min={10000} max={25000} step={100}
-                />
-              </div>
+              <SliderField
+                label="国民年金月額保険料"
+                tooltip="FIREすると年金を自分で払います。今は月約17,000円。夫婦2人なら月約34,000円です"
+                value={config.postFireSocialInsurance.nationalPensionMonthlyPremium}
+                onChange={(value) => onConfigChange({
+                  ...config,
+                  postFireSocialInsurance: { ...config.postFireSocialInsurance, nationalPensionMonthlyPremium: value }
+                })}
+                min={10000} max={25000} step={100}
+                format={(v) => `${formatCurrency(v)}/月`}
+                small
+              />
 
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <FieldLabel label="介護分所得割率" tooltip="40〜64歳は介護保険料が国保に追加されます（収入の約2%）。65歳以降は年金から天引きになります" className="text-xs" />
-                  <span className="text-xs font-mono text-muted-foreground">
-                    {(config.postFireSocialInsurance.longTermCareRate * 100).toFixed(2)}%
-                  </span>
-                </div>
-                <Slider
-                  value={[config.postFireSocialInsurance.longTermCareRate * 100]}
-                  onValueChange={([value]) => onConfigChange({
-                    ...config,
-                    postFireSocialInsurance: { ...config.postFireSocialInsurance, longTermCareRate: value / 100 }
-                  })}
-                  min={0.5} max={5} step={0.01}
-                />
-              </div>
+              <SliderField
+                label="介護分所得割率"
+                tooltip="40〜64歳は介護保険料が国保に追加されます（収入の約2%）。65歳以降は年金から天引きになります"
+                value={config.postFireSocialInsurance.longTermCareRate * 100}
+                onChange={(value) => onConfigChange({
+                  ...config,
+                  postFireSocialInsurance: { ...config.postFireSocialInsurance, longTermCareRate: value / 100 }
+                })}
+                min={0.5} max={5} step={0.01}
+                format={(v) => `${v.toFixed(2)}%`}
+                small
+              />
 
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <FieldLabel label="介護分上限額" tooltip="介護保険料にも上限があります（年約17万円）。高収入でもここを超えません" className="text-xs" />
-                  <span className="text-xs font-mono text-muted-foreground">
-                    {formatCurrency(config.postFireSocialInsurance.longTermCareMax, true)}
-                  </span>
-                </div>
-                <Slider
-                  value={[config.postFireSocialInsurance.longTermCareMax]}
-                  onValueChange={([value]) => onConfigChange({
-                    ...config,
-                    postFireSocialInsurance: { ...config.postFireSocialInsurance, longTermCareMax: value }
-                  })}
-                  min={50000} max={400000} step={10000}
-                />
-              </div>
+              <SliderField
+                label="介護分上限額"
+                tooltip="介護保険料にも上限があります（年約17万円）。高収入でもここを超えません"
+                value={config.postFireSocialInsurance.longTermCareMax}
+                onChange={(value) => onConfigChange({
+                  ...config,
+                  postFireSocialInsurance: { ...config.postFireSocialInsurance, longTermCareMax: value }
+                })}
+                min={50000} max={400000} step={10000}
+                format={(v) => formatCurrency(v, true)}
+                small
+              />
 
               <button
                 onClick={() => onConfigChange({

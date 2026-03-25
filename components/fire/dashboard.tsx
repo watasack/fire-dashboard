@@ -12,7 +12,7 @@ import { CashFlowChart } from "./cashflow-chart"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent } from "@/components/ui/card"
 import { TooltipProvider } from "@/components/ui/tooltip"
-import { BarChart3, Lightbulb, TrendingUp, Info, ShieldCheck, Table2, Lock, Share2, Home, Wallet, Baby, Settings2 } from "lucide-react"
+import { BarChart3, Lightbulb, TrendingUp, Info, ShieldCheck, Table2, Lock, Share2, Home, Wallet, Baby, Settings2, Maximize2, Minimize2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { encodeConfig, decodeConfig } from "@/lib/url-state"
 import Link from "next/link"
@@ -51,6 +51,7 @@ export function FireDashboard() {
   const [monteCarloResult, setMonteCarloResult] = useState<MonteCarloResult | null>(null)
   const [isCalculating, setIsCalculating] = useState(false)
   const [useMonteCarlo, setUseMonteCarlo] = useState(true)
+  const [chartExpanded, setChartExpanded] = useState(false)
   const [copied, setCopied] = useState(false)
   const [activeSection, setActiveSection] = useState<string>("config-basic")
 
@@ -202,49 +203,71 @@ export function FireDashboard() {
         <main className="container mx-auto px-4 lg:py-6 lg:pb-6">
 
           {/* ===== MOBILE LAYOUT (lg:hidden) ===== */}
-          {/* 上部: グラフ固定 / 下部: 設定+結果スクロール */}
+          {/* 上部: グラフ（展開時はflex-1） / 下部: 設定+結果スクロール（展開時は非表示） */}
           <div
             className="lg:hidden flex flex-col overflow-hidden"
             style={{ height: "calc(100dvh - 112px - 56px)" }}
           >
-            {/* 上部: グラフタブ（固定） */}
-            <div className="shrink-0 pt-3 pb-1 border-b">
-              <Tabs defaultValue="assets" className="w-full">
-                <TabsList className="grid w-full grid-cols-4 mb-3">
-                  <TabsTrigger value="assets" className="flex items-center gap-1 text-xs">
-                    <BarChart3 className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">資産推移</span>
-                  </TabsTrigger>
-                  <TabsTrigger value="cashflow" className="flex items-center gap-1 text-xs">
-                    <TrendingUp className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">収支</span>
-                  </TabsTrigger>
-                  <TabsTrigger value="annual" className="flex items-center gap-1 text-xs">
-                    <Table2 className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">年次表</span>
-                  </TabsTrigger>
-                  <TabsTrigger value="scenarios" className="flex items-center gap-1 text-xs">
-                    <Lightbulb className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">次の一手</span>
-                  </TabsTrigger>
-                </TabsList>
-                <TabsContent value="assets" className="mt-0">
-                  <AssetsChart compact result={result} monteCarloResult={monteCarloResult} showPercentiles={useMonteCarlo} />
-                </TabsContent>
-                <TabsContent value="cashflow" className="mt-0">
-                  <CashFlowChart compact result={result} />
-                </TabsContent>
-                <TabsContent value="annual" className="mt-0">
-                  <AnnualCashFlowTable compact result={result} />
-                </TabsContent>
-                <TabsContent value="scenarios" className="mt-0 h-[200px] overflow-y-auto">
-                  <ScenarioComparison baseConfig={config} baseResult={result} baseMcResult={monteCarloResult} onConfigChange={handleConfigChange} />
-                </TabsContent>
+            {/* 上部: グラフタブ */}
+            <div className={chartExpanded ? "flex-1 flex flex-col overflow-hidden pt-3 border-b" : "shrink-0 pt-3 pb-1 border-b"}>
+              <Tabs defaultValue="assets" className={chartExpanded ? "w-full flex-1 flex flex-col min-h-0" : "w-full"}>
+                {/* タブ行 + 展開ボタン */}
+                <div className="flex items-center gap-1 mb-3">
+                  <TabsList className="grid flex-1 grid-cols-4">
+                    <TabsTrigger value="assets" className="flex items-center gap-1 text-xs">
+                      <BarChart3 className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">資産推移</span>
+                    </TabsTrigger>
+                    <TabsTrigger value="cashflow" className="flex items-center gap-1 text-xs">
+                      <TrendingUp className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">収支</span>
+                    </TabsTrigger>
+                    <TabsTrigger value="annual" className="flex items-center gap-1 text-xs">
+                      <Table2 className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">年次表</span>
+                    </TabsTrigger>
+                    <TabsTrigger value="scenarios" className="flex items-center gap-1 text-xs">
+                      <Lightbulb className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">次の一手</span>
+                    </TabsTrigger>
+                  </TabsList>
+                  <button
+                    type="button"
+                    onClick={() => setChartExpanded(v => !v)}
+                    className="shrink-0 p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                    aria-label={chartExpanded ? "グラフを縮小" : "グラフを全画面表示"}
+                  >
+                    {chartExpanded
+                      ? <Minimize2 className="h-4 w-4" />
+                      : <Maximize2 className="h-4 w-4" />}
+                  </button>
+                </div>
+                {/* チャートコンテンツ */}
+                <div className={chartExpanded ? "flex-1 min-h-0" : ""}>
+                  <TabsContent value="assets" className={chartExpanded ? "mt-0 h-full" : "mt-0"}>
+                    <AssetsChart
+                      compact={!chartExpanded}
+                      expanded={chartExpanded}
+                      result={result}
+                      monteCarloResult={monteCarloResult}
+                      showPercentiles={useMonteCarlo}
+                    />
+                  </TabsContent>
+                  <TabsContent value="cashflow" className={chartExpanded ? "mt-0 h-full" : "mt-0"}>
+                    <CashFlowChart compact={!chartExpanded} expanded={chartExpanded} result={result} />
+                  </TabsContent>
+                  <TabsContent value="annual" className="mt-0">
+                    <AnnualCashFlowTable compact result={result} />
+                  </TabsContent>
+                  <TabsContent value="scenarios" className="mt-0 h-[200px] overflow-y-auto">
+                    <ScenarioComparison baseConfig={config} baseResult={result} baseMcResult={monteCarloResult} onConfigChange={handleConfigChange} />
+                  </TabsContent>
+                </div>
               </Tabs>
             </div>
 
-            {/* 下部: スクロール可能（設定 → 結果詳細） */}
-            <div className="flex-1 overflow-y-auto">
+            {/* 下部: スクロール可能（設定 → 結果詳細）。展開時は非表示 */}
+            <div className={chartExpanded ? "hidden" : "flex-1 overflow-y-auto"}>
               <div className="py-4 space-y-4">
                 <ConfigPanel config={config} onConfigChange={handleConfigChange} useMonteCarlo={useMonteCarlo} onMonteCarloChange={setUseMonteCarlo} />
                 <FireResultCard result={result} monteCarloResult={monteCarloResult} currentAge={config.person1.currentAge} isCalculating={isCalculating} />
@@ -372,6 +395,7 @@ export function FireDashboard() {
                       key={id}
                       type="button"
                       onClick={() => {
+                        setChartExpanded(false)
                         const el = document.getElementById(id)
                         if (el) {
                           el.scrollIntoView({ behavior: "smooth", block: "start" })

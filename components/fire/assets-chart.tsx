@@ -24,10 +24,18 @@ interface AssetsChartProps {
   monteCarloResult: MonteCarloResult | null
   showPercentiles?: boolean
   compact?: boolean
+  /** モバイルでグラフを全画面展開するとき true */
+  expanded?: boolean
 }
 
-export function AssetsChart({ result, monteCarloResult, showPercentiles = true, compact = false }: AssetsChartProps) {
-  const chartHeight = compact ? "h-[200px]" : "h-[260px] sm:h-[360px] lg:h-[400px]"
+export function AssetsChart({ result, monteCarloResult, showPercentiles = true, compact = false, expanded = false }: AssetsChartProps) {
+  const chartHeight = expanded ? "h-full" : compact ? "h-[240px]" : "h-[260px] sm:h-[360px] lg:h-[400px]"
+  const showHeader = !compact && !expanded
+  const showLegend = !compact && !expanded
+  const chartMargin = (compact || expanded)
+    ? { top: 16, right: 8, bottom: 4, left: 20 }
+    : { top: 20, right: 8, bottom: 20, left: 20 }
+
   if (!result) {
     return (
       <Card>
@@ -61,20 +69,10 @@ export function AssetsChart({ result, monteCarloResult, showPercentiles = true, 
 
   const fireAge = monteCarloResult?.medianFireAge ?? result.fireAge
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>資産推移予測</CardTitle>
-        <CardDescription>
-          {showPercentiles && monteCarloResult
-            ? "1000通りのシミュレーション結果。濃い帯ほど「よくある結果」を示します"
-            : "平均的なシナリオでの資産推移"}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className={chartHeight}>
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={chartData} margin={{ top: 20, right: 8, bottom: 20, left: 20 }}>
+  const chartInner = (
+    <div className={chartHeight}>
+      <ResponsiveContainer width="100%" height="100%">
+        <ComposedChart data={chartData} margin={chartMargin}>
               <defs>
                 <linearGradient id="percentileGradient" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="var(--chart-primary)" stopOpacity={0.3} />
@@ -200,13 +198,35 @@ export function AssetsChart({ result, monteCarloResult, showPercentiles = true, 
                 />
               )}
 
-              <Legend
-                wrapperStyle={{ paddingTop: "20px" }}
-                formatter={(value) => <span className="text-sm">{value}</span>}
-              />
+              {showLegend ? (
+                <Legend
+                  wrapperStyle={{ paddingTop: "20px" }}
+                  formatter={(value) => <span className="text-sm">{value}</span>}
+                />
+              ) : null}
             </ComposedChart>
           </ResponsiveContainer>
         </div>
+  )
+
+  if (expanded) {
+    return <div className="h-full px-2 pb-2">{chartInner}</div>
+  }
+
+  return (
+    <Card>
+      {showHeader && (
+        <CardHeader>
+          <CardTitle>資産推移予測</CardTitle>
+          <CardDescription>
+            {showPercentiles && monteCarloResult
+              ? "1000通りのシミュレーション結果。濃い帯ほど「よくある結果」を示します"
+              : "平均的なシナリオでの資産推移"}
+          </CardDescription>
+        </CardHeader>
+      )}
+      <CardContent className={showHeader ? "" : "pt-3"}>
+        {chartInner}
       </CardContent>
     </Card>
   )
@@ -215,10 +235,16 @@ export function AssetsChart({ result, monteCarloResult, showPercentiles = true, 
 interface IncomeExpenseChartProps {
   result: SimulationResult | null
   compact?: boolean
+  expanded?: boolean
 }
 
-export function IncomeExpenseChart({ result, compact = false }: IncomeExpenseChartProps) {
-  const chartHeight = compact ? "h-[180px]" : "h-[240px] sm:h-[280px] lg:h-[300px]"
+export function IncomeExpenseChart({ result, compact = false, expanded = false }: IncomeExpenseChartProps) {
+  const chartHeight = expanded ? "h-full" : compact ? "h-[200px]" : "h-[240px] sm:h-[280px] lg:h-[300px]"
+  const showHeader = !compact && !expanded
+  const showLegend = !compact && !expanded
+  const chartMargin = (compact || expanded)
+    ? { top: 16, right: 8, bottom: 4, left: 20 }
+    : { top: 20, right: 8, bottom: 20, left: 20 }
   if (!result) {
     return (
       <Card>
@@ -240,54 +266,66 @@ export function IncomeExpenseChart({ result, compact = false }: IncomeExpenseCha
     childCosts: d.childCosts,
   }))
 
+  const cashflowInner = (
+    <div className={chartHeight}>
+      <ResponsiveContainer width="100%" height="100%">
+        <ComposedChart data={chartData} margin={chartMargin}>
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" opacity={0.5} />
+          <XAxis
+            dataKey="age"
+            tick={{ fontSize: 12 }}
+            tickFormatter={(value) => `${value}歳`}
+            stroke="var(--color-muted-foreground)"
+          />
+          <YAxis
+            tick={{ fontSize: 12 }}
+            tickFormatter={(value) => formatCurrency(value, true)}
+            stroke="var(--color-muted-foreground)"
+            width={60}
+          />
+          <Tooltip
+            content={({ active, payload, label }) => {
+              if (!active || !payload?.length) return null
+              return (
+                <div className="rounded-lg border bg-background p-3 shadow-lg">
+                  <p className="mb-2 font-medium">{label}歳</p>
+                  {payload.map((entry, index) => (
+                    <p key={index} className="text-sm" style={{ color: entry.color }}>
+                      {entry.name}: {formatCurrency(entry.value as number, true)}
+                    </p>
+                  ))}
+                </div>
+              )
+            }}
+          />
+          {true ? <Bar dataKey="income" fill="#3B82F6" name="収入" opacity={0.85} /> : null}
+          {true ? <Bar dataKey="expenses" fill="#EF4444" name="支出" opacity={0.85} /> : null}
+          {true ? <Line type="monotone" dataKey="netCF" stroke="#10B981" strokeWidth={3} dot={false} name="年間収支" /> : null}
+          {showLegend ? (
+            <Legend
+              wrapperStyle={{ paddingTop: "20px" }}
+              formatter={(value) => <span className="text-sm">{value}</span>}
+            />
+          ) : null}
+        </ComposedChart>
+      </ResponsiveContainer>
+    </div>
+  )
+
+  if (expanded) {
+    return <div className="h-full px-2 pb-2">{cashflowInner}</div>
+  }
+
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>収支推移</CardTitle>
-        <CardDescription>年間の収入・支出・貯蓄の推移</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className={chartHeight}>
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={chartData} margin={{ top: 20, right: 8, bottom: 20, left: 20 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" opacity={0.5} />
-              <XAxis
-                dataKey="age"
-                tick={{ fontSize: 12 }}
-                tickFormatter={(value) => `${value}歳`}
-                stroke="var(--color-muted-foreground)"
-              />
-              <YAxis
-                tick={{ fontSize: 12 }}
-                tickFormatter={(value) => formatCurrency(value, true)}
-                stroke="var(--color-muted-foreground)"
-                width={60}
-              />
-              <Tooltip
-                content={({ active, payload, label }) => {
-                  if (!active || !payload?.length) return null
-                  return (
-                    <div className="rounded-lg border bg-background p-3 shadow-lg">
-                      <p className="mb-2 font-medium">{label}歳</p>
-                      {payload.map((entry, index) => (
-                        <p key={index} className="text-sm" style={{ color: entry.color }}>
-                          {entry.name}: {formatCurrency(entry.value as number, true)}
-                        </p>
-                      ))}
-                    </div>
-                  )
-                }}
-              />
-              {true ? <Bar dataKey="income" fill="#3B82F6" name="収入" opacity={0.85} /> : null}
-              {true ? <Bar dataKey="expenses" fill="#EF4444" name="支出" opacity={0.85} /> : null}
-              {true ? <Line type="monotone" dataKey="netCF" stroke="#10B981" strokeWidth={3} dot={false} name="年間収支" /> : null}
-              <Legend
-                wrapperStyle={{ paddingTop: "20px" }}
-                formatter={(value) => <span className="text-sm">{value}</span>}
-              />
-            </ComposedChart>
-          </ResponsiveContainer>
-        </div>
+      {showHeader && (
+        <CardHeader>
+          <CardTitle>収支推移</CardTitle>
+          <CardDescription>年間の収入・支出・貯蓄の推移</CardDescription>
+        </CardHeader>
+      )}
+      <CardContent className={showHeader ? "" : "pt-3"}>
+        {cashflowInner}
       </CardContent>
     </Card>
   )
