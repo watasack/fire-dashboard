@@ -76,7 +76,7 @@ export interface Person {
     grossIncome: number          // 税引き前年収（円）
     incomeGrowthRate: number
     pensionStartAge: number
-    pensionAmount?: number
+    pensionAmount?: number | null
     pensionConfig?: PensionConfig
     employmentType?: EmploymentType  // 雇用形態（省略時は 'employee'）
     /** @deprecated grossIncome を使うこと */
@@ -278,7 +278,6 @@ export interface SimulationResult {
     yearlyData: YearlyData[]
     fireAge: number | null
     fireYear: number | null
-    fireMonth: number | null     // FIRE達成月（1-12）。person1.birthMonthが設定されている場合のみ有効
     fireNumber: number
     finalAssets: number
     totalYears: number
@@ -347,7 +346,7 @@ export function formatAnnualTableData(yearlyData: YearlyData[]): AnnualTableRow[
     return yearlyData.map(data => ({
         year: data.year,
         age: data.age,
-        totalAssets: data.assets + data.nisaAssets + data.idecoAssets,
+        totalAssets: data.assets + data.nisaAssets + data.idecoAssets + data.otherAssets,
         grossIncome: data.grossIncome,
         netIncome: data.income,
         expenses: data.expenses,
@@ -671,7 +670,7 @@ function calculateChildAllowance(children: Child[], currentSimYear: number): num
             // 第3子以降: 全年齢 30,000円/月
             total += 30_000 * 12
         } else if (childAge < 3) {
-            // 第1・2子, 0〜2歳: 15,000円/月
+            // 第1・2子, 0〜2歳: 15,000円/月（2024年改正: 第1子・第2子は同額）
             total += 15_000 * 12
         } else {
             // 第1・2子, 3〜17歳: 10,000円/月
@@ -681,9 +680,8 @@ function calculateChildAllowance(children: Child[], currentSimYear: number): num
     return total
 }
 
-function calculateChildCosts(children: Child[], year: number, inflationRate: number): number {
+function calculateChildCosts(children: Child[], year: number, inflationRate: number, baseYear: number): number {
     let totalCost = 0
-    const baseYear = new Date().getFullYear()
     const yearsFromBase = year - baseYear
     const inflationMultiplier = Math.pow(1 + inflationRate, yearsFromBase)
 
@@ -856,7 +854,7 @@ function calculateMaternityLeaveIncomeForYear(
         const [birthYear, birthMonth] = entry.childBirthDate.split('-').map(Number)
         const prenatalMonths = (entry.prenatalWeeks ?? 6) * 7 / 30.44
         const postnatalMonths = (entry.postnatalWeeks ?? 8) * 7 / 30.44
-        const half1End = postnatalMonths + 6
+        const half1End = postnatalMonths + Math.min(6, entry.childcareMonths ?? 10)
         const half2End = postnatalMonths + (entry.childcareMonths ?? 10)
 
         for (let m = 1; m <= 12; m++) {
@@ -912,7 +910,7 @@ function getPartTimeRatio(person: Person, age: number): number {
  */
 function calculateEmploymentIncome(grossIncome: number, employmentType: EmploymentType): number {
     if (employmentType !== 'employee') return grossIncome  // 個人事業主・専業主婦はそのまま
-    if (grossIncome <= 1_625_000) return Math.max(0, grossIncome - 550_000)
+    if (grossIncome <= 1_628_000) return Math.max(0, grossIncome - 550_000)
     if (grossIncome <= 1_800_000) return Math.max(0, grossIncome - Math.max(550_000, grossIncome * 0.4 - 100_000))
     if (grossIncome <= 3_600_000) return grossIncome - (grossIncome * 0.3 + 80_000)
     if (grossIncome <= 6_600_000) return grossIncome - (grossIncome * 0.2 + 440_000)
@@ -1029,7 +1027,8 @@ export function calculateTaxBreakdown(
     const incomeTax = baseIncomeTax * 1.021  // 復興特別所得税込み
 
     // --- 住民税（所得割 10% + 均等割 5,000円）---
-    const residentTax = taxableIncome * 0.10 + 5_000
+    // 課税所得ゼロ（専業主婦・無職等）は均等割も含め非課税（申告不要で自治体が自動判定）
+    const residentTax = taxableIncome > 0 ? taxableIncome * 0.10 + 5_000 : 0
 
     const totalTax = socialInsurance + incomeTax + residentTax
     const netIncome = Math.max(0, grossIncome - totalTax)
@@ -1126,8 +1125,8 @@ export function calculatePensionAmount(
     yearsWorkedFromNow: number,
     averageFutureMonthlyRemuneration: number
 ): PensionBreakdown {
-    // 固定値優先（後方互換）
-    if (person.pensionAmount !== undefined) {
+    // 固定値優先: null/undefined → pensionConfig で自動計算、0 → 年金なし固定、正数 → 固定額
+    if (person.pensionAmount != null) {
         return {
             employeePension: person.pensionAmount,
             nationalPension: 0,
@@ -1379,7 +1378,7 @@ export function runSingleSimulation(
     let fireYear: number | null = null
     let capitalGainsLastYear = 0    // 前年の売却益
     let lastYearFireIncome = 0      // 前年の就労収入（FIRE後: セミFIRE収入, FIRE前: 給与収入）
-    let peakAssets = initialCashAssets + initialStocks + otherAssets  // ピーク資産（NISA/iDeCo は除く）
+    let peakAssets = initialCashAssets + initialStocks + (config.nisa.balance ?? 0) + otherAssets  // ピーク資産
 
     // Calculate FIRE number based on current expenses
     const annualExpenses = config.monthlyExpenses * 12
@@ -1467,17 +1466,27 @@ export function runSingleSimulation(
 
             let p2Income = 0
             let p2Tax = 0
-            if (config.person2 && person2Age >= config.person2.pensionStartAge) {
-                const p2YearsFromPensionStart = person2Age - config.person2.pensionStartAge
-                const p2Gross = applyMacroEconomicSlide(
-                    p2BasePension,
-                    p2YearsFromPensionStart,
-                    config.person2.pensionConfig?.pensionGrowthRate ?? config.inflationRate
-                )
-                const p2Breakdown = calculateTaxBreakdown(p2Gross, config.person2.employmentType ?? 'employee', person2Age)
-                p2Income = p2Breakdown.netIncome
-                p2Tax = p2Breakdown.totalTax
-                totalIncome += p2Gross
+            if (config.person2) {
+                // Person2 独自の退職年齢まで就労収入を継続計算（person1 の FIRE に左右されない）
+                if (person2Age < config.person2.retirementAge) {
+                    const p2Ratio = getPartTimeRatio(config.person2, person2Age)
+                    const p2RawGross = calculateIncome(config.person2, person2Age, config.inflationRate, year) * p2Ratio
+                    const p2Breakdown = calculateTaxBreakdown(p2RawGross, config.person2.employmentType ?? 'employee', person2Age)
+                    p2Income = p2Breakdown.netIncome
+                    p2Tax = p2Breakdown.totalTax
+                    totalIncome += p2RawGross
+                } else if (person2Age >= config.person2.pensionStartAge) {
+                    const p2YearsFromPensionStart = person2Age - config.person2.pensionStartAge
+                    const p2Gross = applyMacroEconomicSlide(
+                        p2BasePension,
+                        p2YearsFromPensionStart,
+                        config.person2.pensionConfig?.pensionGrowthRate ?? config.inflationRate
+                    )
+                    const p2Breakdown = calculateTaxBreakdown(p2Gross, config.person2.employmentType ?? 'employee', person2Age)
+                    p2Income = p2Breakdown.netIncome
+                    p2Tax = p2Breakdown.totalTax
+                    totalIncome += p2Gross
+                }
             }
 
             totalNetIncome = semiFireNetIncome + p1Income + p2Income
@@ -1599,7 +1608,7 @@ export function runSingleSimulation(
         // Calculate child costs (skip in lifecycle mode to avoid double-counting)
         const childCosts = (config.expenseMode === 'lifecycle')
             ? 0
-            : calculateChildCosts(config.children, currentSimYear, config.inflationRate)
+            : calculateChildCosts(config.children, currentSimYear, config.inflationRate, currentYear)
 
         // Calculate mortgage cost
         const mortgageCost = calculateMortgageCost(config.mortgage, currentSimYear)
@@ -1758,12 +1767,10 @@ export function runSingleSimulation(
             if (shortfall > 0 && newStocks > 0) {
                 const withdrawal = withdrawFromTaxableAccount(shortfall, newStocks, stocksCostBasis)
                 capitalGainsThisYear += withdrawal.realizedGains
-                // 資産減少: shortfall 分だけ減らす（既存テストとの後方互換のため）
-                const sellAmount = Math.min(shortfall, newStocks)
-                const fraction = newStocks > 0 ? sellAmount / newStocks : 0
-                newStocks -= sellAmount
-                stocksCostBasis -= stocksCostBasis * fraction
-                shortfall = 0
+                // 税込みの gross 売却額を資産から控除し、手取りで shortfall を充当
+                newStocks = withdrawal.remainingValue
+                stocksCostBasis = withdrawal.remainingCostBasis
+                shortfall = Math.max(0, shortfall - withdrawal.netProceeds)
             }
 
             // 現金から
@@ -1780,7 +1787,7 @@ export function runSingleSimulation(
             }
         }
 
-        cashAssets = newCash
+        cashAssets = Math.max(0, newCash)
         stockAssets = Math.max(0, newStocks)
         stocksCostBasis = Math.max(0, stocksCostBasis)
         nisaAssets = Math.max(0, newNisa)
@@ -1847,7 +1854,7 @@ export function runSingleSimulation(
     // 資産枯渇年齢の計算
     let depletionAge: number | null = null
     for (const data of yearlyData) {
-        if (data.assets + data.nisaAssets + data.idecoAssets <= 0) {
+        if (data.assets + data.nisaAssets + data.idecoAssets + data.otherAssets <= 0) {
             depletionAge = data.age
             break
         }
@@ -1859,9 +1866,8 @@ export function runSingleSimulation(
         yearlyData,
         fireAge,
         fireYear,
-        fireMonth: fireAge !== null ? (config.person1.birthMonth ?? null) : null,
         fireNumber,
-        finalAssets: finalData.assets + finalData.nisaAssets + finalData.idecoAssets,
+        finalAssets: finalData.assets + finalData.nisaAssets + finalData.idecoAssets + finalData.otherAssets,
         totalYears: config.simulationYears,
         pensionBreakdown: {
             person1: p1PensionBreakdown,
@@ -1905,7 +1911,7 @@ export function generateMeanReversionReturns(
     let prevReturn = mean  // 初期値: 期待値から開始
 
     for (let t = 0; t <= years; t++) {
-        const u1 = Math.random()
+        const u1 = Math.random() || Number.EPSILON
         const u2 = Math.random()
         const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2)
         const epsilon = volatility * z
@@ -1933,7 +1939,7 @@ export function generateBootstrapReturns(
     } else {
         // ブロックブートストラップ
         while (returns.length <= years) {
-            const maxStart = historicalReturns.length - blockSize
+            const maxStart = Math.max(1, historicalReturns.length - blockSize)
             const startIdx = Math.floor(Math.random() * maxStart)
             const block = historicalReturns.slice(startIdx, startIdx + blockSize)
             returns.push(...block)
@@ -1961,7 +1967,7 @@ function generateRandomReturns(years: number, config: SimulationConfig): number[
         if (!historicalReturns || historicalReturns.length === 0) {
             // フォールバック: 正規分布
             return Array.from({ length: years + 1 }, () => {
-                const u1 = Math.random()
+                const u1 = Math.random() || Number.EPSILON
                 const u2 = Math.random()
                 const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2)
                 return config.investmentReturn + config.investmentVolatility * z
@@ -1976,7 +1982,7 @@ function generateRandomReturns(years: number, config: SimulationConfig): number[
 
     // 'normal' (デフォルト)
     return Array.from({ length: years + 1 }, () => {
-        const u1 = Math.random()
+        const u1 = Math.random() || Number.EPSILON
         const u2 = Math.random()
         const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2)
         return config.investmentReturn + config.investmentVolatility * z
@@ -2013,7 +2019,7 @@ export function runMonteCarloSimulation(
 
         // Collect yearly assets
         result.yearlyData.forEach((data, year) => {
-            yearlyAssets[year].push(data.assets + data.nisaAssets + data.idecoAssets)
+            yearlyAssets[year].push(data.assets + data.nisaAssets + data.idecoAssets + data.otherAssets)
         })
     }
 

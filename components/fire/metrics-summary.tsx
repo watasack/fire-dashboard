@@ -2,44 +2,14 @@
 
 import { Card, CardContent } from "@/components/ui/card"
 import { SimulationConfig, SimulationResult, MonteCarloResult } from "@/lib/simulator"
-import { formatCurrency, formatPercent } from "@/lib/utils"
-import { TrendingUp, TrendingDown, Target } from "lucide-react"
+import { formatCurrency } from "@/lib/utils"
+import { Target } from "lucide-react"
 
 interface MetricsSummaryProps {
   config: SimulationConfig
   result: SimulationResult | null
   mcResult?: MonteCarloResult | null
   isCalculating?: boolean
-}
-
-interface MetricCardProps {
-  icon: React.ReactNode
-  label: string
-  value: string
-  subValue?: string
-  trend?: "up" | "down" | "neutral"
-}
-
-function MetricCard({ icon, label, value, subValue, trend }: MetricCardProps) {
-  return (
-    <div className="flex items-center gap-3 rounded-lg bg-muted/50 p-3">
-      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-background">
-        {icon}
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="text-xs text-muted-foreground truncate">{label}</p>
-        <p className="font-semibold">{value}</p>
-        {subValue && (
-          <p className="text-xs text-muted-foreground">{subValue}</p>
-        )}
-      </div>
-      {trend && trend !== "neutral" && (
-        <div className={trend === "up" ? "text-success" : "text-destructive"}>
-          {trend === "up" ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
-        </div>
-      )}
-    </div>
-  )
 }
 
 export function MetricsSummary({ config, result, mcResult, isCalculating }: MetricsSummaryProps) {

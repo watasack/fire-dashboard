@@ -384,7 +384,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
               </Label>
               <Switch
                 id="spouse-toggle"
-                checked={config.person2 !== null}
+                checked={config.person2 != null}
                 onCheckedChange={togglePerson2}
               />
             </div>

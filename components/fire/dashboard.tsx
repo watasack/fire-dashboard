@@ -93,35 +93,27 @@ export function FireDashboard() {
     return () => clearTimeout(timer)
   }, [debouncedConfig, useMonteCarlo])
 
-  // IntersectionObserver: track which accordion section is in view (mobile only)
+  // スクロール位置ベースでアクティブセクションを追跡（IntersectionObserverは折りたたみ状態で誤発火するため）
   useEffect(() => {
     const sectionIds = ["config-basic", "config-income", "config-invest", "config-life", "config-detail"]
-    const observers: IntersectionObserver[] = []
-
-    sectionIds.forEach((id) => {
-      const el = document.getElementById(id)
-      if (!el) return
-      const obs = new IntersectionObserver(
-        (entries) => {
-          entries.forEach((entry) => {
-            if (entry.isIntersecting) {
-              setActiveSection(id)
-            }
-          })
-        },
-        { threshold: 0.3 }
-      )
-      obs.observe(el)
-      observers.push(obs)
-    })
-
-    return () => {
-      observers.forEach((obs) => obs.disconnect())
+    const handleScroll = () => {
+      const scrollY = window.scrollY + window.innerHeight * 0.3
+      let current = sectionIds[0]
+      for (const id of sectionIds) {
+        const el = document.getElementById(id)
+        if (el && el.getBoundingClientRect().top + window.scrollY <= scrollY) {
+          current = id
+        }
+      }
+      setActiveSection(current)
     }
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    handleScroll()
+    return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
   const handleConfigChange = useCallback((newConfig: SimulationConfig) => {
-    setConfig({ ...newConfig, simulationYears: 100 - newConfig.person1.currentAge })
+    setConfig(newConfig)
   }, [])
 
   const handleShare = useCallback(() => {

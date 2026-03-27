@@ -8,7 +8,8 @@
  */
 
 import { describe, test, expect } from 'vitest'
-import { runSingleSimulation, SimulationConfig, calculatePensionAmount, applyMacroEconomicSlide, Person, withdrawFromTaxableAccount, calculatePostFireIncome, PostFireIncomeConfig, calculateNHIPremium, calculateNationalPensionPremium, PostFireSocialInsuranceConfig, calculateWithdrawalAmount, WithdrawalStrategy, GuardrailConfig, calculateFireAchievementRate, formatAnnualTableData, formatCashFlowChartData, AnnualTableRow, CashFlowChartGroup, runMonteCarloSimulation, generateMeanReversionReturns, generateBootstrapReturns, DEFAULT_SP500_RETURNS, MCReturnModel, runScenarioComparison, applyScenarioChanges, Scenario, generateScenarios } from '../lib/simulator'
+import { runSingleSimulation, SimulationConfig, calculatePensionAmount, applyMacroEconomicSlide, Person, withdrawFromTaxableAccount, calculatePostFireIncome, PostFireIncomeConfig, calculateNHIPremium, calculateNationalPensionPremium, PostFireSocialInsuranceConfig, calculateWithdrawalAmount, WithdrawalStrategy, GuardrailConfig, calculateFireAchievementRate, formatAnnualTableData, formatCashFlowChartData, AnnualTableRow, CashFlowChartGroup, runMonteCarloSimulation, generateMeanReversionReturns, generateBootstrapReturns, DEFAULT_SP500_RETURNS, MCReturnModel, runScenarioComparison, applyScenarioChanges, Scenario, generateScenarios, DEFAULT_CONFIG } from '../lib/simulator'
+import { decodeConfig } from '../lib/url-state'
 
 const CURRENT_YEAR = new Date().getFullYear() // 2026
 
@@ -31,7 +32,6 @@ function cfg(overrides: Partial<SimulationConfig> = {}): SimulationConfig {
     expenseGrowthRate: 0,
     investmentReturn: 0,
     investmentVolatility: 0.15,
-    safeWithdrawalRate: 0.04,
     person1: {
       currentAge: 35,
       retirementAge: 90,
@@ -146,16 +146,15 @@ describe('収入計算', () => {
     // 厚年標報 = 100,000, 厚年(0.183/2*12) = 109,800
     // 雇用保険 = 1.2M * 0.006 = 7,200
     // 社保合計 = 187,920
-    // 課税所得 = max(0, 760,000 - 187,920 - 480,000) = 92,080
-    // 所得税 = 92,080 * 0.05 * 1.021 = 4,699
-    // 住民税 = 92,080 * 0.10 + 5,000 = 14,208
-    // 合計税 = 206,827 / 手取り = 993,173 (実測: 1,007,080)
+    // 年金控除(65+,≤3.3M): 1,100,000 → 課税所得 = max(0, 100,000 - 480,000) = 0
+    // 所得税 = 0、住民税 = 0（課税所得ゼロ → 均等割も非課税）
+    // 社保合計 = 187,920 → 手取り = 1,200,000 - 187,920 = 1,012,080
     const result = runSingleSimulation(cfg({
       person1: { currentAge: 65, retirementAge: 65, grossIncome: 0, incomeGrowthRate: 0, pensionStartAge: 65, pensionAmount: 1_200_000 },
       inflationRate: 0,
       simulationYears: 0,
     }))
-    expect(result.yearlyData[0].income).toBeCloseTo(1_007_080, -1)
+    expect(result.yearlyData[0].income).toBeCloseTo(1_012_080, -1)
   })
 
   test('年金: inflationRate > 0 のとき経年で収入が増える', () => {
@@ -532,7 +531,6 @@ describe('FIRE 判定', () => {
   test('fireNumber = 月支出 * 12 / safeWithdrawalRate', () => {
     const result = runSingleSimulation(cfg({
       monthlyExpenses: 300_000,
-      safeWithdrawalRate: 0.04,
       simulationYears: 0,
     }))
     expect(result.fireNumber).toBeCloseTo(300_000 * 12 / 0.04, -1)
@@ -542,7 +540,6 @@ describe('FIRE 判定', () => {
     const result = runSingleSimulation(cfg({
       currentAssets: 1_000_000,
       monthlyExpenses: 300_000,
-      safeWithdrawalRate: 0.04,
       simulationYears: 5,
     }))
     expect(result.fireAge).toBeNull()
@@ -561,7 +558,6 @@ describe('FIRE 判定', () => {
       monthlyExpenses: 100_000,
       expenseGrowthRate: 0,
       investmentReturn: 0.10,
-      safeWithdrawalRate: 0.04,
       simulationYears: 10,
     }))
     expect(result.yearlyData[2].isFireAchieved).toBe(false)
@@ -575,7 +571,6 @@ describe('FIRE 判定', () => {
     const result = runSingleSimulation(cfg({
       currentAssets: 200_000_000, // fire number 遥か超え
       monthlyExpenses: 100_000,
-      safeWithdrawalRate: 0.04,
       simulationYears: 10,
     }))
     expect(result.fireAge).toBe(35)
@@ -616,6 +611,8 @@ describe('投資リターン', () => {
     const N = 6 // 6 iterations (year 0..5)
     const result = runSingleSimulation(cfg({
       currentAssets: initial,
+      // 含み益ゼロ（costBasis >> 時価）で資本利得税が発生しないよう設定 → 複利成長式が成立
+      stocksCostBasis: initial * 2,
       monthlyExpenses: annual / 12,
       investmentReturn: 0.05,
       simulationYears: 5,
@@ -692,6 +689,9 @@ describe('90歳時点での最終資産残高の整合性', () => {
 
     const result = runSingleSimulation(cfg({
       currentAssets: initial,
+      // 56年間で株価が最大 ~730M になるため、costBasis を 1B に設定して gainRatio=0 を維持
+      // → 資本利得税が発生せず複利成長式が成立する
+      stocksCostBasis: 1_000_000_000,
       monthlyExpenses: annual / 12,
       expenseGrowthRate: 0,
       investmentReturn: 0.05,
@@ -731,7 +731,8 @@ describe('90歳時点での最終資産残高の整合性', () => {
     }))
 
     // FIRE発動(year27,age62)を考慮したシミュレーター出力と一致することを確認
-    expect(result.finalAssets).toBeCloseTo(19_692_663, -1)
+    // ※ 年金期間(age65〜90)の均等割非課税化により旧値より約130,000増
+    expect(result.finalAssets).toBeCloseTo(19_822_663, -1)
     expect(result.yearlyData[55].age).toBe(90)
   })
 
@@ -816,11 +817,11 @@ describe('90歳時点での最終資産残高の整合性', () => {
       simulationYears: 55,
     }))
 
-    // year31: p1=age66(年金1.2M→net=1,007,080), p2=age64(ギャップ=0) → 合計=1,007,080
-    expect(result.yearlyData[31].income).toBeCloseTo(1_007_080, -1)
-    // year32: p1=age67(年金1.2M→net=1,007,080), p2=age65(年金0.8M→net=669,720) → 合計=1,676,800
-    // ※ 個人別に税計算するため、合算課税(1,602,227)より手取りが増える
-    expect(result.yearlyData[32].income).toBeCloseTo(1_676_800, -1)
+    // year31: p1=age66(年金1.2M→net=1,012,080), p2=age64(ギャップ=0) → 合計=1,012,080
+    expect(result.yearlyData[31].income).toBeCloseTo(1_012_080, -1)
+    // year32: p1=age67(年金1.2M→net=1,012,080), p2=age65(年金0.8M→net=674,720) → 合計=1,686,800
+    // ※ 個人別に税計算するため、合算課税より手取りが増える。課税所得ゼロのため均等割は非課税
+    expect(result.yearlyData[32].income).toBeCloseTo(1_686_800, -1)
     // year32 の収入 > year31 の収入
     expect(result.yearlyData[32].income).toBeGreaterThan(result.yearlyData[31].income)
 
@@ -1016,8 +1017,8 @@ describe('FIRE 後の取り崩しモード', () => {
     expect(result.yearlyData[1].income).toBe(0)
     // year20 (age55): まだ年金年齢未満 → ゼロのまま
     expect(result.yearlyData[20].income).toBe(0)
-    // year30 (age65): 年金開始 → 手取り = 1,007,080 (gross=1.2M, age65)
-    expect(result.yearlyData[30].income).toBeCloseTo(1_007_080, -1)
+    // year30 (age65): 年金開始 → 手取り = 1,012,080 (gross=1.2M, 課税所得ゼロ → 均等割非課税)
+    expect(result.yearlyData[30].income).toBeCloseTo(1_012_080, -1)
   })
 
   /**
@@ -1199,17 +1200,16 @@ describe('児童手当', () => {
     expect(result.yearlyData[0].childAllowance).toBe(15_000 * 12)
   })
 
-  test('第2子 0歳（第1子と同時） → 第2子分は 20,000 × 12 = 240,000', () => {
-    // 第1子1歳, 第2子0歳
+  test('第2子 0歳（第1子と同時） → 第1・第2子ともに 15,000 × 12（2024年改正: 第1子・2子は同額）', () => {
+    // 第1子1歳, 第2子0歳 — 2024年10月改正: 第1子・第2子の0〜2歳手当は同額15,000円/月
     const result = runSingleSimulation(cfg({
       children: [
-        { birthYear: CURRENT_YEAR - 1, educationPath: 'public' }, // 第1子 1歳 → 180,000
-        { birthYear: CURRENT_YEAR, educationPath: 'public' },     // 第2子 0歳 → 240,000
+        { birthYear: CURRENT_YEAR - 1, educationPath: 'public' }, // 第1子 1歳 → 15,000 * 12 = 180,000
+        { birthYear: CURRENT_YEAR, educationPath: 'public' },     // 第2子 0歳 → 15,000 * 12 = 180,000
       ],
       simulationYears: 0,
     }))
-    // 第2子(index=1, isSecondOrLater=true, age=0) → 20,000 * 12
-    expect(result.yearlyData[0].childAllowance).toBe(15_000 * 12 + 20_000 * 12)
+    expect(result.yearlyData[0].childAllowance).toBe(15_000 * 12 + 15_000 * 12)
   })
 
   test('3歳以上 → 10,000 × 12 = 120,000（出生順問わず）', () => {
@@ -1373,8 +1373,8 @@ describe('産休・育休', () => {
     // income = (p1 net=0) + benefit
     expect(result.yearlyData[0].income).toBeCloseTo(benefit, -1)
     // person2 の税は 0（給付金は非課税）
-    // person1 gross=0 → totalTax は住民税均等割(5,000)のみ
-    expect(result.yearlyData[0].totalTax).toBe(5_000)
+    // person1 gross=0 → 課税所得ゼロ → 住民税・所得税ともに非課税 → totalTax = 0
+    expect(result.yearlyData[0].totalTax).toBe(0)
   })
 
   test('産休育休対象年以外 (birthYear+2以降) は通常収入に戻る', () => {
@@ -2137,7 +2137,6 @@ describe('取り崩し戦略', () => {
       person1: { currentAge: 35, retirementAge: 35, grossIncome: 0,
         incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0, employmentType: 'employee' },
       simulationYears: 10,
-      safeWithdrawalRate: 0.04,
     }))
     expect(result.depletionAge).not.toBeNull()
     expect(result.depletionAge).toBeGreaterThanOrEqual(35)
@@ -2168,7 +2167,6 @@ describe('FIRE達成率・年次テーブル・収支グラフ', () => {
     const result = runSingleSimulation(cfg({
       currentAssets: 30_000_000,
       monthlyExpenses: 150_000,
-      safeWithdrawalRate: 0.04,
       simulationYears: 0,
     }))
     // 支出(1.8M)が引かれた後の assets / fireNumber なので 0.62〜0.67 の範囲
@@ -2181,7 +2179,6 @@ describe('FIRE達成率・年次テーブル・収支グラフ', () => {
     const result = runSingleSimulation(cfg({
       currentAssets: 100_000_000,
       monthlyExpenses: 150_000,
-      safeWithdrawalRate: 0.04,
       simulationYears: 0,
     }))
     expect(result.fireAchievementRate).toBeGreaterThanOrEqual(1.0)
@@ -2378,5 +2375,112 @@ describe('シナリオA/B比較', () => {
       const result = runSingleSimulation(modified)
       expect(result.yearlyData.length).toBe(31)
     }
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// モンテカルロ NaN/Infinity ガード
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('モンテカルロ NaN/Infinity ガード', () => {
+  test('全イテレーションの資産値が有限値である', () => {
+    const result = runMonteCarloSimulation(cfg({
+      currentAssets: 30_000_000,
+      monthlyExpenses: 100_000,
+      investmentReturn: 0.05,
+      investmentVolatility: 0.20,
+      simulationYears: 30,
+    }), 200)
+    result.yearlyPercentiles.forEach((yp, year) => {
+      expect(isFinite(yp.p10)).toBe(true)
+      expect(isFinite(yp.p50)).toBe(true)
+      expect(isFinite(yp.p90)).toBe(true)
+    })
+    expect(isFinite(result.successRate)).toBe(true)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// その他資産（otherAssets）
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('その他資産（otherAssets）', () => {
+  test('finalAssets に otherAssets が含まれる', () => {
+    const withOther = runSingleSimulation(cfg({
+      currentAssets: 0,
+      otherAssets: 10_000_000,
+      otherAssetsReturn: 0,  // リターンゼロで純粋に otherAssets の反映のみ確認
+      monthlyExpenses: 0,
+      investmentReturn: 0,
+      simulationYears: 0,
+    }))
+    expect(withOther.finalAssets).toBeCloseTo(10_000_000, -2)
+  })
+
+  test('depletionAge 判定に otherAssets が考慮される', () => {
+    // 株式ゼロだが otherAssets=5M あれば枯渇しない
+    const result = runSingleSimulation(cfg({
+      currentAssets: 0,
+      otherAssets: 5_000_000,
+      monthlyExpenses: 0,
+      investmentReturn: 0,
+      simulationYears: 5,
+    }))
+    expect(result.depletionAge).toBeNull()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// URL状態の後方互換復元
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('URL状態の後方互換復元', () => {
+  test('フィールド欠落のURLでも DEFAULT_CONFIG で補完される', () => {
+    // otherAssets / guardrailConfig などが存在しない最小限の旧URL設定
+    const minimal = {
+      monthlyExpenses: 150_000,
+      person1: { currentAge: 40, retirementAge: 65, grossIncome: 6_000_000, incomeGrowthRate: 0.01, pensionStartAge: 65, pensionAmount: 1_200_000, employmentType: 'employee' },
+      person2: null,
+    }
+    const encoded = btoa(JSON.stringify(minimal))
+    const restored = decodeConfig(encoded)
+    expect(restored).not.toBeNull()
+    // 新規フィールドが DEFAULT_CONFIG で補完されている
+    expect(restored!.simulationYears).toBeDefined()
+    expect(restored!.inflationRate).toBeDefined()
+    // monthlyExpenses は復元されている
+    expect(restored!.monthlyExpenses).toBe(150_000)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Person2 の独立した退職年齢
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Person2 の独立した退職年齢', () => {
+  test('FIRE後も Person2 が退職年齢まで就労収入を得る', () => {
+    // person1 は即 FIRE（資産十分・支出ゼロ）、person2 は退職年齢 45 まで働く
+    const result = runSingleSimulation(cfg({
+      currentAssets: 100_000_000,
+      monthlyExpenses: 0,
+      investmentReturn: 0,
+      simulationYears: 10,
+      person2: {
+        currentAge: 35,
+        retirementAge: 45,
+        grossIncome: 5_000_000,
+        incomeGrowthRate: 0,
+        pensionStartAge: 90,
+        pensionAmount: 0,
+        employmentType: 'employee' as const,
+      },
+    }))
+    // FIRE 達成後の最初の数年は person2 の就労収入がある
+    const year0 = result.yearlyData[0]
+    const year10 = result.yearlyData[10]
+    // year0 (person2 age=35): 就労収入あり → grossIncome > 0
+    expect(year0.grossIncome).toBeGreaterThan(0)
+    // year10 (person2 age=45): 退職年齢 = retirementAge → 就労収入なし
+    expect(year10.grossIncome).toBe(0)
   })
 })
