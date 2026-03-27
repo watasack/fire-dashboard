@@ -752,7 +752,7 @@ describe('90歳時点での最終資産残高の整合性', () => {
 
     const result = runSingleSimulation(cfg({
       currentAssets: 0,
-      monthlyExpenses: 500_000, // fireNumber = 150M → 55年でも FIRE しない
+      monthlyExpenses: 2_000_000, // fireNumber = 600M → NISA最大283M < 600M → 55年でも FIRE しない
       investmentReturn: 0.05,
       person1: {
         currentAge: 35,

@@ -821,13 +821,15 @@ function getMaternityLeaveStatus(
  */
 function calculateMaternityLeaveIncomeForYear(
     person: Person,
-    currentSimYear: number
+    currentSimYear: number,
+    partTimeRatio: number = 1.0
 ): { leaveIncome: number; workGross: number } {
     const hasInsurance = person.employmentType === 'employee'
     const monthlyStandard = Math.min((person.grossIncome ?? 0) / 12, 635_000)
     const regularMonthlyGross = (person.grossIncome ?? 0) / 12
 
     type Phase = 'prenatalPostnatal' | 'half1' | 'half2' | 'work'
+    const phasePriority: Record<Phase, number> = { prenatalPostnatal: 3, half1: 2, half2: 1, work: 0 }
     const monthPhases = new Array(12).fill('work') as Phase[]
 
     // 後方互換: maternityLeaveChildBirthYears は年単位近似（月単位変換しない）
@@ -859,12 +861,17 @@ function calculateMaternityLeaveIncomeForYear(
 
         for (let m = 1; m <= 12; m++) {
             const mfb = (currentSimYear - birthYear) * 12 + (m - birthMonth) + 0.5
+            let newPhase: Phase = 'work'
             if (mfb >= -prenatalMonths && mfb < postnatalMonths) {
-                monthPhases[m - 1] = 'prenatalPostnatal'
+                newPhase = 'prenatalPostnatal'
             } else if (mfb >= postnatalMonths && mfb < half1End) {
-                monthPhases[m - 1] = 'half1'
+                newPhase = 'half1'
             } else if (mfb >= half1End && mfb < half2End) {
-                monthPhases[m - 1] = 'half2'
+                newPhase = 'half2'
+            }
+            // 複数子が重なる場合は優先度の高いフェーズを残す
+            if (phasePriority[newPhase] > phasePriority[monthPhases[m - 1]]) {
+                monthPhases[m - 1] = newPhase
             }
         }
     }
@@ -875,11 +882,11 @@ function calculateMaternityLeaveIncomeForYear(
         if (phase === 'prenatalPostnatal') {
             leaveIncome += hasInsurance ? monthlyStandard * (2 / 3) : 0
         } else if (phase === 'half1') {
-            leaveIncome += hasInsurance ? monthlyStandard * 0.67 : 0
+            leaveIncome += hasInsurance ? monthlyStandard * (2 / 3) : 0
         } else if (phase === 'half2') {
             leaveIncome += hasInsurance ? monthlyStandard * 0.50 : 0
         } else {
-            workGross += regularMonthlyGross
+            workGross += regularMonthlyGross * partTimeRatio
         }
     }
 
@@ -1501,17 +1508,18 @@ export function runSingleSimulation(
             const p1Ratio = getPartTimeRatio(config.person1, person1Age)
             // 産休育休中でも就労月の給与は課税対象 → 配偶者控除の判定に使う就労月分を取得
             const p1RawGross = p1LeaveStatus
-                ? calculateMaternityLeaveIncomeForYear(config.person1, currentSimYear).workGross
+                ? calculateMaternityLeaveIncomeForYear(config.person1, currentSimYear, p1Ratio).workGross
                 : calculateIncome(config.person1, person1Age, config.inflationRate, year) * p1Ratio
             const p1EmpIncome = calculateEmploymentIncome(p1RawGross, config.person1.employmentType ?? 'employee')
 
             let p2RawGross = 0
             let p2EmpIncome = 0
+            let p2Ratio = 1.0
             if (config.person2) {
                 const p2LeaveStatus = getMaternityLeaveStatus(config.person2, currentSimYear)
-                const p2Ratio = getPartTimeRatio(config.person2, person2Age)
+                p2Ratio = getPartTimeRatio(config.person2, person2Age)
                 p2RawGross = p2LeaveStatus
-                    ? calculateMaternityLeaveIncomeForYear(config.person2, currentSimYear).workGross
+                    ? calculateMaternityLeaveIncomeForYear(config.person2, currentSimYear, p2Ratio).workGross
                     : calculateIncome(config.person2, person2Age, config.inflationRate, year) * p2Ratio
                 p2EmpIncome = calculateEmploymentIncome(p2RawGross, config.person2.employmentType ?? 'employee')
             }
@@ -1522,7 +1530,7 @@ export function runSingleSimulation(
             if (p1LeaveStatus) {
                 // 産休育休年: 就労月（課税）+ 給付金月（非課税）を分離して計算
                 const { leaveIncome: p1Leave, workGross: p1WorkGross } =
-                    calculateMaternityLeaveIncomeForYear(config.person1, currentSimYear)
+                    calculateMaternityLeaveIncomeForYear(config.person1, currentSimYear, p1Ratio)
                 const p1WorkEmpIncome = calculateEmploymentIncome(p1WorkGross, config.person1.employmentType ?? 'employee')
                 let p1WorkNet = p1WorkGross
                 p1Tax = 0
@@ -1556,7 +1564,7 @@ export function runSingleSimulation(
                 const p2LeaveStatus = getMaternityLeaveStatus(config.person2, currentSimYear)
                 if (p2LeaveStatus) {
                     const { leaveIncome: p2Leave, workGross: p2WorkGross } =
-                        calculateMaternityLeaveIncomeForYear(config.person2, currentSimYear)
+                        calculateMaternityLeaveIncomeForYear(config.person2, currentSimYear, p2Ratio)
                     let p2WorkNet = p2WorkGross
                     p2Tax = 0
                     if (p2WorkGross > 0) {
@@ -1739,12 +1747,25 @@ export function runSingleSimulation(
             }
 
         } else if (surplus >= 0 && isPostFire) {
-            // FIRE後・余剰: 課税口座に投資（NISA拠出は停止済み）
-            newStocks += surplus
-            stocksCostBasis += surplus
+            // FIRE後・余剰: NISA → 課税口座の順で投資（pre-FIREと同じ優先順位）
+            let remaining = surplus
+            if (config.nisa.enabled) {
+                const annualNisaLimit = config.nisa.annualLimit ?? Number.POSITIVE_INFINITY
+                const nisaLifetimeLimit = config.nisa.lifetimeLimit ?? Number.POSITIVE_INFINITY
+                const remainingLifetime = Math.max(0, nisaLifetimeLimit - nisaTotalContributed)
+                const desiredNisa = config.nisa.annualContribution
+                const nisaContrib = Math.min(desiredNisa, annualNisaLimit, remainingLifetime, remaining)
+                newNisa += nisaContrib
+                nisaTotalContributed += nisaContrib
+                remaining -= nisaContrib
+            }
+            if (remaining > 0) {
+                newStocks += remaining
+                stocksCostBasis += remaining
+            }
 
         } else {
-            // 不足: 課税口座 → 現金の順に取り崩し
+            // 不足: 現金 → 課税口座 → その他資産 → NISA の順に取り崩し
 
             // 就労中は NISA に拠出（surplus < 0 でも）
             // NISA 拠出は surplus から独立した扱い（旧実装との後方互換）
@@ -1763,6 +1784,13 @@ export function runSingleSimulation(
             // NISA 拠出分も含めた実際の不足額
             let shortfall = -surplus + nisaContribThisYear
 
+            // 現金から（税なし・最優先）
+            if (shortfall > 0 && newCash > 0) {
+                const withdraw = Math.min(shortfall, newCash)
+                newCash -= withdraw
+                shortfall -= withdraw
+            }
+
             // 課税口座から取り崩し（税は capitalGains に記録するが、資産減少は税抜きで計算）
             if (shortfall > 0 && newStocks > 0) {
                 const withdrawal = withdrawFromTaxableAccount(shortfall, newStocks, stocksCostBasis)
@@ -1773,17 +1801,23 @@ export function runSingleSimulation(
                 shortfall = Math.max(0, shortfall - withdrawal.netProceeds)
             }
 
-            // 現金から
-            if (shortfall > 0) {
-                newCash -= shortfall
-                shortfall = 0
-            }
-
-            // その他資産から（現金も枯渇した場合）
+            // その他資産から
             if (shortfall > 0 && newOtherAssets > 0) {
                 const sellAmount = Math.min(shortfall, newOtherAssets)
                 newOtherAssets -= sellAmount
                 shortfall -= sellAmount
+            }
+
+            // NISA から（非課税・最長保有を優先するため最後、FIRE後のみ）
+            if (shortfall > 0 && newNisa > 0 && isPostFire) {
+                const sellAmount = Math.min(shortfall, newNisa)
+                newNisa -= sellAmount
+                shortfall -= sellAmount
+            }
+
+            // shortfall が残る場合は現金がマイナスになる（資産枯渇）
+            if (shortfall > 0) {
+                newCash -= shortfall
             }
         }
 
