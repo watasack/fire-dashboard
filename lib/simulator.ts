@@ -900,7 +900,7 @@ function calculateMaternityLeaveIncomeForYear(
  * @returns 収入比率（0.0〜1.0）
  */
 function getPartTimeRatio(person: Person, age: number): number {
-    if (!person.partTimeUntilAge) return 1.0
+    if (person.partTimeUntilAge == null) return 1.0
     if (age <= person.partTimeUntilAge) {
         return person.partTimeIncomeRatio ?? 0.8  // 未指定は80%
     }
@@ -1531,7 +1531,6 @@ export function runSingleSimulation(
                 // 産休育休年: 就労月（課税）+ 給付金月（非課税）を分離して計算
                 const { leaveIncome: p1Leave, workGross: p1WorkGross } =
                     calculateMaternityLeaveIncomeForYear(config.person1, currentSimYear, p1Ratio)
-                const p1WorkEmpIncome = calculateEmploymentIncome(p1WorkGross, config.person1.employmentType ?? 'employee')
                 let p1WorkNet = p1WorkGross
                 p1Tax = 0
                 if (p1WorkGross > 0) {
@@ -1746,17 +1745,8 @@ export function runSingleSimulation(
                     stocksCostBasis += remainingForStocks
                 }
             } else if (monthlySavings >= 0 && isPostFire) {
-                // 余剰（post-FIRE）: NISA → 課税口座
-                let remaining = monthlySavings
-                if (config.nisa.enabled) {
-                    const remainingLifetime = Math.max(0, nisaLifetimeLimit - nisaTotalContributed)
-                    const monthlyNisaDesired = config.nisa.annualContribution / 12
-                    const monthlyNisaLimit = annualNisaLimit / 12
-                    const nisaContrib = Math.min(monthlyNisaDesired, monthlyNisaLimit, remainingLifetime, remaining)
-                    newNisa += nisaContrib
-                    nisaTotalContributed += nisaContrib
-                    remaining -= nisaContrib
-                }
+                // 余剰（post-FIRE）: NISA 拠出停止 → 課税口座
+                const remaining = monthlySavings
                 if (remaining > 0) {
                     newStocks += remaining
                     stocksCostBasis += remaining

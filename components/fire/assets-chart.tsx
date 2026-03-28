@@ -107,7 +107,7 @@ export function AssetsChart({ result, monteCarloResult, showPercentiles = true, 
                       <p className="mb-2 font-medium">{label}歳</p>
                       {visible.map((entry, index) => (
                         <p key={index} className="text-sm" style={{ color: entry.color }}>
-                          {entry.name}: {formatCurrency(entry.value as number, true)}
+                          {entry.name}: {entry.value != null ? formatCurrency(entry.value as number, true) : '—'}
                         </p>
                       ))}
                     </div>
@@ -294,7 +294,7 @@ export function IncomeExpenseChart({ result, compact = false, expanded = false }
                   <p className="mb-2 font-medium">{label}歳</p>
                   {payload.map((entry, index) => (
                     <p key={index} className="text-sm" style={{ color: entry.color }}>
-                      {entry.name}: {formatCurrency(entry.value as number, true)}
+                      {entry.name}: {entry.value != null ? formatCurrency(entry.value as number, true) : '—'}
                     </p>
                   ))}
                 </div>

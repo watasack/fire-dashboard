@@ -2209,6 +2209,23 @@ describe('FIRE達成率・年次テーブル・収支グラフ', () => {
     })
   })
 
+  test('formatAnnualTableData: otherAssets が totalAssets に含まれる', () => {
+    const result = runSingleSimulation(cfg({
+      currentAssets: 10_000_000,
+      otherAssets: 5_000_000,
+      nisa: { enabled: true, annualContribution: 500_000 },
+      investmentReturn: 0.05,
+      simulationYears: 5,
+    }))
+    const tableData = formatAnnualTableData(result.yearlyData)
+    tableData.forEach((row, i) => {
+      const data = result.yearlyData[i]
+      expect(row.totalAssets).toBe(data.assets + data.nisaAssets + data.idecoAssets + data.otherAssets)
+      // otherAssets > 0 なので totalAssets は assets + nisaAssets + idecoAssets より大きい
+      expect(row.totalAssets).toBeGreaterThan(data.assets + data.nisaAssets + data.idecoAssets)
+    })
+  })
+
   test('formatAnnualTableData: netCashFlow = income - expenses', () => {
     const result = runSingleSimulation(cfg({
       currentAssets: 0,
