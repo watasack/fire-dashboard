@@ -7,7 +7,6 @@ import { ConfigPanel } from "./config-panel"
 import { AssetsChart, IncomeExpenseChart } from "./assets-chart"
 import { ScenarioComparison } from "./scenario-comparison"
 import { AnnualCashFlowTable } from "./annual-cashflow-table"
-import { CashFlowChart } from "./cashflow-chart"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent } from "@/components/ui/card"
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -245,7 +244,7 @@ export function FireDashboard() {
                     />
                   </TabsContent>
                   <TabsContent value="cashflow" className={chartExpanded ? "mt-0 h-full" : "mt-0"}>
-                    <CashFlowChart compact={!chartExpanded} expanded={chartExpanded} result={result} />
+                    <IncomeExpenseChart compact={!chartExpanded} expanded={chartExpanded} result={result} />
                   </TabsContent>
                   <TabsContent value="annual" className="mt-0">
                     <AnnualCashFlowTable compact result={result} />
@@ -332,8 +331,7 @@ export function FireDashboard() {
                 <TabsContent value="assets" className="mt-4">
                   <AssetsChart result={result} monteCarloResult={monteCarloResult} showPercentiles={useMonteCarlo} />
                 </TabsContent>
-                <TabsContent value="cashflow" className="mt-4 space-y-4">
-                  <CashFlowChart result={result} />
+                <TabsContent value="cashflow" className="mt-4">
                   <IncomeExpenseChart result={result} />
                 </TabsContent>
                 <TabsContent value="annual" className="mt-4">

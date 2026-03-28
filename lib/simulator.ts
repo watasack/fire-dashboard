@@ -272,6 +272,7 @@ export interface YearlyData {
     propertyTax: number                // 固定資産税
     drawdownFromPeak: number           // ピークからの下落率（-0.1 = -10%）
     discretionaryReductionRate: number // 当年の裁量支出削減率（0〜1）
+    investmentGain: number             // 当年の投資リターン額（株式・NISA・iDeCo・その他の含み益合計）
 }
 
 export interface SimulationResult {
@@ -1697,6 +1698,7 @@ export function runSingleSimulation(
         const monthlySavings = savings / 12  // 年間収支を12等分
 
         let yearCapitalGains = 0
+        let yearInvestmentGain = 0
         let yearIsFireAchieved = false
 
         for (let m = 0; m < 12; m++) {
@@ -1707,6 +1709,7 @@ export function runSingleSimulation(
             let newCash = cashAssets
             let newOtherAssets = otherAssets * (1 + monthlyOtherReturn)
             let capitalGainsThisMonth = 0
+            const investmentGainThisMonth = stockAssets * monthlyReturn + nisaAssets * monthlyReturn + idecoAssets * monthlyReturn + otherAssets * monthlyOtherReturn
 
             // 2. iDeCo 月次拠出（就労中・pre-FIRE のみ）
             if (config.ideco.enabled && !isPostFire && person1Age < config.person1.retirementAge) {
@@ -1807,6 +1810,7 @@ export function runSingleSimulation(
             otherAssets = Math.max(0, newOtherAssets)
 
             yearCapitalGains += capitalGainsThisMonth
+            yearInvestmentGain += investmentGainThisMonth
 
             // 月次 FIRE 判定
             // fireAtAge が指定されていればその年齢で強制FIRE（二分探索用）
@@ -1866,6 +1870,7 @@ export function runSingleSimulation(
             postFireSocialInsurance: isPostFire ? postFireSI : 0,
             drawdownFromPeak,
             discretionaryReductionRate,
+            investmentGain: yearInvestmentGain,
         })
 
         // 次の年のために前年値を更新

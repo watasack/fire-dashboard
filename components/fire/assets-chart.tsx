@@ -263,10 +263,9 @@ export function IncomeExpenseChart({ result, compact = false, expanded = false }
 
   const chartData = result.yearlyData.map((d) => ({
     age: d.age,
-    income: d.income,
+    income: d.income + d.investmentGain,
     expenses: d.expenses,
-    netCF: d.income - d.expenses,
-    childCosts: d.childCosts,
+    netCF: d.income + d.investmentGain - d.expenses,
   }))
 
   const cashflowInner = (
@@ -301,9 +300,9 @@ export function IncomeExpenseChart({ result, compact = false, expanded = false }
               )
             }}
           />
-          <Bar dataKey="income" fill="#3B82F6" name="収入" opacity={0.85} />
+          <Bar dataKey="income" fill="#3B82F6" name="収入（税引後+運用益）" opacity={0.85} />
           <Bar dataKey="expenses" fill="#EF4444" name="支出" opacity={0.85} />
-          <Line type="monotone" dataKey="netCF" stroke="#10B981" strokeWidth={3} dot={false} name="年間収支" />
+          <Line type="monotone" dataKey="netCF" stroke="#10B981" strokeWidth={3} dot={false} name="純収支" />
           {showLegend ? (
             <Legend
               wrapperStyle={{ paddingTop: "20px" }}
@@ -324,7 +323,7 @@ export function IncomeExpenseChart({ result, compact = false, expanded = false }
       {showHeader && (
         <CardHeader>
           <CardTitle>収支推移</CardTitle>
-          <CardDescription>年間の収入・支出・貯蓄の推移</CardDescription>
+          <CardDescription>年間の収入（投資リターン込み）・支出・純収支の推移</CardDescription>
         </CardHeader>
       )}
       <CardContent className={showHeader ? "" : "pt-3"}>
