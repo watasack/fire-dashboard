@@ -464,10 +464,12 @@ describe('NISA 積立', () => {
       monthlyExpenses: 500_000, // FIRE しないようにする
       simulationYears: 2,
     }))
-    // year0 (age35<37): nisaAssets = 0*1.05 + 1.2M = 1.2M
-    // year1 (age36<37): nisaAssets = 1.2M*1.05 + 1.2M = 2.46M
-    // year2 (age37>=37): nisaAssets = 2.46M*1.05 + 0 = 2.583M
-    const expected = (1_200_000 * 1.05 + 1_200_000) * 1.05
+    // year0 (age35<37): nisaAssets = monthly annuity FV (100K/mo × 12 with monthly compounding)
+    // year1 (age36<37): year0 * 1.05 + same annuity
+    // year2 (age37>=37): year1 * 1.05 (no contributions)
+    const r_m = Math.pow(1.05, 1 / 12) - 1
+    const fvAnnuity = 100_000 * (1.05 - 1) / r_m // ≈ 1,227,481
+    const expected = fvAnnuity * 2.05 * 1.05
     expect(result.yearlyData[2].nisaAssets).toBeCloseTo(expected, -2)
   })
 })
@@ -617,9 +619,12 @@ describe('投資リターン', () => {
       investmentReturn: 0.05,
       simulationYears: 5,
     }))
-    // A_N = initial * r^N + (-annual) * (r^N - 1) / (r - 1)
+    // Monthly compounding: each year A_new = A_old * r - (annual/12) * (r-1)/r_m
+    // A_N = initial * r^N - annualEffW * (r^N - 1) / (r - 1)
+    const r_m = Math.pow(r, 1 / 12) - 1
+    const annualEffW = (annual / 12) * (r - 1) / r_m
     const rN = Math.pow(r, N)
-    const expected = initial * rN + (-annual) * (rN - 1) / (r - 1)
+    const expected = initial * rN - annualEffW * (rN - 1) / (r - 1)
     expect(result.yearlyData[5].assets).toBeCloseTo(expected, -2)
   })
 
@@ -698,8 +703,11 @@ describe('90歳時点での最終資産残高の整合性', () => {
       simulationYears: 55,
     }))
 
+    // Monthly compounding: A_N = initial * r^N - annualEffW * (r^N - 1) / (r - 1)
+    const r_m = Math.pow(r, 1 / 12) - 1
+    const annualEffW = (annual / 12) * (r - 1) / r_m
     const rN = Math.pow(r, N)
-    const expected = initial * rN + (-annual) * (rN - 1) / (r - 1)
+    const expected = initial * rN - annualEffW * (rN - 1) / (r - 1)
     expect(result.finalAssets).toBeCloseTo(expected, -2) // 100円以内
     expect(result.yearlyData[55].age).toBe(90)
   })
@@ -746,8 +754,9 @@ describe('90歳時点での最終資産残高の整合性', () => {
     const contrib = 1_200_000
     const r = 1.05
 
-    const rN30 = Math.pow(r, 30)
-    const afterContrib = contrib * (rN30 - 1) / (r - 1) // FV of annuity
+    // Monthly compounding: monthly contrib = contrib/12, FV of 30yr annuity, then 26yr growth
+    const r_m = Math.pow(r, 1 / 12) - 1
+    const afterContrib = (contrib / 12) * (Math.pow(r, 30) - 1) / r_m // FV of monthly annuity
     const expectedNisa = afterContrib * Math.pow(r, 26)  // 26年さらに成長
 
     const result = runSingleSimulation(cfg({
@@ -1083,17 +1092,19 @@ describe('FIRE 後の取り崩しモード', () => {
       simulationYears: 5,
     }))
 
-    // year0: isPostFire=false → NISA 拠出あり: 0*1.05 + 1.2M = 1.2M
-    expect(result.yearlyData[0].nisaAssets).toBeCloseTo(1_200_000, -1)
-    // year1: isPostFire=true → 拠出なし: 1.2M * 1.05 = 1.26M
-    expect(result.yearlyData[1].nisaAssets).toBeCloseTo(1_200_000 * 1.05, -1)
-    // year2: 1.26M * 1.05 = 1.323M (成長のみ)
-    expect(result.yearlyData[2].nisaAssets).toBeCloseTo(1_200_000 * Math.pow(1.05, 2), -2)
+    // year0: isPostFire=false → NISA 拠出あり (月次複利: 100K/mo × 12ヶ月)
+    const r_m = Math.pow(1.05, 1 / 12) - 1
+    const fvNisa = 100_000 * (1.05 - 1) / r_m // ≈ 1,227,481
+    expect(result.yearlyData[0].nisaAssets).toBeCloseTo(fvNisa, -2)
+    // year1: isPostFire=true → 拠出なし: fvNisa * 1.05
+    expect(result.yearlyData[1].nisaAssets).toBeCloseTo(fvNisa * 1.05, -2)
+    // year2: 成長のみ
+    expect(result.yearlyData[2].nisaAssets).toBeCloseTo(fvNisa * Math.pow(1.05, 2), -2)
 
-    // iDeCo も同様
-    const annualIdeco = 23_000 * 12 // 276,000
-    expect(result.yearlyData[0].idecoAssets).toBeCloseTo(annualIdeco, -1)
-    expect(result.yearlyData[1].idecoAssets).toBeCloseTo(annualIdeco * 1.05, -1)
+    // iDeCo も同様 (月次複利: 23K/mo × 12ヶ月)
+    const fvIdeco = 23_000 * (1.05 - 1) / r_m // ≈ 282,321
+    expect(result.yearlyData[0].idecoAssets).toBeCloseTo(fvIdeco, -2)
+    expect(result.yearlyData[1].idecoAssets).toBeCloseTo(fvIdeco * 1.05, -2)
   })
 
   /**
