@@ -207,7 +207,28 @@ export function AssetsChart({ result, monteCarloResult, showPercentiles = true, 
               {showLegend ? (
                 <Legend
                   wrapperStyle={{ paddingTop: "20px" }}
-                  formatter={(value) => <span className="text-sm">{value}</span>}
+                  content={({ payload }) => {
+                    if (!payload) return null
+                    const items = payload.filter((p: { type?: string }) => p.type !== "none")
+                    return (
+                      <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                        {items.map((entry: any, i: number) => {
+                          const opacity = entry.payload?.fillOpacity ?? 1
+                          return (
+                            <span key={i} className="inline-flex items-center gap-1.5">
+                              {entry.value === "標準シナリオ" ? (
+                                <span className="inline-block w-4 h-0.5" style={{ backgroundColor: entry.color }} />
+                              ) : (
+                                <span className="inline-block w-3 h-3" style={{ backgroundColor: entry.color, opacity }} />
+                              )}
+                              {entry.value}
+                            </span>
+                          )
+                        })}
+                      </div>
+                    )
+                  }}
                 />
               ) : null}
             </ComposedChart>
