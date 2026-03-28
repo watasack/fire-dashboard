@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { SimulationConfig, SimulationResult, MonteCarloResult, DEFAULT_CONFIG, runSingleSimulation, runMonteCarloSimulation } from "@/lib/simulator"
+import { SimulationConfig, SimulationResult, MonteCarloResult, DEFAULT_CONFIG, findEarliestFireAge, runMonteCarloSimulation } from "@/lib/simulator"
 import { FireResultCard } from "./fire-result-card"
 import { ConfigPanel } from "./config-panel"
 import { AssetsChart, IncomeExpenseChart } from "./assets-chart"
@@ -76,7 +76,7 @@ export function FireDashboard() {
     
     // Use setTimeout to prevent UI blocking
     const timer = setTimeout(() => {
-      const singleResult = runSingleSimulation(debouncedConfig)
+      const singleResult = findEarliestFireAge(debouncedConfig)
       setResult(singleResult)
 
       if (useMonteCarlo) {
@@ -268,7 +268,7 @@ export function FireDashboard() {
                     <div className="text-sm text-muted-foreground">
                       <p className="font-medium text-foreground mb-1">計算方法について</p>
                       <ul className="space-y-1 text-xs">
-                        <li>FIRE達成: 資産が「年間支出 × 25倍」以上になった時点（4%ルール）</li>
+                        <li>FIRE達成: 退職しても資産が尽きない最早の年齢を、実際の収支シミュレーションで算出</li>
                         <li>市場変動: 株価のランダムな動きを1000通りシミュレーション（悪い年が続いた場合も含む）</li>
                         <li>NISA/iDeCo: 非課税口座の運用益は税金なしで計算</li>
                         <li>教育費: 文部科学省データをもとに、子どもの年齢に合わせて自動計算</li>
@@ -351,7 +351,7 @@ export function FireDashboard() {
                   <div className="text-sm text-muted-foreground">
                     <p className="font-medium text-foreground mb-1">計算方法について</p>
                     <ul className="space-y-1 text-xs">
-                      <li>FIRE達成: 資産が「年間支出 × 25倍」以上になった時点（4%ルール）</li>
+                      <li>FIRE達成: 退職しても資産が尽きない最早の年齢を、実際の収支シミュレーションで算出</li>
                       <li>市場変動: 株価のランダムな動きを1000通りシミュレーション（悪い年が続いた場合も含む）</li>
                       <li>NISA/iDeCo: 非課税口座の運用益は税金なしで計算</li>
                       <li>教育費: 文部科学省データをもとに、子どもの年齢に合わせて自動計算</li>

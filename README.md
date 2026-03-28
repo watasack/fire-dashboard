@@ -277,14 +277,22 @@ iterations = 1000回（デフォルト）
 
 ## FIRE判定ロジック
 
-### 毎年のFIREチェック
+### 二分探索による実収支ベースのFIRE年齢特定
+
+従来の「資産 ≥ 年間支出 × 25（4%ルール）」ではなく、**実際の収支シミュレーションで資産が尽きない最早の退職年齢**を二分探索で特定します。
 
 ```
-fireNumber = annualExpenses / safeWithdrawalRate（デフォルト 4%ルール）
-totalAssets = cashAssets + stocks + nisaAssets + idecoAssets
-
-totalAssets >= fireNumber → fireAchieved = true（FIRE達成）
+findEarliestFireAge(config):
+  lo = currentAge, hi = maxAge
+  while lo < hi:
+    mid = (lo + hi) / 2
+    result = runSingleSimulation(config, fireAtAge=mid)
+    if 全期間で資産 > 0: hi = mid   // もっと早くできるか探す
+    else:                 lo = mid+1 // まだ早い
+  return lo  // 最早FIRE可能年齢
 ```
+
+年金・セミFIRE収入・教育費・住宅ローン・社会保険料など将来の収支変動をすべて織り込んで判定します。
 
 ---
 

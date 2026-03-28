@@ -6,7 +6,7 @@
 // Internal constants
 // ----------------------------------------------------------------------------
 
-/** SWRは内部定数として固定（ユーザーには非公開）。FIRE達成判定・定率引き出し戦略で使用 */
+/** SWRは定率引き出し戦略・参考指標（fireNumber）の計算で使用。FIRE達成判定には使わない */
 const INTERNAL_SWR = 0.04
 
 // ----------------------------------------------------------------------------
@@ -1361,7 +1361,8 @@ export function calculateWithdrawalAmount(
 
 export function runSingleSimulation(
     config: SimulationConfig,
-    randomReturns?: number[]
+    randomReturns?: number[],
+    fireAtAge?: number
 ): SimulationResult {
     const currentYear = new Date().getFullYear()
     const yearlyData: YearlyData[] = []
@@ -1808,9 +1809,9 @@ export function runSingleSimulation(
             yearCapitalGains += capitalGainsThisMonth
 
             // 月次 FIRE 判定
-            const totalAssetsM = cashAssets + stockAssets + nisaAssets + idecoAssets + otherAssets
-            const currentFireNumberM = totalExpenses / INTERNAL_SWR
-            if (totalAssetsM >= currentFireNumberM) {
+            // fireAtAge が指定されていればその年齢で強制FIRE（二分探索用）
+            // 指定なしなら FIRE しない（findEarliestFireAge 経由で使う前提）
+            if (fireAtAge !== undefined && person1Age >= fireAtAge) {
                 yearIsFireAchieved = true
                 if (fireAge === null) {
                     fireAge = person1Age
@@ -1820,6 +1821,7 @@ export function runSingleSimulation(
 
             // ピーク資産を月次更新（FIRE達成後のみ）
             if (fireAge !== null) {
+                const totalAssetsM = cashAssets + stockAssets + nisaAssets + idecoAssets + otherAssets
                 peakAssets = Math.max(peakAssets, totalAssetsM)
             }
         }
@@ -1897,6 +1899,50 @@ export function runSingleSimulation(
         peakAssets,
         fireAchievementRate,
     }
+}
+
+// ----------------------------------------------------------------------------
+// Binary Search for Earliest FIRE Age
+// ----------------------------------------------------------------------------
+
+/**
+ * 二分探索で最早FIRE可能年齢を特定する。
+ * 「X歳でFIREしてもシミュレーション期間中に資産が枯渇しない」最小の X を返す。
+ * FIRE不可能な場合は null を返す。
+ */
+export function findEarliestFireAge(
+    config: SimulationConfig,
+    randomReturns?: number[]
+): SimulationResult {
+    const currentAge = config.person1.currentAge
+    const maxAge = currentAge + config.simulationYears
+
+    // まず最も遅い退職（= シミュレーション最終年齢）でFIRE可能か確認
+    const worstCase = runSingleSimulation(config, randomReturns, maxAge)
+    if (worstCase.depletionAge !== null) {
+        // シミュレーション期間中ずっと働いても資産が尽きる → FIRE不可能
+        // fireAtAge なし（＝FIREしない）のシミュレーション結果を返す
+        return runSingleSimulation(config, randomReturns)
+    }
+
+    // 二分探索: lo = FIRE可能かもしれない最早年齢, hi = FIRE可能と確認済みの年齢
+    let lo = currentAge
+    let hi = maxAge
+
+    while (lo < hi) {
+        const mid = Math.floor((lo + hi) / 2)
+        const result = runSingleSimulation(config, randomReturns, mid)
+        if (result.depletionAge === null) {
+            // mid歳でFIRE可能 → もっと早くできるか探す
+            hi = mid
+        } else {
+            // mid歳では早すぎる → もっと遅くする
+            lo = mid + 1
+        }
+    }
+
+    // lo === hi === 最早FIRE可能年齢。この年齢で本番シミュレーションを実行
+    return runSingleSimulation(config, randomReturns, lo)
 }
 
 // ----------------------------------------------------------------------------
@@ -2026,14 +2072,14 @@ export function runMonteCarloSimulation(
         yearlyAssets[year] = []
     }
 
-    // Run simulations
+    // Run simulations（二分探索で実収支ベースのFIRE年齢を特定）
     for (let i = 0; i < iterations; i++) {
         const randomReturns = generateRandomReturns(
             config.simulationYears,
             config
         )
 
-        const result = runSingleSimulation(config, randomReturns)
+        const result = findEarliestFireAge(config, randomReturns)
         fireAges.push(result.fireAge)
         depletionAges.push(result.depletionAge)
 
@@ -2186,8 +2232,8 @@ export function runScenarioComparison(
     planAConfig: SimulationConfig,
     planBConfig: SimulationConfig
 ): ScenarioComparisonResult {
-    const planA = runSingleSimulation(planAConfig)
-    const planB = runSingleSimulation(planBConfig)
+    const planA = findEarliestFireAge(planAConfig)
+    const planB = findEarliestFireAge(planBConfig)
 
     const fireAgeDiff = (planB.fireAge !== null && planA.fireAge !== null)
         ? planB.fireAge - planA.fireAge

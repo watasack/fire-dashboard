@@ -8,7 +8,7 @@
  */
 
 import { describe, test, expect } from 'vitest'
-import { runSingleSimulation, SimulationConfig, calculatePensionAmount, applyMacroEconomicSlide, Person, withdrawFromTaxableAccount, calculatePostFireIncome, PostFireIncomeConfig, calculateNHIPremium, calculateNationalPensionPremium, PostFireSocialInsuranceConfig, calculateWithdrawalAmount, WithdrawalStrategy, GuardrailConfig, calculateFireAchievementRate, formatAnnualTableData, formatCashFlowChartData, AnnualTableRow, CashFlowChartGroup, runMonteCarloSimulation, generateMeanReversionReturns, generateBootstrapReturns, DEFAULT_SP500_RETURNS, MCReturnModel, runScenarioComparison, applyScenarioChanges, Scenario, generateScenarios, DEFAULT_CONFIG } from '../lib/simulator'
+import { runSingleSimulation, findEarliestFireAge, SimulationConfig, calculatePensionAmount, applyMacroEconomicSlide, Person, withdrawFromTaxableAccount, calculatePostFireIncome, PostFireIncomeConfig, calculateNHIPremium, calculateNationalPensionPremium, PostFireSocialInsuranceConfig, calculateWithdrawalAmount, WithdrawalStrategy, GuardrailConfig, calculateFireAchievementRate, formatAnnualTableData, formatCashFlowChartData, AnnualTableRow, CashFlowChartGroup, runMonteCarloSimulation, generateMeanReversionReturns, generateBootstrapReturns, DEFAULT_SP500_RETURNS, MCReturnModel, runScenarioComparison, applyScenarioChanges, Scenario, generateScenarios, DEFAULT_CONFIG } from '../lib/simulator'
 import { decodeConfig } from '../lib/url-state'
 
 const CURRENT_YEAR = new Date().getFullYear() // 2026
@@ -548,34 +548,33 @@ describe('FIRE 判定', () => {
     result.yearlyData.forEach(d => expect(d.isFireAchieved).toBe(false))
   })
 
-  test('FIRE 達成: 正しい年に isFireAchieved が立つ', () => {
-    // 年支出 = 1,200,000 / SWR = 0.04 → fireNumber = 30,000,000
-    // 初期資産 = 25M, リターン 10%, 収入ゼロ
-    // year0: 25M * 1.10 - 1.2M = 26.3M < 30M
-    // year1: 26.3M * 1.10 - 1.2M = 27.73M < 30M
-    // year2: 27.73M * 1.10 - 1.2M = 29.303M < 30M
-    // year3: 29.303M * 1.10 - 1.2M = 31.033M >= 30M → FIRE (age 38)
-    const result = runSingleSimulation(cfg({
+  test('FIRE 達成: 二分探索で実収支ベースの最早FIRE年齢を特定', () => {
+    // 十分な資産と投資リターンがあればFIRE可能
+    const result = findEarliestFireAge(cfg({
       currentAssets: 25_000_000,
       monthlyExpenses: 100_000,
       expenseGrowthRate: 0,
       investmentReturn: 0.10,
-      simulationYears: 10,
+      simulationYears: 55,
     }))
-    expect(result.yearlyData[2].isFireAchieved).toBe(false)
-    expect(result.yearlyData[3].isFireAchieved).toBe(true)
-    expect(result.fireAge).toBe(38)         // 35 + 3
-    expect(result.fireYear).toBe(CURRENT_YEAR + 3)
+    expect(result.fireAge).not.toBeNull()
+    expect(result.depletionAge).toBeNull()  // 資産が尽きない
+    // FIRE後の年は isFireAchieved が true
+    const fireIdx = result.yearlyData.findIndex(d => d.isFireAchieved)
+    expect(fireIdx).toBeGreaterThanOrEqual(0)
+    // FIRE前の年は isFireAchieved が false
+    for (let i = 0; i < fireIdx; i++) {
+      expect(result.yearlyData[i].isFireAchieved).toBe(false)
+    }
   })
 
-  test('FIRE 達成時期は最初の year のみ記録される', () => {
-    // 初期からすでに FIRE 数を超えている → year0 で達成 (age=35)
-    const result = runSingleSimulation(cfg({
-      currentAssets: 200_000_000, // fire number 遥か超え
+  test('FIRE 達成: 初期資産が十分なら即FIRE可能', () => {
+    const result = findEarliestFireAge(cfg({
+      currentAssets: 200_000_000,
       monthlyExpenses: 100_000,
-      simulationYears: 10,
+      simulationYears: 55,
     }))
-    expect(result.fireAge).toBe(35)
+    expect(result.fireAge).toBe(35)  // 現在年齢で即FIRE
   })
 
   test('支出成長により currentFireNumber が年々増加する', () => {
@@ -901,8 +900,8 @@ describe('FIRE 後の取り崩しモード', () => {
    */
   test('FIRE 翌年から就労収入ゼロ・年金年齢で年金開始', () => {
     const result = runSingleSimulation(cfg({
-      currentAssets: 500_000_000, // year0 で即 FIRE (500M >> 30M)
-      monthlyExpenses: 100_000,   // fireNumber = 30M
+      currentAssets: 500_000_000,
+      monthlyExpenses: 100_000,
       person1: {
         currentAge: 35,
         retirementAge: 65,
@@ -914,7 +913,7 @@ describe('FIRE 後の取り崩しモード', () => {
       investmentReturn: 0,
       inflationRate: 0,
       simulationYears: 55,
-    }))
+    }), undefined, 35)
 
     // year0: FIRE未設定 → 就労収入あり (gross=7M, age35 → net=5,277,727)
     expect(result.yearlyData[0].income).toBeCloseTo(5_277_727, -1)
@@ -951,7 +950,7 @@ describe('FIRE 後の取り崩しモード', () => {
       investmentReturn: 0,
       inflationRate: 0,
       simulationYears: 10,
-    }))
+    }), undefined, 35)
 
     // year0 後の資産 (就労収入あり): 500M + (5,277,727 - 1,200,000) = 504,077,727
     const y0assets = 504_077_727
@@ -986,7 +985,7 @@ describe('FIRE 後の取り崩しモード', () => {
       ideco: { enabled: true, monthlyContribution: 23_000 },
       investmentReturn: 0.05,
       simulationYears: 5,
-    }))
+    }), undefined, 35)
 
     // year0: isPostFire=false → NISA 拠出あり (月次複利: 100K/mo × 12ヶ月)
     const r_m = Math.pow(1.05, 1 / 12) - 1
@@ -1024,7 +1023,7 @@ describe('FIRE 後の取り崩しモード', () => {
       },
       investmentReturn: 0,
       simulationYears: 10,
-    }))
+    }), undefined, 35)
 
     // year0 は就労収入あり → 増加
     expect(result.yearlyData[0].assets).toBeGreaterThan(500_000_000)
@@ -1713,9 +1712,9 @@ describe('NISA年間枠', () => {
       investmentReturn: 0,
       simulationYears: 1,
     }))
-    // 1年後の NISA は最大 3_600_000 以下
-    expect(result.yearlyData[1].nisaAssets).toBeLessThanOrEqual(3_600_000)
-    expect(result.yearlyData[1].nisaAssets).toBeCloseTo(3_600_000, -1)
+    // year0（1年目）の NISA 拠出が年間枠 3_600_000 にキャップされる
+    expect(result.yearlyData[0].nisaAssets).toBeLessThanOrEqual(3_600_000)
+    expect(result.yearlyData[0].nisaAssets).toBeCloseTo(3_600_000, -1)
   })
 
   test('生涯1800万に達したら拠出停止', () => {
@@ -1747,8 +1746,8 @@ describe('NISA年間枠', () => {
 describe('iDeCo 60歳制約', () => {
   test('60歳で iDeCo 資産が課税口座に一括移行される（20%課税）', () => {
     // person1: currentAge=59, retirementAge=90, ideco.withdrawalStartAge=60
-    // year0(age59): iDeCo 拠出あり
-    // year1(age60): iDeCo 一括移行（税20%）
+    // year0(age59): iDeCo 拠出あり → 1_200_000
+    // year1(age60): iDeCo 拠出(1_200_000) + 前年残(1_200_000) = 2_400_000 → 一括移行（税20%）
     const monthly = 100_000
     const result = runSingleSimulation(cfg({
       person1: { currentAge: 59, retirementAge: 90, grossIncome: 0, incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0 },
@@ -1761,8 +1760,8 @@ describe('iDeCo 60歳制約', () => {
     expect(result.yearlyData[0].idecoAssets).toBeCloseTo(monthly * 12, -1)
     // year1(age60): iDeCo が stocks に移行（20%課税）→ idecoAssets = 0
     expect(result.yearlyData[1].idecoAssets).toBe(0)
-    // stocks に 80% が移行されているので assets が増えている（元の idecoAssets の80%）
-    expect(result.yearlyData[1].stocks).toBeCloseTo(monthly * 12 * 0.8, -1)
+    // stocks に 80% が移行: (year0残 1.2M + year1拠出 1.2M) * 0.8 = 1_920_000
+    expect(result.yearlyData[1].stocks).toBeCloseTo(monthly * 12 * 2 * 0.8, -1)
   })
 })
 
@@ -1817,7 +1816,7 @@ describe('セミFIRE（FIRE後収入）', () => {
       person1: { currentAge: 35, retirementAge: 65, grossIncome: 7_000_000,
         incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0, employmentType: 'employee' },
       investmentReturn: 0, inflationRate: 0, simulationYears: 20,
-    }))
+    }), undefined, 35)
     // year0 (age35): FIRE達成年（就労収入あり）→ isSemiFire=false（まだisPostFire=false）
     expect(result.yearlyData[0].isSemiFire).toBe(false)
     // year1 (age36): isPostFire=true かつ age36 < untilAge50 → セミFIRE収入あり
@@ -1834,7 +1833,7 @@ describe('セミFIRE（FIRE後収入）', () => {
       person1: { currentAge: 35, retirementAge: 65, grossIncome: 7_000_000,
         incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0, employmentType: 'employee' },
       investmentReturn: 0, simulationYears: 10,
-    }))
+    }), undefined, 35)
     // FIRE後、年金前なので income = 0
     expect(result.yearlyData[1].income).toBe(0)
   })
@@ -1846,7 +1845,7 @@ describe('セミFIRE（FIRE後収入）', () => {
       person1: { currentAge: 35, retirementAge: 65, grossIncome: 0,
         incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0, employmentType: 'employee' },
       investmentReturn: 0, simulationYears: 10,
-    }))
+    }), undefined, 35)
     expect(result.yearlyData[4].isSemiFire).toBe(true)
     expect(result.yearlyData[5].isSemiFire).toBe(false)
     expect(result.yearlyData[5].income).toBe(0)
@@ -1859,7 +1858,7 @@ describe('セミFIRE（FIRE後収入）', () => {
       person1: { currentAge: 35, retirementAge: 65, grossIncome: 0,
         incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0, employmentType: 'employee' },
       investmentReturn: 0, simulationYears: 5,
-    }))
+    }), undefined, 35)
     // year1: isPostFire=true, age36 < untilAge60 → セミFIRE収入あり
     // income < 2_400_000 (税引き後)
     expect(result.yearlyData[1].income).toBeGreaterThan(0)
@@ -1885,13 +1884,13 @@ describe('セミFIRE（FIRE後収入）', () => {
       person1: { currentAge: 35, retirementAge: 65, grossIncome: 0,
         incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0, employmentType: 'employee' },
       investmentReturn: 0, simulationYears: 10,
-    }))
+    }), undefined, 35)
     const withoutSemiFire = runSingleSimulation(cfg({
       currentAssets: 500_000_000, monthlyExpenses: 200_000, postFireIncome: null,
       person1: { currentAge: 35, retirementAge: 65, grossIncome: 0,
         incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0, employmentType: 'employee' },
       investmentReturn: 0, simulationYears: 10,
-    }))
+    }), undefined, 35)
     const lastWith = withSemiFire.yearlyData[withSemiFire.yearlyData.length - 1]
     const lastWithout = withoutSemiFire.yearlyData[withoutSemiFire.yearlyData.length - 1]
     expect(lastWith.assets).toBeGreaterThan(lastWithout.assets)
@@ -1965,7 +1964,7 @@ describe('FIRE後税金・社会保険', () => {
       person1: { currentAge: 35, retirementAge: 65, grossIncome: 0,
         incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0, employmentType: 'employee' },
       investmentReturn: 0, simulationYears: 5,
-    }))
+    }), undefined, 35)
     // year0 で即FIRE達成 → year1 (isPostFire=true) から社保計算開始
     expect(result.yearlyData[1].postFireSocialInsurance).toBeGreaterThan(0)
     expect(result.yearlyData[1].nhInsurancePremium).toBeGreaterThan(0)
