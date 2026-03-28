@@ -6,7 +6,6 @@ import { FireResultCard } from "./fire-result-card"
 import { ConfigPanel } from "./config-panel"
 import { AssetsChart, IncomeExpenseChart } from "./assets-chart"
 import { ScenarioComparison } from "./scenario-comparison"
-import { MetricsSummary } from "./metrics-summary"
 import { AnnualCashFlowTable } from "./annual-cashflow-table"
 import { CashFlowChart } from "./cashflow-chart"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -148,8 +147,8 @@ export function FireDashboard() {
             </div>
         </header>
 
-        {/* KPI Banner */}
-        <div className="sticky top-16 z-40 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60 relative overflow-hidden">
+        {/* KPI Banner (mobile only) */}
+        <div className="lg:hidden sticky top-16 z-40 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60 relative overflow-hidden">
           <div className="container mx-auto px-4 h-12 flex items-center justify-center gap-6">
             <div className="flex items-center gap-1.5">
               <span className="text-xs text-muted-foreground">FIRE達成</span>
@@ -263,7 +262,6 @@ export function FireDashboard() {
               <div className="py-4 space-y-4">
                 <ConfigPanel config={config} onConfigChange={handleConfigChange} useMonteCarlo={useMonteCarlo} onMonteCarloChange={setUseMonteCarlo} />
                 <FireResultCard result={result} monteCarloResult={monteCarloResult} currentAge={config.person1.currentAge} isCalculating={isCalculating} />
-                <MetricsSummary config={config} result={result} mcResult={monteCarloResult} isCalculating={isCalculating} />
                 <Card>
                   <CardContent className="flex items-start gap-3 p-4">
                     <Info className="h-5 w-5 text-muted-foreground mt-0.5" />
@@ -309,7 +307,6 @@ export function FireDashboard() {
 
             {/* Right Panel - Results */}
             <div className="space-y-6 min-w-0">
-              <MetricsSummary config={config} result={result} mcResult={monteCarloResult} isCalculating={isCalculating} />
               <FireResultCard result={result} monteCarloResult={monteCarloResult} currentAge={config.person1.currentAge} isCalculating={isCalculating} />
 
               {/* Charts and Analysis Tabs */}

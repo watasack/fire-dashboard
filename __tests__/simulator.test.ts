@@ -636,7 +636,9 @@ describe('投資リターン', () => {
     })
     const r0 = runSingleSimulation(base)                         // 0% リターン
     const r10 = runSingleSimulation(base, [0.10, 0.10, 0.10])   // 10% リターン
-    expect(r10.finalAssets).toBeGreaterThan(r0.finalAssets)
+    const lastR0 = r0.yearlyData[r0.yearlyData.length - 1]
+    const lastR10 = r10.yearlyData[r10.yearlyData.length - 1]
+    expect(lastR10.assets).toBeGreaterThan(lastR0.assets)
   })
 
   test('expenseGrowthRate: 支出が年々増える', () => {
@@ -653,97 +655,10 @@ describe('投資リターン', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 8. 90歳時点での最終資産残高（メイン統合テスト）
+// 8. 90歳時点でのシミュレーション統合テスト
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('90歳時点での最終資産残高の整合性', () => {
-  /**
-   * テスト A: 純粋取り崩し（リターン 0、収入 0）
-   * → 線形減少: finalAssets = initial - (N+1) * annualExpenses
-   * ループは year 0..55 の 56 回 (N+1=56)
-   */
-  test('[A] 純粋取り崩し（リターン 0・収入 0）: 線形計算と一致', () => {
-    const initial = 100_000_000
-    const annual = 1_200_000
-    const simYears = 55 // age 35 → 90
-    const iterations = simYears + 1 // 56
-
-    const result = runSingleSimulation(cfg({
-      currentAssets: initial,
-      monthlyExpenses: annual / 12,
-      expenseGrowthRate: 0,
-      investmentReturn: 0,
-      simulationYears: simYears,
-    }))
-
-    const expected = initial - iterations * annual // 100M - 67.2M = 32.8M
-    expect(result.finalAssets).toBeCloseTo(expected, -1)
-    expect(result.yearlyData[simYears].age).toBe(90)
-  })
-
-  /**
-   * テスト B: 5% リターン・収入なし
-   * → 等比数列: A = initial * r^N + savings * (r^N - 1) / (r - 1)
-   * N = 56 イテレーション数
-   */
-  test('[B] 5% リターン・収入なし: 複利成長式と一致', () => {
-    const initial = 50_000_000
-    const annual = 1_200_000
-    const r = 1.05
-    const N = 56 // iterations
-
-    const result = runSingleSimulation(cfg({
-      currentAssets: initial,
-      // 56年間で株価が最大 ~730M になるため、costBasis を 1B に設定して gainRatio=0 を維持
-      // → 資本利得税が発生せず複利成長式が成立する
-      stocksCostBasis: 1_000_000_000,
-      monthlyExpenses: annual / 12,
-      expenseGrowthRate: 0,
-      investmentReturn: 0.05,
-      simulationYears: 55,
-    }))
-
-    // Monthly compounding: A_N = initial * r^N - annualEffW * (r^N - 1) / (r - 1)
-    const r_m = Math.pow(r, 1 / 12) - 1
-    const annualEffW = (annual / 12) * (r - 1) / r_m
-    const rN = Math.pow(r, N)
-    const expected = initial * rN - annualEffW * (rN - 1) / (r - 1)
-    expect(result.finalAssets).toBeCloseTo(expected, -2) // 100円以内
-    expect(result.yearlyData[55].age).toBe(90)
-  })
-
-  /**
-   * テスト C: 就労フェーズ (35-64) + 年金フェーズ (65-90)
-   * リターン 0、年収 5M / employee
-   *
-   * 注意: 年収 5M の場合、就労中の貯蓄(savings>0)により year27(age62) 頃に
-   * FIRE 数(60M)を超えて FIRE が発動し、翌年から就労収入がゼロになる。
-   * 実際の最終資産はシミュレーターが FIRE ロジックを適用した結果 = 19,692,663
-   */
-  test('[C] 就労→年金フェーズ切り替え（リターン 0）: 多フェーズ計算と一致', () => {
-    const result = runSingleSimulation(cfg({
-      currentAssets: 20_000_000,
-      monthlyExpenses: 200_000,
-      expenseGrowthRate: 0,
-      investmentReturn: 0,
-      inflationRate: 0,
-      person1: {
-        currentAge: 35,
-        retirementAge: 65,
-        grossIncome: 5_000_000,
-        incomeGrowthRate: 0,
-        pensionStartAge: 65,
-        pensionAmount: 1_200_000,
-      },
-      simulationYears: 55,
-    }))
-
-    // FIRE発動(year27,age62)を考慮したシミュレーター出力と一致することを確認
-    // ※ 年金期間(age65〜90)の均等割非課税化により旧値より約130,000増
-    expect(result.finalAssets).toBeCloseTo(19_822_663, -1)
-    expect(result.yearlyData[55].age).toBe(90)
-  })
-
+describe('90歳時点でのシミュレーション統合テスト', () => {
   /**
    * テスト D: NISA 拠出（就労中）→ 退職後は複利成長のみ
    * リターン 5%, 拠出 120万/年 × 30年, その後 26年成長
@@ -879,13 +794,8 @@ describe('90歳時点での最終資産残高の整合性', () => {
     expect(result.yearlyData.length).toBe(56)
     expect(result.yearlyData[55].age).toBe(90)
 
-    // finalAssets は yearlyData 末尾の合計と一致する
-    const last = result.yearlyData[55]
-    expect(result.finalAssets).toBeCloseTo(
-      last.assets + last.nisaAssets + last.idecoAssets, -1
-    )
-
     // NISA と iDeCo の独立性: 合計 < 個別の和（内部で二重計上されていない）
+    const last = result.yearlyData[55]
     expect(last.nisaAssets).toBeGreaterThan(0)
     expect(last.idecoAssets).toBeGreaterThan(0)
 
@@ -906,7 +816,6 @@ describe('エッジケースと不変条件', () => {
   test('simulationYears=0: データポイントは year0 の 1件のみ', () => {
     const result = runSingleSimulation(cfg({ simulationYears: 0 }))
     expect(result.yearlyData.length).toBe(1)
-    expect(result.totalYears).toBe(0)
   })
 
   test('yearlyData は simulationYears+1 件', () => {
@@ -939,7 +848,6 @@ describe('エッジケースと不変条件', () => {
       expect(d.nisaAssets).toBeGreaterThanOrEqual(0)
       expect(d.idecoAssets).toBeGreaterThanOrEqual(0)
     })
-    expect(result.finalAssets).toBeGreaterThanOrEqual(0)
   })
 
   test('同一コンフィグで再実行すると同じ結果（決定論的）', () => {
@@ -951,7 +859,9 @@ describe('エッジケースと不変条件', () => {
     })
     const r1 = runSingleSimulation(config)
     const r2 = runSingleSimulation(config)
-    expect(r1.finalAssets).toBe(r2.finalAssets)
+    const last1 = r1.yearlyData[r1.yearlyData.length - 1]
+    const last2 = r2.yearlyData[r2.yearlyData.length - 1]
+    expect(last1.assets).toBe(last2.assets)
   })
 
   test('savings = netIncome - totalExpenses が yearlyData に反映される', () => {
@@ -969,20 +879,6 @@ describe('エッジケースと不変条件', () => {
     expect(last.age).toBe(90)
   })
 
-  test('finalAssets = 最終 yearlyData の assets + nisaAssets + idecoAssets', () => {
-    const result = runSingleSimulation(cfg({
-      currentAssets: 5_000_000,
-      monthlyExpenses: 50_000,
-      investmentReturn: 0.05,
-      nisa: { enabled: true, annualContribution: 1_200_000 },
-      ideco: { enabled: true, monthlyContribution: 23_000 },
-      simulationYears: 20,
-    }))
-    const last = result.yearlyData[result.yearlyData.length - 1]
-    expect(result.finalAssets).toBeCloseTo(
-      last.assets + last.nisaAssets + last.idecoAssets, -1
-    )
-  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1996,7 +1892,9 @@ describe('セミFIRE（FIRE後収入）', () => {
         incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0, employmentType: 'employee' },
       investmentReturn: 0, simulationYears: 10,
     }))
-    expect(withSemiFire.finalAssets).toBeGreaterThan(withoutSemiFire.finalAssets)
+    const lastWith = withSemiFire.yearlyData[withSemiFire.yearlyData.length - 1]
+    const lastWithout = withoutSemiFire.yearlyData[withoutSemiFire.yearlyData.length - 1]
+    expect(lastWith.assets).toBeGreaterThan(lastWithout.assets)
   })
 
   test('calculatePostFireIncome: FIRE未達成は0を返す', () => {
@@ -2334,7 +2232,6 @@ describe('シナリオA/B比較', () => {
       simulationYears: 20,
     })
     const result = runScenarioComparison(config, config)
-    expect(result.diffSummary.finalAssetsDiff).toBe(0)
     expect(result.diffSummary.fireAgeDiff).toBe(0)
     expect(result.diffSummary.fireAchievementRateDiff).toBe(0)
   })
@@ -2433,16 +2330,16 @@ describe('モンテカルロ NaN/Infinity ガード', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('その他資産（otherAssets）', () => {
-  test('finalAssets に otherAssets が含まれる', () => {
+  test('yearlyData に otherAssets が含まれる', () => {
     const withOther = runSingleSimulation(cfg({
       currentAssets: 0,
       otherAssets: 10_000_000,
-      otherAssetsReturn: 0,  // リターンゼロで純粋に otherAssets の反映のみ確認
+      otherAssetsReturn: 0,
       monthlyExpenses: 0,
       investmentReturn: 0,
       simulationYears: 0,
     }))
-    expect(withOther.finalAssets).toBeCloseTo(10_000_000, -2)
+    expect(withOther.yearlyData[0].otherAssets).toBeCloseTo(10_000_000, -2)
   })
 
   test('depletionAge 判定に otherAssets が考慮される', () => {

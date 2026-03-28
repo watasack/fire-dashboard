@@ -279,8 +279,6 @@ export interface SimulationResult {
     fireAge: number | null
     fireYear: number | null
     fireNumber: number
-    finalAssets: number
-    totalYears: number
     pensionBreakdown?: {
         person1: PensionBreakdown
         person2: PensionBreakdown | null
@@ -402,7 +400,6 @@ export interface ScenarioComparisonResult {
 export interface ScenarioDiffSummary {
     fireAgeDiff: number | null       // B.fireAge - A.fireAge (negative = B fires earlier)
                                      // null if either plan doesn't fire
-    finalAssetsDiff: number          // B.finalAssets - A.finalAssets
     fireAchievementRateDiff: number  // B.achievementRate - A.achievementRate
     planAFiresOnly: boolean          // Only plan A fires within simulationYears
     planBFiresOnly: boolean          // Only plan B fires within simulationYears
@@ -1892,8 +1889,6 @@ export function runSingleSimulation(
         fireAge,
         fireYear,
         fireNumber,
-        finalAssets: finalData.assets + finalData.nisaAssets + finalData.idecoAssets + finalData.otherAssets,
-        totalYears: config.simulationYears,
         pensionBreakdown: {
             person1: p1PensionBreakdown,
             person2: p2PensionBreakdown,
@@ -2208,7 +2203,6 @@ export function runScenarioComparison(
         planBConfig,
         diffSummary: {
             fireAgeDiff,
-            finalAssetsDiff: planB.finalAssets - planA.finalAssets,
             fireAchievementRateDiff: planB.fireAchievementRate - planA.fireAchievementRate,
             planAFiresOnly,
             planBFiresOnly,
