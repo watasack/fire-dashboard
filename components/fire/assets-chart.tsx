@@ -214,7 +214,8 @@ export function AssetsChart({ result, monteCarloResult, showPercentiles = true, 
                       <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
                         {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                         {items.map((entry: any, i: number) => {
-                          const opacity = entry.payload?.fillOpacity ?? 1
+                          const rawOpacity = entry.payload?.fillOpacity ?? 1
+                          const opacity = rawOpacity < 1 ? rawOpacity + 0.15 : rawOpacity
                           return (
                             <span key={i} className="inline-flex items-center gap-1.5">
                               {entry.value === "標準シナリオ" ? (
