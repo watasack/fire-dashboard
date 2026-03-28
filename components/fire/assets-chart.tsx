@@ -1,8 +1,10 @@
 "use client"
 
+import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { SimulationResult, MonteCarloResult } from "@/lib/simulator"
 import { formatCurrency } from "@/lib/utils"
+import { Info } from "lucide-react"
 import {
   Area,
   AreaChart,
@@ -29,6 +31,7 @@ interface AssetsChartProps {
 }
 
 export function AssetsChart({ result, monteCarloResult, showPercentiles = true, compact = false, expanded = false }: AssetsChartProps) {
+  const [bandTooltipOpen, setBandTooltipOpen] = useState(false)
   const chartHeight = expanded ? "h-full" : compact ? "h-[240px]" : "h-[260px] sm:h-[360px] lg:h-[400px]"
   const showHeader = !compact && !expanded
   const showLegend = !compact && !expanded
@@ -141,7 +144,7 @@ export function AssetsChart({ result, monteCarloResult, showPercentiles = true, 
                   stroke="none"
                   fill="#1a365d"
                   fillOpacity={0.15}
-                  name="10〜90%の範囲"
+                  name="景気がかなり良い〜悪い場合"
                   legendType="square"
                   isAnimationActive={false}
                 />
@@ -155,7 +158,7 @@ export function AssetsChart({ result, monteCarloResult, showPercentiles = true, 
                   stroke="none"
                   fill="#1a365d"
                   fillOpacity={0.3}
-                  name="25〜75パーセンタイル（中央50%の確率範囲）"
+                  name="景気が良い〜悪い場合"
                   legendType="square"
                   isAnimationActive={false}
                 />
@@ -182,7 +185,7 @@ export function AssetsChart({ result, monteCarloResult, showPercentiles = true, 
                 stroke="var(--chart-primary)"
                 strokeWidth={2.5}
                 dot={false}
-                name="中央値シナリオ"
+                name="標準シナリオ"
               />
 
               {/* FIRE age reference line */}
@@ -223,7 +226,21 @@ export function AssetsChart({ result, monteCarloResult, showPercentiles = true, 
           <CardTitle>資産推移予測</CardTitle>
           <CardDescription>
             {showPercentiles && monteCarloResult
-              ? "1000通りのシミュレーション結果。濃い帯ほど「よくある結果」を示します"
+              ? <>
+                  1000通りのシミュレーション結果
+                  <button
+                    type="button"
+                    onClick={() => setBandTooltipOpen(p => !p)}
+                    className="inline-flex p-2.5 -m-2.5 ml-0 text-muted-foreground/60 hover:text-muted-foreground transition-colors align-middle"
+                  >
+                    <Info className="h-3.5 w-3.5 shrink-0" />
+                  </button>
+                  {bandTooltipOpen && (
+                    <span className="block mt-1 text-xs text-muted-foreground leading-relaxed">
+                      株式市場の値動きをランダムに1000パターン生成し、資産がどう推移するかをシミュレーションしています。濃い帯は半数のパターンが含まれる範囲、薄い帯は8割のパターンが含まれる範囲です。
+                    </span>
+                  )}
+                </>
               : "平均的なシナリオでの資産推移"}
           </CardDescription>
         </CardHeader>
