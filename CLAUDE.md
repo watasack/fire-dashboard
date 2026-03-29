@@ -131,6 +131,62 @@ pnpm dev        # http://localhost:3000 で起動
 npx next build  # 本番ビルド確認
 ```
 
+## AI Agent Harness
+
+AIエージェントが機能実装→検証→レビューのループを自動で回すためのフレームワーク。
+Anthropic の GAN パターン（Generator/Evaluator 分離）に基づく設計。
+
+**詳細な使い方:** `docs/harness-guide.md` を参照。
+
+### コマンド一覧
+
+| コマンド | 役割 | 説明 |
+|---|---|---|
+| `/harness-contract` | Orchestrator | スプリント契約を作成 |
+| `/harness-generate` | Generator | 契約に基づきコードを実装 + 自動検証 |
+| `/harness-evaluate` | Evaluator | 独立した視点でコード変更をレビュー |
+| `/harness-review` | Reviewer | 既存コード・UI/UXのレビュー・監査 |
+
+### 検証パイプライン
+
+```bash
+# 全ステージ実行（pnpm dev 起動済み前提）
+python -X utf8 tools/verify.py
+
+# ビルド + ユニットテストのみ（高速）
+python -X utf8 tools/verify.py --stages build,unit
+```
+
+### ファイル構成
+
+```
+.plans/harness/
+  contracts/
+    active.md              # 現在の契約ID
+    _template.md           # 契約テンプレート
+    sprint-NNN.md          # 各スプリント契約
+  verification-report.md   # verify.py の出力（git管理外）
+  generator-report.md      # Generator の完了報告（git管理外）
+  evaluation-report.md     # Evaluator のレビュー結果（git管理外）
+  review-report.md         # Reviewer のレビュー結果（git管理外）
+```
+
+### ワークフロー
+
+```
+1. /harness-contract → 契約作成
+2. pnpm dev を起動
+3. /harness-generate → 実装 + 自動検証
+4. /harness-evaluate → 独立レビュー
+5. REVISE なら → /harness-generate（修正モード）
+6. APPROVED なら → git diff 確認 → コミット
+
+# レビュー・監査（実装なし）
+/harness-review UI全体の操作性を確認して
+/harness-review simulator.ts の年金計算が仕様通りか監査して
+/harness-review 直近5コミットのリグレッションリスクを確認して
+```
+
 ## 過去の失敗から学んだルール
 
 - **UI 変更は必ず Playwright で動作確認してからプッシュする**
