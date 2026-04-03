@@ -1229,7 +1229,7 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
           </div>
           <p className="text-xs text-muted-foreground">
             {(config.withdrawalStrategy ?? 'fixed') === 'fixed' && '基本設定の月額生活費をそのまま毎年取り崩します。生活水準が安定しますが、相場が悪い年も同額を引き出します。'}
-            {(config.withdrawalStrategy ?? 'fixed') === 'percentage' && '毎年資産残高の一定割合を取り崩します。資産が増えれば支出も増え、減れば自然に支出も減ります。'}
+            {(config.withdrawalStrategy ?? 'fixed') === 'percentage' && '毎年資産残高の一定割合を取り崩します。資産が増えれば支出も増え、減れば自然に支出も減ります（ただし生活費の70%を下回りません）。'}
             {(config.withdrawalStrategy ?? 'fixed') === 'guardrail' && '基本設定の月額生活費をベースに、資産が大幅に下落した際は裁量支出を自動削減します。好況時は生活費を維持しつつ、暴落時のリスクを抑えます。'}
           </p>
 

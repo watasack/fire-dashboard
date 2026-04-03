@@ -1999,10 +1999,16 @@ describe('取り崩し戦略', () => {
     expect(result.actualExpenses).toBe(4_000_000)
   })
 
-  test('percentage: totalAssets * SWR < baseExpenses → 資産連動で支出が減る', () => {
-    // 30M * 0.04 = 1_200_000 < baseExpenses 2_400_000 → 資産連動なので 1_200_000
+  test('percentage: totalAssets * SWR < baseExpenses → 資産連動で支出が減るが最低生活費（70%）を下回らない', () => {
+    // 30M * 0.04 = 1_200_000 < baseExpenses * 0.7 = 1_680_000 → 最低生活費 1_680_000
     const result = calculateWithdrawalAmount('percentage', 2_400_000, 30_000_000, 30_000_000, 0.04)
-    expect(result.actualExpenses).toBe(1_200_000)
+    expect(result.actualExpenses).toBe(1_680_000)
+  })
+
+  test('percentage: totalAssets * SWR が最低生活費を上回る場合は資産連動', () => {
+    // 50M * 0.04 = 2_000_000 > baseExpenses * 0.7 = 1_680_000 → 資産連動 2_000_000
+    const result = calculateWithdrawalAmount('percentage', 2_400_000, 50_000_000, 50_000_000, 0.04)
+    expect(result.actualExpenses).toBe(2_000_000)
   })
 
   test('guardrail: ドローダウン 0% → 削減なし', () => {

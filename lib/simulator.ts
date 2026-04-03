@@ -1324,7 +1324,9 @@ export function calculateWithdrawalAmount(
     lifecycleStage?: string   // ライフステージ別裁量比率の算出に使用
 ): { actualExpenses: number; drawdownFromPeak: number; discretionaryReductionRate: number } {
     if (strategy === 'percentage') {
-        const actualExpenses = totalAssets * safeWithdrawalRate
+        // 資産連動だが、最低生活費（基本生活費の70%=必須支出相当）を下回らない
+        const targetWithdrawal = totalAssets * safeWithdrawalRate
+        const actualExpenses = Math.max(baseExpenses * 0.7, targetWithdrawal)
         return { actualExpenses, drawdownFromPeak: 0, discretionaryReductionRate: 0 }
     }
 
