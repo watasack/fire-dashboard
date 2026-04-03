@@ -2011,6 +2011,43 @@ describe('取り崩し戦略', () => {
     expect(result.actualExpenses).toBe(2_000_000)
   })
 
+  test('percentage: カスタム取り崩し率（3%）が反映される', () => {
+    // 100M * 0.03 = 3_000_000 > baseExpenses * 0.7 = 1_680_000 → 3_000_000
+    const result = calculateWithdrawalAmount('percentage', 2_400_000, 100_000_000, 100_000_000, 0.03)
+    expect(result.actualExpenses).toBe(3_000_000)
+  })
+
+  test('percentage: percentageWithdrawalRate が runSingleSimulation に反映される', () => {
+    // 定率5%で FIRE 後の取り崩しが行われることを確認
+    const result = runSingleSimulation(cfg({
+      currentAssets: 100_000_000,
+      monthlyExpenses: 200_000,  // 年240万
+      investmentReturn: 0,
+      withdrawalStrategy: 'percentage',
+      percentageWithdrawalRate: 0.05,  // 5%: 100M * 0.05 = 500万
+      person1: { currentAge: 35, retirementAge: 35, grossIncome: 0,
+        incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0, employmentType: 'employee' },
+      simulationYears: 1,
+    }), undefined, 35)
+    // 5%取り崩しなので年間支出は500万（生活費240万より大きい）
+    expect(result.yearlyData[1].expenses).toBeGreaterThan(2_400_000)
+  })
+
+  test('percentage: 最低生活費の下限により即FIREにならない', () => {
+    // 資産が少ない場合、定率でも最低生活費（70%）がかかるため枯渇する
+    const result = findEarliestFireAge(cfg({
+      currentAssets: 5_000_000,   // 500万
+      monthlyExpenses: 200_000,   // 月20万 → 最低生活費: 月14万 = 年168万
+      investmentReturn: 0,
+      withdrawalStrategy: 'percentage',
+      person1: { currentAge: 30, retirementAge: 65, grossIncome: 5_000_000,
+        incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0, employmentType: 'employee' },
+      simulationYears: 50,
+    }))
+    // 即FIRE（30歳）にはならないはず
+    expect(result.fireAge).not.toBe(30)
+  })
+
   test('guardrail: ドローダウン 0% → 削減なし', () => {
     const result = calculateWithdrawalAmount('guardrail', 2_400_000, 10_000_000, 10_000_000, 0.04, gc)
     expect(result.discretionaryReductionRate).toBe(0)
