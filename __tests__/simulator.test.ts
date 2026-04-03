@@ -1999,10 +1999,10 @@ describe('取り崩し戦略', () => {
     expect(result.actualExpenses).toBe(4_000_000)
   })
 
-  test('percentage: totalAssets * SWR < baseExpenses → baseExpenses が返る', () => {
-    // 30M * 0.04 = 1_200_000 < baseExpenses 2_400_000 → max = 2_400_000
+  test('percentage: totalAssets * SWR < baseExpenses → 資産連動で支出が減る', () => {
+    // 30M * 0.04 = 1_200_000 < baseExpenses 2_400_000 → 資産連動なので 1_200_000
     const result = calculateWithdrawalAmount('percentage', 2_400_000, 30_000_000, 30_000_000, 0.04)
-    expect(result.actualExpenses).toBe(2_400_000)
+    expect(result.actualExpenses).toBe(1_200_000)
   })
 
   test('guardrail: ドローダウン 0% → 削減なし', () => {

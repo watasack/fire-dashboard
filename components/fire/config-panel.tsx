@@ -1228,10 +1228,21 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
             ))}
           </div>
           <p className="text-xs text-muted-foreground">
-            {(config.withdrawalStrategy ?? 'fixed') === 'fixed' && '毎年一定額を取り崩します。生活水準が安定しますが、相場が悪い年も同額を引き出します。'}
+            {(config.withdrawalStrategy ?? 'fixed') === 'fixed' && '基本設定の月額生活費をそのまま毎年取り崩します。生活水準が安定しますが、相場が悪い年も同額を引き出します。'}
             {(config.withdrawalStrategy ?? 'fixed') === 'percentage' && '毎年資産残高の一定割合を取り崩します。資産が増えれば支出も増え、減れば自然に支出も減ります。'}
-            {(config.withdrawalStrategy ?? 'fixed') === 'guardrail' && '資産が大幅に下落した際に支出を自動削減します。暴落時のリスクを抑えつつ、好況時は支出を維持します。'}
+            {(config.withdrawalStrategy ?? 'fixed') === 'guardrail' && '基本設定の月額生活費をベースに、資産が大幅に下落した際は裁量支出を自動削減します。好況時は生活費を維持しつつ、暴落時のリスクを抑えます。'}
           </p>
+
+          {(config.withdrawalStrategy ?? 'fixed') === 'percentage' && (
+            <SliderField
+              label="年間取り崩し率"
+              tooltip="毎年、資産残高のこの割合を取り崩して生活費に充てます。4%ルールが一般的ですが、保守的なら3%、積極的なら5%も選択肢です"
+              value={(config.percentageWithdrawalRate ?? 0.04) * 100}
+              onChange={(value) => onConfigChange({ ...config, percentageWithdrawalRate: value / 100 })}
+              min={2} max={6} step={0.5}
+              format={(v) => `${v.toFixed(1)}%`}
+            />
+          )}
 
           {(config.withdrawalStrategy ?? 'fixed') === 'guardrail' && (
             <div className="space-y-4">

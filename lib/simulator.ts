@@ -220,6 +220,7 @@ export interface SimulationConfig {
 
     // Withdrawal strategy (Phase 7)
     withdrawalStrategy?: WithdrawalStrategy   // デフォルト: 'fixed'
+    percentageWithdrawalRate?: number          // 定率戦略の年間取り崩し率（デフォルト: 0.04 = 4%）
     guardrailConfig?: GuardrailConfig         // guardrail 選択時に使用
 
     // MC return model (Phase 9)
@@ -1323,8 +1324,7 @@ export function calculateWithdrawalAmount(
     lifecycleStage?: string   // ライフステージ別裁量比率の算出に使用
 ): { actualExpenses: number; drawdownFromPeak: number; discretionaryReductionRate: number } {
     if (strategy === 'percentage') {
-        const targetWithdrawal = totalAssets * safeWithdrawalRate
-        const actualExpenses = Math.max(baseExpenses, targetWithdrawal)
+        const actualExpenses = totalAssets * safeWithdrawalRate
         return { actualExpenses, drawdownFromPeak: 0, discretionaryReductionRate: 0 }
     }
 
@@ -1652,7 +1652,7 @@ export function runSingleSimulation(
                 baseExpenses,
                 effectiveTotalAssets,
                 peakAssets,
-                INTERNAL_SWR,
+                config.percentageWithdrawalRate ?? INTERNAL_SWR,
                 config.guardrailConfig,
                 lifecycleStage
             )
