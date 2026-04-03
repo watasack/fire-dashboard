@@ -10,7 +10,7 @@ import { AnnualCashFlowTable } from "./annual-cashflow-table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent } from "@/components/ui/card"
 import { TooltipProvider } from "@/components/ui/tooltip"
-import { BarChart3, Lightbulb, TrendingUp, Info, ShieldCheck, Table2, Lock, Share2, Home, Wallet, Baby, Settings2, Maximize2, Minimize2 } from "lucide-react"
+import { BarChart3, Lightbulb, TrendingUp, Info, Table2, Share2, Home, Wallet, Baby, Settings2, Maximize2, Minimize2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { encodeConfig, decodeConfig } from "@/lib/url-state"
 import Link from "next/link"
@@ -283,23 +283,6 @@ export function FireDashboard() {
             {/* Left Panel - Configuration */}
             <aside className="space-y-6">
               <ConfigPanel config={config} onConfigChange={handleConfigChange} useMonteCarlo={useMonteCarlo} onMonteCarloChange={setUseMonteCarlo} />
-
-              {/* Trust indicators */}
-              <Card className="border-primary/20 bg-primary/5">
-                <CardContent className="flex items-start gap-3 p-4">
-                  <ShieldCheck className="h-5 w-5 text-primary mt-0.5 shrink-0" />
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium text-primary">計算方法</p>
-                    <p className="text-xs text-muted-foreground leading-relaxed">
-                      株価は毎年ランダムに動きます。1000通りの未来を一気に計算して「だいたい何%の確率でFIREできるか」を算出しています。
-                    </p>
-                    <p className="text-xs text-muted-foreground flex items-center gap-1.5 pt-1 border-t border-primary/10">
-                      <Lock className="h-3 w-3 shrink-0 text-primary/70" />
-                      <span>入力データはこのブラウザ内にのみ保存。サーバーには送信されません。</span>
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
             </aside>
 
             {/* Right Panel - Results */}
