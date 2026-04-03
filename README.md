@@ -258,9 +258,30 @@ iterations = 1000回（デフォルト）
 | `depletionAgeP10` | number\|null | P10資産が破綻ラインを下回る年齢 |
 | `fireMonth` | number | FIRE達成月（シミュレーション先頭からの経過月数） |
 
-### 動的取り崩し戦略（ガードレール）
+### 取り崩し戦略
 
-ドローダウン（ピーク資産からの下落率）に応じて裁量支出を自動削減。
+FIRE後の資産取り崩し方法を3種類から選択。戦略によりFIRE後の支出が変わるため、二分探索でのFIRE達成年齢にも影響する。
+
+#### 1. 固定額（fixed）
+
+基本設定の月額生活費をそのまま毎年取り崩す。相場に関わらず支出が一定。
+
+```
+actualExpenses = baseExpenses
+```
+
+#### 2. 定率（percentage）
+
+資産残高の一定割合（`percentageWithdrawalRate`、デフォルト4%）を毎年取り崩す。資産が増えれば支出も増え、減れば支出も減る。ただし基本生活費の70%（必須支出相当）を下回らない。
+
+```
+targetWithdrawal = totalAssets × percentageWithdrawalRate
+actualExpenses = max(baseExpenses × 0.7, targetWithdrawal)
+```
+
+#### 3. 暴落時支出抑制（guardrail）
+
+基本生活費をベースに、ドローダウン（ピーク資産からの下落率）に応じて裁量支出を段階的に自動削減。
 
 ```
 レベル0（正常）:   ドローダウン > threshold1      → 削減なし
