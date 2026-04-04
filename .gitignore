@@ -9,6 +9,8 @@ docs/screenshots/
 # IDE・エディタ
 # ========================================
 .vscode/settings.json
+.claude/settings.local.json
+.serena/project.yml
 .idea/
 *.swp
 *.swo
@@ -26,6 +28,7 @@ desktop.ini
 # ========================================
 node_modules/
 .next/
+tsconfig.tsbuildinfo
 
 # ========================================
 # 会議録音・大容量メディアファイル（gitに含めない）
