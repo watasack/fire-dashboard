@@ -90,6 +90,41 @@
 
 ---
 
+---
+
+### Finding A: `timingSafeEqual` がマルフォームトークンで例外を投げる (Severity: MEDIUM)
+
+- **Location**: `docs/plans/access-code-auth.md` — トークン形式の詳細
+- **Problem**: `timingSafeEqual` はバッファ長が異なると `TypeError` を投げる。攻撃者が `.` なしのトークンや不正な長さの署名を送ると `/api/ping` が 500 エラーになる。
+- **Impact**: サービス障害（意図的なクラッシュ）およびエラーログ汚染。
+- **Suggested Fix**: 仕様書に入力バリデーションを明記する。
+
+  ```typescript
+  const parts = token.split(".");
+  if (parts.length !== 2) return { valid: false };
+  const [code, sig] = parts;
+  const expected = createHmac("sha256", AUTH_SECRET).update(code).digest("hex");
+  if (sig.length !== expected.length) return { valid: false }; // 長さガード
+  const valid = timingSafeEqual(Buffer.from(sig, "hex"), Buffer.from(expected, "hex"))
+             && validCodes.includes(code);
+  ```
+
+---
+
+### Finding B: コンポーネントツリーの props が `AuthState` と不整合 (Severity: LOW)
+
+- **Location**: `docs/plans/access-code-auth.md` — UI 設計方針 → コンポーネントツリー図
+- **Problem**: ツリー図では `isDemoMode={!isAuthed}`（boolean）のままだが、`AuthState = "loading" | "authed" | "demo"` に変わったため整合していない。`loading` 中に `isDemoMode={true}` が渡るとロックオーバーレイが表示されてしまう。
+- **Impact**: ローディング中にフル版ユーザーへロックオーバーレイが表示される（Finding 2 の修正と矛盾）。
+- **Suggested Fix**: コンポーネントツリー図の props を更新し、`loading` 中は `<FireDashboard>` 自体をレンダーしないことを明記する。
+
+  ```typescript
+  if (authState === "loading") return <DashboardSkeleton />;
+  <FireDashboard isDemoMode={authState === "demo"} />
+  ```
+
+---
+
 ## Responses to Findings
 
 対応日: 2026-04-04
