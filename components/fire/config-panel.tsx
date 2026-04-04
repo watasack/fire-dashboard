@@ -10,12 +10,15 @@ import { SimulationConfig, Person, EmploymentType, WithdrawalStrategy, MCReturnM
 import { formatCurrency, cn } from "@/lib/utils"
 import { User, Users, Wallet, TrendingUp, Baby, PiggyBank, Settings2, Info } from "lucide-react"
 import { SliderField } from "@/components/fire/slider-field"
+import { LockOverlay } from "@/components/fire/lock-overlay"
 
 interface ConfigPanelProps {
   config: SimulationConfig
   onConfigChange: (config: SimulationConfig) => void
   useMonteCarlo: boolean
   onMonteCarloChange: (value: boolean) => void
+  isDemoMode?: boolean
+  onUnlock?: (token: string) => void
 }
 
 function FieldLabel({ label, tooltip, className }: { label: string; tooltip: string; className?: string }) {
@@ -208,7 +211,7 @@ function PersonConfig({
 
 const ACCORDION_STORAGE_KEY = "fire_config_accordion"
 
-export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarloChange }: ConfigPanelProps) {
+export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarloChange, isDemoMode = false, onUnlock }: ConfigPanelProps) {
   const [accordionValues, setAccordionValues] = useState<string[]>(["basic"])
 
   useEffect(() => {
@@ -1506,7 +1509,10 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
               <span className="flex items-center gap-2"><Users className="h-4 w-4" />収入</span>
             </AccordionTrigger>
             <AccordionContent>
-              {incomeInner}
+              <div className="relative">
+                {incomeInner}
+                {isDemoMode && onUnlock && <LockOverlay onUnlock={onUnlock} />}
+              </div>
             </AccordionContent>
           </AccordionItem>
           <AccordionItem value="investment" id="config-invest">
@@ -1514,7 +1520,10 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
               <span className="flex items-center gap-2"><TrendingUp className="h-4 w-4" />投資</span>
             </AccordionTrigger>
             <AccordionContent>
-              {investmentInner}
+              <div className="relative">
+                {investmentInner}
+                {isDemoMode && onUnlock && <LockOverlay onUnlock={onUnlock} />}
+              </div>
             </AccordionContent>
           </AccordionItem>
           <AccordionItem value="life" id="config-life">
@@ -1522,7 +1531,10 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
               <span className="flex items-center gap-2"><Baby className="h-4 w-4" />ライフ</span>
             </AccordionTrigger>
             <AccordionContent>
-              {lifeInner}
+              <div className="relative">
+                {lifeInner}
+                {isDemoMode && onUnlock && <LockOverlay onUnlock={onUnlock} />}
+              </div>
             </AccordionContent>
           </AccordionItem>
           <AccordionItem value="advanced" id="config-detail">
@@ -1530,7 +1542,10 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
               <span className="flex items-center gap-2"><Settings2 className="h-4 w-4" />詳細設定</span>
             </AccordionTrigger>
             <AccordionContent>
-              {advancedInner}
+              <div className="relative">
+                {advancedInner}
+                {isDemoMode && onUnlock && <LockOverlay onUnlock={onUnlock} />}
+              </div>
             </AccordionContent>
           </AccordionItem>
         </Accordion>
@@ -1566,16 +1581,28 @@ export function ConfigPanel({ config, onConfigChange, useMonteCarlo, onMonteCarl
             {basicInner}
           </TabsContent>
           <TabsContent value="income" className="mt-4">
-            {incomeInner}
+            <div className="relative">
+              {incomeInner}
+              {isDemoMode && onUnlock && <LockOverlay onUnlock={onUnlock} />}
+            </div>
           </TabsContent>
           <TabsContent value="investment" className="mt-4">
-            {investmentInner}
+            <div className="relative">
+              {investmentInner}
+              {isDemoMode && onUnlock && <LockOverlay onUnlock={onUnlock} />}
+            </div>
           </TabsContent>
           <TabsContent value="life" className="mt-4">
-            {lifeInner}
+            <div className="relative">
+              {lifeInner}
+              {isDemoMode && onUnlock && <LockOverlay onUnlock={onUnlock} />}
+            </div>
           </TabsContent>
           <TabsContent value="advanced" className="mt-4">
-            {advancedInner}
+            <div className="relative">
+              {advancedInner}
+              {isDemoMode && onUnlock && <LockOverlay onUnlock={onUnlock} />}
+            </div>
           </TabsContent>
         </Tabs>
       </div>

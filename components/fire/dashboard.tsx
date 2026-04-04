@@ -14,6 +14,7 @@ import { BarChart3, Lightbulb, TrendingUp, Info, Table2, Share2, Home, Wallet, B
 import { Button } from "@/components/ui/button"
 import { encodeConfig, decodeConfig } from "@/lib/url-state"
 import Link from "next/link"
+import { LockOverlay } from "./lock-overlay"
 
 // Helper: determine which sections have meaningful input
 function getSectionCompletion(config: SimulationConfig) {
@@ -43,7 +44,12 @@ function useDebounce<T>(value: T, delay: number): T {
   return debouncedValue
 }
 
-export function FireDashboard() {
+interface FireDashboardProps {
+  isDemoMode?: boolean
+  onUnlock?: (token: string) => void
+}
+
+export function FireDashboard({ isDemoMode = false, onUnlock }: FireDashboardProps) {
   const [config, setConfig] = useState<SimulationConfig>(DEFAULT_CONFIG)
   const [result, setResult] = useState<SimulationResult | null>(null)
   const [monteCarloResult, setMonteCarloResult] = useState<MonteCarloResult | null>(null)
@@ -174,11 +180,15 @@ export function FireDashboard() {
                 )
               })()}
             </div>
-            <div className="w-px h-4 bg-border" />
-            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1" onClick={handleShare}>
-              <Share2 className="h-3.5 w-3.5" />
-              {copied ? 'コピーしました！' : 'リンクをコピー'}
-            </Button>
+            {!isDemoMode && (
+              <>
+                <div className="w-px h-4 bg-border" />
+                <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1" onClick={handleShare}>
+                  <Share2 className="h-3.5 w-3.5" />
+                  {copied ? 'コピーしました！' : 'リンクをコピー'}
+                </Button>
+              </>
+            )}
           </div>
           {/* Calculating progress indicator */}
           <div className="absolute bottom-0 left-0 right-0 h-0.5">
@@ -233,22 +243,27 @@ export function FireDashboard() {
                 {/* チャートコンテンツ */}
                 <div className={chartExpanded ? "flex-1 min-h-0" : ""}>
                   <TabsContent value="assets" className={chartExpanded ? "mt-0 h-full" : "mt-0"}>
-                    <AssetsChart
-                      compact={!chartExpanded}
-                      expanded={chartExpanded}
-                      result={result}
-                      monteCarloResult={monteCarloResult}
-                      showPercentiles={useMonteCarlo}
-                    />
+                    <div className={isDemoMode ? "pointer-events-none" : ""} style={isDemoMode ? { filter: "blur(6px)" } : undefined}>
+                      <AssetsChart
+                        compact={!chartExpanded}
+                        expanded={chartExpanded}
+                        result={result}
+                        monteCarloResult={monteCarloResult}
+                        showPercentiles={useMonteCarlo}
+                      />
+                    </div>
                   </TabsContent>
-                  <TabsContent value="cashflow" className={chartExpanded ? "mt-0 h-full" : "mt-0"}>
+                  <TabsContent value="cashflow" className={chartExpanded ? "mt-0 h-full relative" : "mt-0 relative"}>
                     <IncomeExpenseChart compact={!chartExpanded} expanded={chartExpanded} result={result} />
+                    {isDemoMode && onUnlock && <LockOverlay onUnlock={onUnlock} />}
                   </TabsContent>
-                  <TabsContent value="annual" className="mt-0">
+                  <TabsContent value="annual" className="mt-0 relative">
                     <AnnualCashFlowTable compact result={result} />
+                    {isDemoMode && onUnlock && <LockOverlay onUnlock={onUnlock} />}
                   </TabsContent>
-                  <TabsContent value="scenarios" className="mt-0 h-[200px] overflow-y-auto">
+                  <TabsContent value="scenarios" className="mt-0 h-[200px] overflow-y-auto relative">
                     <ScenarioComparison baseConfig={config} baseResult={result} baseMcResult={monteCarloResult} onConfigChange={handleConfigChange} />
+                    {isDemoMode && onUnlock && <LockOverlay onUnlock={onUnlock} />}
                   </TabsContent>
                 </div>
               </Tabs>
@@ -257,7 +272,7 @@ export function FireDashboard() {
             {/* 下部: スクロール可能（設定 → 結果詳細）。展開時は非表示 */}
             <div className={chartExpanded ? "hidden" : "flex-1 overflow-y-auto"}>
               <div className="py-4 space-y-4">
-                <ConfigPanel config={config} onConfigChange={handleConfigChange} useMonteCarlo={useMonteCarlo} onMonteCarloChange={setUseMonteCarlo} />
+                <ConfigPanel config={config} onConfigChange={handleConfigChange} useMonteCarlo={useMonteCarlo} onMonteCarloChange={setUseMonteCarlo} isDemoMode={isDemoMode} onUnlock={onUnlock} />
                 <FireResultCard result={result} monteCarloResult={monteCarloResult} currentAge={config.person1.currentAge} isCalculating={isCalculating} />
                 <Card>
                   <CardContent className="flex items-start gap-3 p-4">
@@ -282,7 +297,7 @@ export function FireDashboard() {
           <div className="hidden lg:grid gap-6 lg:grid-cols-[380px_1fr]">
             {/* Left Panel - Configuration */}
             <aside className="space-y-6">
-              <ConfigPanel config={config} onConfigChange={handleConfigChange} useMonteCarlo={useMonteCarlo} onMonteCarloChange={setUseMonteCarlo} />
+              <ConfigPanel config={config} onConfigChange={handleConfigChange} useMonteCarlo={useMonteCarlo} onMonteCarloChange={setUseMonteCarlo} isDemoMode={isDemoMode} onUnlock={onUnlock} />
             </aside>
 
             {/* Right Panel - Results */}
@@ -310,16 +325,21 @@ export function FireDashboard() {
                   </TabsTrigger>
                 </TabsList>
                 <TabsContent value="assets" className="mt-4">
-                  <AssetsChart result={result} monteCarloResult={monteCarloResult} showPercentiles={useMonteCarlo} />
+                  <div className={isDemoMode ? "pointer-events-none" : ""} style={isDemoMode ? { filter: "blur(6px)" } : undefined}>
+                    <AssetsChart result={result} monteCarloResult={monteCarloResult} showPercentiles={useMonteCarlo} />
+                  </div>
                 </TabsContent>
-                <TabsContent value="cashflow" className="mt-4">
+                <TabsContent value="cashflow" className="mt-4 relative">
                   <IncomeExpenseChart result={result} />
+                  {isDemoMode && onUnlock && <LockOverlay onUnlock={onUnlock} />}
                 </TabsContent>
-                <TabsContent value="annual" className="mt-4">
+                <TabsContent value="annual" className="mt-4 relative">
                   <AnnualCashFlowTable result={result} />
+                  {isDemoMode && onUnlock && <LockOverlay onUnlock={onUnlock} />}
                 </TabsContent>
-                <TabsContent value="scenarios" className="mt-4">
+                <TabsContent value="scenarios" className="mt-4 relative">
                   <ScenarioComparison baseConfig={config} baseResult={result} baseMcResult={monteCarloResult} onConfigChange={handleConfigChange} />
+                  {isDemoMode && onUnlock && <LockOverlay onUnlock={onUnlock} />}
                 </TabsContent>
               </Tabs>
 

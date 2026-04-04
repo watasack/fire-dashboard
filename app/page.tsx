@@ -1,5 +1,5 @@
-import { FireDashboard } from "@/components/fire"
+import { AccessGate } from "@/components/fire/access-gate"
 
 export default function Home() {
-  return <FireDashboard />
+  return <AccessGate />
 }
