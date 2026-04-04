@@ -127,7 +127,33 @@
 
 ## Responses to Findings
 
-対応日: 2026-04-04
+対応日: 2026-04-04（Finding 1〜5）、2026-04-04（Finding A・B 追加対応）
+
+---
+
+### Response to Finding A (MEDIUM): `timingSafeEqual` の入力バリデーション
+
+**判断**: Suggested Fix のコードをそのまま採用し、仕様書に明記。
+
+理由: 指摘の通り、`timingSafeEqual` はバッファ長が異なると `TypeError` を投げる。これは意図的なクラッシュ攻撃に悪用できるため、長さガードは必須。バリデーション順序は「フォーマット確認（`.` で2分割）→ 長さ確認 → `timingSafeEqual`」とし、早期リターンで無効トークンを安全に弾く。
+
+**修正内容** (`docs/plans/access-code-auth.md`):
+- 検証ロジックのステップに「要素数チェック」と「長さガード」を追加（ステップ1・3として明記）
+- `timingSafeEqual` 呼び出しを `Buffer.from(sig, "hex")` に統一（生文字列比較でなく hex デコード後を比較）
+- 省略時のリスク（500エラー）を注意書きとして追記
+
+---
+
+### Response to Finding B (LOW): コンポーネントツリー図と `AuthState` の不整合
+
+**判断**: ツリー図を `AuthState` の3値に合わせて更新。
+
+理由: Finding 2 の対応で `AuthState = "loading" | "authed" | "demo"` を定義したが、ツリー図の `isDemoMode={!isAuthed}` が boolean のままで矛盾していた。`loading` 中に `<FireDashboard>` 自体をレンダーしないことを明示することで、ロックオーバーレイが誤表示される問題を設計レベルで防ぐ。
+
+**修正内容** (`docs/plans/access-code-auth.md`):
+- `AccessGate` のレンダーロジックを TypeScript 疑似コードで明記（`if (authState === "loading") return <DashboardSkeleton />`）
+- ツリー図を `authState !== "loading"` 分岐を含む形に更新
+- `isDemoMode={authState === "demo"}` と boolean 変換を明示
 
 ---
 

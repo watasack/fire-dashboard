@@ -75,10 +75,13 @@ token = "{code}.{HMAC-SHA256(AUTH_SECRET, code)}"
 ```
 
 `/api/ping` の検証ロジック:
-1. トークンを `.` で分割し `code` と `hmac` を取り出す
-2. `HMAC(AUTH_SECRET, code)` を再計算
-3. `timingSafeEqual` でタイミング攻撃を防ぎながら署名を比較
-4. `VALID_CODES` にコードが含まれるか確認（無効化済みコードの検知）
+1. トークンを `.` で分割 → 要素数が 2 でなければ即 `{ valid: false }` を返す
+2. `HMAC(AUTH_SECRET, code)` を再計算し `expected` を得る
+3. `sig.length !== expected.length` なら即 `{ valid: false }` を返す（長さガード）
+4. `timingSafeEqual(Buffer.from(sig, "hex"), Buffer.from(expected, "hex"))` でタイミング攻撃を防ぎながら署名を比較
+5. `VALID_CODES` にコードが含まれるか確認（無効化済みコードの検知）
+
+> **注意**: ステップ1・3のバリデーションを省略すると、不正なトークンで `timingSafeEqual` が `TypeError` を投げて `/api/ping` が 500 エラーになる。必ず長さガードを入れること。
 
 ### ローディング状態
 
@@ -116,10 +119,17 @@ type AuthState = "loading" | "authed" | "demo"
 
 **採用: `isDemoMode` props + ロックオーバーレイ**
 
+```typescript
+// AccessGate の render ロジック
+if (authState === "loading") return <DashboardSkeleton />;  // ← loading 中は Dashboard をレンダーしない
+<FireDashboard isDemoMode={authState === "demo"} />         // ← boolean に変換して渡す
+```
+
 ```
 app/page.tsx
-  └── <AccessGate>                    ← 認証チェック・isAuthed を管理
-        └── <FireDashboard isDemoMode={!isAuthed} />
+  └── <AccessGate>                    ← authState: "loading" | "authed" | "demo" を管理
+        ├── authState === "loading" → <DashboardSkeleton />（全タブグレーアウト）
+        └── authState !== "loading" → <FireDashboard isDemoMode={authState === "demo"} />
               ├── <ConfigPanel isDemoMode />
               │     ├── 基本タブ        → 解放（年収・支出・資産）
               │     ├── 収入タブ        → 🔒 ロックオーバーレイ
