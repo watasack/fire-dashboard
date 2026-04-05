@@ -44,13 +44,6 @@ docs/meetings/audio/
 *.m4a
 
 # ========================================
-# AI Agent Harness（一時レポート）
-# ========================================
-.plans/harness/verification-report.md
-.plans/harness/generator-report.md
-.plans/harness/evaluation-report.md
-
-# ========================================
 # ログ・一時ファイル
 # ========================================
 *.log
