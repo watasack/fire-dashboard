@@ -30,7 +30,10 @@
 
 ⑤ 支出を現金から差し引き
    cash >= expense → cash -= expense
-   cash <  expense → 不足分を株式から売却（NISA→課税口座の順）
+   cash <  expense → 不足分を以下の順で売却（非課税口座を温存）
+     1. 課税口座（含み益に応じた税計算あり）
+     2. その他資産
+     3. NISA（非課税・FIRE後のみ）
 
 ⑥ 株式の月次リターンを計上
    stocks += stocks × monthly_return_rate
@@ -301,10 +304,14 @@ findEarliestFireAge(config):
 ## 重要な不変条件
 
 ```
-nisaAssets <= stocks（常に成立）
+cashAssets >= 0, stocks >= 0, nisaAssets >= 0, idecoAssets >= 0, otherAssets >= 0
+nisaTotalContributed <= nisaLifetimeLimit（1,800万円）
+全フィールドが有限値（NaN/Infinity なし）
+FIRE達成後は isFireAchieved が true のまま維持される
 ```
 
-NISA残高は株式資産の一部であるため、この条件は常に真でなければならない。
+NISA口座と課税口座は独立して管理される。NISA への優先投資により
+nisaAssets > stocks となることがある（税制優遇の活用として正常）。
 
 ---
 

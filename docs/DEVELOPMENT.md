@@ -58,10 +58,16 @@ npx vitest run    # ユニットテスト（162テスト）
 
 ```typescript
 // 常に成立すべき条件
-assert nisaAssets <= stocks, "NISA残高は株式残高を超えてはならない"
+assert cashAssets >= 0 && stocks >= 0 && nisaAssets >= 0 && idecoAssets >= 0
+assert nisaTotalContributed <= nisaLifetimeLimit  // NISA 生涯拠出上限
+assert Number.isFinite(全資産フィールド)           // NaN/Infinity なし
 ```
 
-NISA 残高は株式資産の一部であるため、この条件は常に真でなければなりません。
+NISA 口座と課税口座は独立して管理される。NISA への優先投資により
+`nisaAssets > stocks` となることがある（非課税枠の活用として正常な動作）。
+
+取り崩し順序は「現金→課税口座→その他→NISA（FIRE後のみ）」で、
+非課税口座を最後まで温存する設計になっている。
 
 #### NISA 残高の更新タイミング
 
@@ -160,11 +166,14 @@ python -X utf8 tools/ui_test.py
 npx vitest run --reporter=verbose
 ```
 
-#### 症状: NISA 残高が株式残高を超える
+#### 症状: NISA 残高が負の値になる
 
-1. 売却処理で `nisaAssets` が正しく減少しているか
-2. 運用リターンが `stocks` と `nisaAssets` の両方に適用されているか
-3. 自動投資後に不変条件が維持されているか
+1. 売却処理で `nisaAssets` の売却額が残高を超えていないか
+2. `Math.max(0, newNisa)` のガードが適用されているか
+3. FIRE 前に NISA から取り崩していないか（NISA 売却は FIRE 後のみ）
+
+> **注意**: `nisaAssets > stocks` は正常な状態。NISA に優先投資するため、
+> 課税口座より NISA 残高が大きくなることがある。
 
 #### 症状: MC 中央値と標準シミュレーションの乖離が大きい
 
