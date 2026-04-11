@@ -414,9 +414,10 @@ export function FireDashboard({ isDemoMode = false, onUnlock }: FireDashboardPro
         {/* Footer */}
         <footer className="border-t bg-card/50 mt-12">
           <div className="container mx-auto px-4 py-6">
-            <p className="text-center text-sm text-muted-foreground">
-              あくまでも試算です。投資の最終判断はご自身でお願いします。
-            </p>
+            <div className="text-center text-sm text-muted-foreground space-y-1">
+              <p>本ツールは投資アドバイスを提供するものではありません。投資の最終判断はご自身でお願いします。</p>
+              <p>入力データはサーバーに保存されません。すべての計算はブラウザ内で完結します。</p>
+            </div>
           </div>
         </footer>
       </div>
