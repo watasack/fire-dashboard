@@ -2068,7 +2068,8 @@ function generateRandomReturns(years: number, config: SimulationConfig): number[
 
 export function runMonteCarloSimulation(
     config: SimulationConfig,
-    iterations: number = 1000
+    iterations: number = 1000,
+    fixedFireAge?: number
 ): MonteCarloResult {
     const fireAges: (number | null)[] = []
     const yearlyAssets: number[][] = []
@@ -2079,14 +2080,17 @@ export function runMonteCarloSimulation(
         yearlyAssets[year] = []
     }
 
-    // Run simulations（二分探索で実収支ベースのFIRE年齢を特定）
+    // fixedFireAge が指定された場合: 「その年齢でFIREしたとき何%成功するか」を計算
+    // 指定なし: シナリオごとに最適FIRE年齢を探す（FIRE達成可能性の評価に使用）
     for (let i = 0; i < iterations; i++) {
         const randomReturns = generateRandomReturns(
             config.simulationYears,
             config
         )
 
-        const result = findEarliestFireAge(config, randomReturns)
+        const result = fixedFireAge !== undefined
+            ? runSingleSimulation(config, randomReturns, fixedFireAge)
+            : findEarliestFireAge(config, randomReturns)
         fireAges.push(result.fireAge)
         depletionAges.push(result.depletionAge)
 

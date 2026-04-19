@@ -85,7 +85,7 @@ export function FireDashboard({ isDemoMode = false, onUnlock }: FireDashboardPro
       setResult(singleResult)
 
       if (useMonteCarlo) {
-        const mcResult = runMonteCarloSimulation(debouncedConfig, 1000)
+        const mcResult = runMonteCarloSimulation(debouncedConfig, 1000, singleResult.fireAge ?? undefined)
         setMonteCarloResult(mcResult)
       } else {
         setMonteCarloResult(null)

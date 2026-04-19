@@ -2104,6 +2104,50 @@ describe('取り崩し戦略', () => {
     }))
     expect(result.depletionAge).toBeNull()
   })
+
+  test('depletionAge: 年金があっても支出が上回れば枯渇と判定される', () => {
+    // 蓄え500万・月30万支出(年360万)・65歳から年金150万
+    // 年金税引後は約120万 < 年360万支出 → 毎月赤字、蓄え枯渇後も資産はゼロに張り付く
+    const result = runSingleSimulation(cfg({
+      currentAssets: 5_000_000,
+      monthlyExpenses: 300_000,
+      investmentReturn: 0,
+      person1: { currentAge: 60, retirementAge: 60, grossIncome: 0,
+        incomeGrowthRate: 0, pensionStartAge: 65, pensionAmount: 1_500_000, employmentType: 'employee' },
+      simulationYears: 30,
+    }), undefined, 60)
+    expect(result.depletionAge).not.toBeNull()
+    expect(result.depletionAge!).toBeLessThanOrEqual(62)
+  })
+
+  test('depletionAge: 年金が支出を十分上回る場合は枯渇しない', () => {
+    // 蓄え0・月10万支出(年120万)・65歳から年金200万
+    // 年金税引後は約160万 > 年120万支出 → 毎月黒字 → 資産が積み上がる → 枯渇しない
+    const result = runSingleSimulation(cfg({
+      currentAssets: 0,
+      monthlyExpenses: 100_000,
+      investmentReturn: 0,
+      person1: { currentAge: 65, retirementAge: 65, grossIncome: 0,
+        incomeGrowthRate: 0, pensionStartAge: 65, pensionAmount: 2_000_000, employmentType: 'employee' },
+      simulationYears: 25,
+    }), undefined, 65)
+    expect(result.depletionAge).toBeNull()
+  })
+
+  test('findEarliestFireAge: 最大年齢で退職しても枯渇する場合はfireAge=nullかつdepletionAgeが検出される', () => {
+    // 収入ゼロ・蓄え少額・高支出 → どのタイミングでFIREしても枯渇
+    const result = findEarliestFireAge(cfg({
+      currentAssets: 1_000_000,
+      monthlyExpenses: 400_000,
+      investmentReturn: 0,
+      person1: { currentAge: 60, retirementAge: 60, grossIncome: 0,
+        incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0, employmentType: 'employee' },
+      simulationYears: 30,
+    }))
+    // FIRE不可能 → fireAge=null かつ 枯渇が記録される
+    expect(result.fireAge).toBeNull()
+    expect(result.depletionAge).not.toBeNull()
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2257,6 +2301,36 @@ describe('MC リターンモデル', () => {
     }), 10)
     expect(result.mcModel).toBe('bootstrap')
     expect(result.successRate).toBeGreaterThanOrEqual(0)
+  })
+
+  test('MC successRate: 明らかに不可能なシナリオでは 1 未満になる', () => {
+    // 収入ゼロ・蓄え200万・月30万支出・年金なし・高ボラティリティ
+    // → 多くのシナリオで蓄えが数年で枯渇し successRate < 1 になるはず
+    const result = runMonteCarloSimulation(cfg({
+      currentAssets: 2_000_000,
+      monthlyExpenses: 300_000,
+      investmentReturn: 0.0,
+      investmentVolatility: 0.20,
+      person1: { currentAge: 60, retirementAge: 60, grossIncome: 0,
+        incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0, employmentType: 'employee' },
+      simulationYears: 30,
+    }), 50)
+    // 蓄え200万で月30万支出・年金なし → FIRE不可能シナリオが多数発生し successRate < 1
+    expect(result.successRate).toBeLessThan(1)
+  })
+
+  test('MC successRate: 資産が十分にあれば高い成功率になる', () => {
+    // 蓄え5億・月10万支出・リターン5% → ほぼ全シナリオで成功
+    const result = runMonteCarloSimulation(cfg({
+      currentAssets: 500_000_000,
+      monthlyExpenses: 100_000,
+      investmentReturn: 0.05,
+      investmentVolatility: 0.15,
+      person1: { currentAge: 35, retirementAge: 35, grossIncome: 0,
+        incomeGrowthRate: 0, pensionStartAge: 90, pensionAmount: 0, employmentType: 'employee' },
+      simulationYears: 55,
+    }), 50)
+    expect(result.successRate).toBeGreaterThan(0.9)
   })
 })
 
