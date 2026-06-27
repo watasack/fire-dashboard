@@ -1692,11 +1692,17 @@ export function runSingleSimulation(
 
         // ── 月次資産更新ループ ───────────────────────────────────────────────────
         // 年次リターンを月次リターンに変換（複利等価）
-        const annualReturn = randomReturns
+        // 注: 1 + annualReturn が非正の場合 Math.pow(<=0, 1/12) は NaN/Infinity を返すため、
+        // 極端な負のリターン（< -99%、MC のテール極値や設定ミス）に対しては
+        // 「年間で実質全損（-99%）」にクランプして数値破綻を防ぐ。Issue #16 参照。
+        const rawAnnualReturn = randomReturns
             ? randomReturns[year] ?? config.investmentReturn
             : config.investmentReturn
+        const annualReturn = Number.isFinite(rawAnnualReturn) ? Math.max(rawAnnualReturn, -0.99) : config.investmentReturn
+        const rawOtherReturn = config.otherAssetsReturn ?? 0.02
+        const otherReturn = Number.isFinite(rawOtherReturn) ? Math.max(rawOtherReturn, -0.99) : 0.02
         const monthlyReturn = Math.pow(1 + annualReturn, 1 / 12) - 1
-        const monthlyOtherReturn = Math.pow(1 + (config.otherAssetsReturn ?? 0.02), 1 / 12) - 1
+        const monthlyOtherReturn = Math.pow(1 + otherReturn, 1 / 12) - 1
         const monthlySavings = savings / 12  // 年間収支を12等分
 
         let yearCapitalGains = 0
@@ -2119,8 +2125,9 @@ export function runMonteCarloSimulation(
     }
 
     // Calculate yearly percentiles
+    // 注: 非有限値（NaN/Infinity）は集計から除外して数値破綻の伝播を防ぐ（Issue #16 参照）
     const yearlyPercentiles: YearlyPercentiles[] = yearlyAssets.map((assets) => {
-        const sorted = [...assets].sort((a, b) => a - b)
+        const sorted = assets.filter((v) => Number.isFinite(v)).sort((a, b) => a - b)
         const getPercentile = (p: number) => sorted[Math.floor(sorted.length * p)] || 0
 
         return {
